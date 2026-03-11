@@ -10,6 +10,7 @@ Item {
 
         Text { text: "Unlock"; font.pixelSize: 20 }
 
+        Text { text: "PIN"; font.pixelSize: 13 }
         TextField {
             id: pinField
             Layout.fillWidth: true

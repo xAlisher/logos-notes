@@ -10,6 +10,7 @@ Item {
 
         Text { text: "Import Recovery Phrase"; font.pixelSize: 20 }
 
+        Text { text: "Recovery phrase"; font.pixelSize: 13 }
         TextArea {
             id: mnemonicField
             Layout.fillWidth: true
@@ -17,6 +18,7 @@ Item {
             wrapMode: TextArea.Wrap
         }
 
+        Text { text: "PIN"; font.pixelSize: 13 }
         TextField {
             id: pinField
             Layout.fillWidth: true
@@ -24,6 +26,7 @@ Item {
             echoMode: TextField.Password
         }
 
+        Text { text: "Confirm PIN"; font.pixelSize: 13 }
         TextField {
             id: pinConfirmField
             Layout.fillWidth: true
