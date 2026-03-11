@@ -67,7 +67,7 @@ The mnemonic is only entered once (import). All subsequent unlocks use the PIN a
 
 ### Prerequisites
 
-- Qt 6.9.3 at `~/Qt/6.9.3/gcc_64/` (or adjust `CMAKE_PREFIX_PATH`)
+- Qt 6.6+ (tested with 6.9.3) — install via Qt online installer or system packages
 - `libsodium-dev`, `cmake`, `ninja-build`, `pkg-config`
 
 ```bash
