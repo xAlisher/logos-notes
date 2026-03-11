@@ -224,14 +224,14 @@ cmake --build build
 - [x] Package Manager module pattern understood (core+ui pairs)
 - [x] Phase 0 scope locked and documented
 - [x] Encryption architecture decided
-- [ ] Create GitHub repo logos-co/logos-notes (or personal fork first)
-- [ ] Scaffold CMakeLists.txt + flake.nix from logos-template-module
-- [ ] Implement CryptoManager (libsodium AES-256-GCM + Argon2)
-- [ ] Implement DatabaseManager (SQLite schema)
-- [ ] Implement KeyManager (BIP39 validation + key derivation)
-- [ ] Build 3 QML screens
-- [ ] Wire C++ backend to QML via Q_PROPERTY / signals
-- [ ] Test end-to-end: import → unlock → write note → kill app → unlock → note still there
+- [x] Create GitHub repo — pushed to github.com/xAlisher/logos-notes, SSH auth configured
+- [x] Scaffold CMakeLists.txt + flake.nix from logos-template-module
+- [x] Implement CryptoManager (libsodium AES-256-GCM + Argon2)
+- [x] Implement DatabaseManager (SQLite schema)
+- [x] Implement KeyManager (BIP39 validation + key derivation)
+- [x] Build 3 QML screens
+- [x] Wire C++ backend to QML via Q_PROPERTY / signals
+- [x] Test end-to-end: import → unlock → write note → kill app → unlock → note still there
 - [ ] Register as Logos App module (metadata.json + plugin interface)
 - [ ] Update https://github.com/logos-co/ideas/issues/13 with Phase 0 definition
 
