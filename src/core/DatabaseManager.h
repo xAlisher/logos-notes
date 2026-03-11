@@ -42,6 +42,11 @@ public:
                         QByteArray &nonceOut,
                         QByteArray &pinSaltOut) const;
 
+    // Close the connection and delete the database file.
+    void wipe();
+
+    QString dbPath() const { return m_dbPath; }
+
 private:
     QString m_dbPath;
     bool    m_ready = false;

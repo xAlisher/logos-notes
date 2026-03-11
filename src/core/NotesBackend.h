@@ -36,6 +36,9 @@ public:
     // Called from NoteScreen on load: decrypt and return the note.
     Q_INVOKABLE QString loadNote();
 
+    // DEV/DEMO: wipe the database and return to the import screen.
+    Q_INVOKABLE void resetAndWipe();
+
 signals:
     void currentScreenChanged();
     void errorMessageChanged();

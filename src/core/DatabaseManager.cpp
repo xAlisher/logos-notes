@@ -1,6 +1,7 @@
 #include "DatabaseManager.h"
 
 #include <QDir>
+#include <QFile>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -128,6 +129,18 @@ bool DatabaseManager::loadWrappedKey(QByteArray &ciphertextOut,
     nonceOut      = q.value(1).toByteArray();
     pinSaltOut    = q.value(2).toByteArray();
     return true;
+}
+
+void DatabaseManager::wipe()
+{
+    {
+        QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+        if (db.isOpen())
+            db.close();
+    }
+    QSqlDatabase::removeDatabase(CONNECTION);
+    QFile::remove(m_dbPath);
+    m_ready = false;
 }
 
 bool DatabaseManager::setInitialized()

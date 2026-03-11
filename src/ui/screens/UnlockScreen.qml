@@ -29,4 +29,18 @@ Item {
             onClicked: backend.unlockWithPin(pinField.text)
         }
     }
+
+    // DEV/DEMO reset — remove before production
+    Text {
+        anchors { bottom: parent.bottom; right: parent.right; margins: 12 }
+        text: "Reset"
+        color: "#cc4444"
+        font.pixelSize: 12
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: backend.resetAndWipe()
+        }
+    }
 }

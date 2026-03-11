@@ -147,6 +147,15 @@ QString NotesBackend::loadNote()
     return QString::fromUtf8(plaintext);
 }
 
+void NotesBackend::resetAndWipe()
+{
+    m_keys.lock();
+    m_db.wipe();
+    m_db.init();
+    setError({});
+    setScreen("import");
+}
+
 void NotesBackend::setScreen(const QString &screen)
 {
     if (m_currentScreen != screen) {
