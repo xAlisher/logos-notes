@@ -34,9 +34,9 @@ Running inside [Logos App](https://github.com/logos-co/logos-app-poc) (Basecamp)
 |--------|--------|
 | ![Import](Assets/Screenshots/import.png) | ![Unlock](Assets/Screenshots/Unlock.png) |
 
-| Sidebar + Notes | Active note with orange border |
-|-----------------|-------------------------------|
-| ![Sidebar](Assets/Screenshots/sidebar.png) | ![Active note](Assets/Screenshots/active-note.png) |
+| Multi-note sidebar (Phase 1) |
+|-------------------------------|
+| ![Multi-note sidebar](Assets/Screenshots/Phase2_Multinote.png) |
 
 ---
 
