@@ -5,8 +5,8 @@
   "description": "Encrypted local-first notes — UI",
   "icon": "",
   "main": {
-    "linux-amd64": "main.qml",
-    "darwin-arm64": "main.qml"
+    "linux-amd64": "Main.qml",
+    "darwin-arm64": "Main.qml"
   },
   "manifestVersion": "0.1.0",
   "name": "notes_ui",

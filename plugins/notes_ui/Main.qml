@@ -1,16 +1,27 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
-// Logos design system — available when loaded inside Logos App.
-// Colours/spacing match the Logos dark palette exactly.
-import Logos.Theme
-import Logos.Controls
+// Logos dark theme colors (hardcoded — QML sandbox blocks Logos.Theme import)
+pragma ComponentBehavior: Bound
 
 Item {
     id: root
 
-    // ── Screen state ─────────────────────────────────────────────────────────
-    // Managed locally; driven by callModule return values.
+    // ── Logos Dark Palette ──────────────────────────────────────────────────
+    readonly property color bgColor:          "#171717"
+    readonly property color bgSecondary:      "#262626"
+    readonly property color bgElevated:       "#0E121B"
+    readonly property color textColor:        "#FFFFFF"
+    readonly property color textSecondary:    "#A4A4A4"
+    readonly property color textPlaceholder:  "#717784"
+    readonly property color primary:          "#ED7B58"
+    readonly property color primaryHover:     "#F55702"
+    readonly property color errorColor:       "#FB3748"
+    readonly property color overlayOrange:    "#FF8800"
+    readonly property color borderColor:      "#434343"
+
+    // ── Screen state ────────────────────────────────────────────────────────
     property string currentScreen: "import"
     property string errorMessage:  ""
 
@@ -20,100 +31,128 @@ Item {
         root.currentScreen = (result === "true") ? "unlock" : "import"
     }
 
-    Rectangle { anchors.fill: parent; color: Theme.palette.background }
+    Rectangle { anchors.fill: parent; color: root.bgColor }
 
-    // ── Import screen ────────────────────────────────────────────────────────
+    // ── Import screen ───────────────────────────────────────────────────────
     Item {
         anchors.fill: parent
         visible: root.currentScreen === "import"
 
         ColumnLayout {
             anchors.centerIn: parent
-            spacing: Theme.spacing.large
+            spacing: 16
             width: 420
 
-            LogosText {
+            Text {
                 Layout.fillWidth: true
                 text: "Import Recovery Phrase"
-                font.pixelSize: Theme.typography.titleText
-                font.weight: Theme.typography.weightBold
+                font.pixelSize: 30
+                font.weight: Font.Bold
+                color: root.textColor
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            LogosText {
+            Text {
                 text: "Recovery phrase"
-                color: Theme.palette.textSecondary
-                font.pixelSize: Theme.typography.secondaryText
+                color: root.textSecondary
+                font.pixelSize: 12
             }
 
             Rectangle {
                 Layout.fillWidth: true
                 height: 100
-                radius: Theme.spacing.radiusSmall
-                color: Theme.palette.backgroundSecondary
+                radius: 4
+                color: root.bgSecondary
                 border.width: 1
                 border.color: mnemonicArea.activeFocus
-                              ? Theme.palette.overlayOrange
-                              : Theme.palette.backgroundElevated
+                              ? root.overlayOrange : root.bgElevated
 
                 TextEdit {
                     id: mnemonicArea
-                    anchors { fill: parent; margins: Theme.spacing.medium }
-                    color: Theme.palette.text
-                    font.family: Theme.typography.publicSans
-                    font.pixelSize: Theme.typography.secondaryText
+                    anchors { fill: parent; margins: 12 }
+                    color: root.textColor
+                    font.pixelSize: 12
                     wrapMode: TextEdit.Wrap
 
-                    LogosText {
+                    Text {
                         visible: mnemonicArea.text.length === 0
                         text: "Enter 12 or 24 word recovery phrase"
-                        color: Theme.palette.textPlaceholder
-                        font.pixelSize: Theme.typography.secondaryText
+                        color: root.textPlaceholder
+                        font.pixelSize: 12
                     }
                 }
             }
 
-            LogosText {
+            Text {
                 text: "PIN"
-                color: Theme.palette.textSecondary
-                font.pixelSize: Theme.typography.secondaryText
+                color: root.textSecondary
+                font.pixelSize: 12
             }
 
-            LogosTextField {
+            TextField {
                 id: importPinField
                 Layout.fillWidth: true
                 placeholderText: "PIN (min 4 digits)"
                 echoMode: TextInput.Password
+                color: root.textColor
+                font.pixelSize: 14
+                placeholderTextColor: root.textPlaceholder
+                background: Rectangle {
+                    color: root.bgSecondary
+                    radius: 4
+                    border.width: 1
+                    border.color: importPinField.activeFocus
+                                  ? root.overlayOrange : root.bgElevated
+                }
             }
 
-            LogosText {
+            Text {
                 text: "Confirm PIN"
-                color: Theme.palette.textSecondary
-                font.pixelSize: Theme.typography.secondaryText
+                color: root.textSecondary
+                font.pixelSize: 12
             }
 
-            LogosTextField {
+            TextField {
                 id: importPinConfirmField
                 Layout.fillWidth: true
                 placeholderText: "Confirm PIN"
                 echoMode: TextInput.Password
+                color: root.textColor
+                font.pixelSize: 14
+                placeholderTextColor: root.textPlaceholder
+                background: Rectangle {
+                    color: root.bgSecondary
+                    radius: 4
+                    border.width: 1
+                    border.color: importPinConfirmField.activeFocus
+                                  ? root.overlayOrange : root.bgElevated
+                }
             }
 
-            LogosText {
+            Text {
                 Layout.fillWidth: true
                 text: root.errorMessage
-                color: Theme.palette.error
-                font.pixelSize: Theme.typography.secondaryText
+                color: root.errorColor
+                font.pixelSize: 12
                 visible: root.currentScreen === "import" && root.errorMessage.length > 0
                 wrapMode: Text.WordWrap
             }
 
-            LogosButton {
+            Button {
                 Layout.fillWidth: true
                 text: "Import"
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    color: root.textColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
                 background: Rectangle {
-                    color: parent.isActive ? Theme.palette.primaryHover : Theme.palette.primary
-                    radius: Theme.spacing.radiusXlarge
+                    color: parent.pressed ? root.primaryHover : root.primary
+                    radius: 16
+                    implicitHeight: 44
                 }
                 onClicked: {
                     root.errorMessage = ""
@@ -133,54 +172,74 @@ Item {
         }
     }
 
-    // ── Unlock screen ────────────────────────────────────────────────────────
+    // ── Unlock screen ───────────────────────────────────────────────────────
     Item {
         anchors.fill: parent
         visible: root.currentScreen === "unlock"
 
         ColumnLayout {
             anchors.centerIn: parent
-            spacing: Theme.spacing.large
+            spacing: 16
             width: 320
 
-            LogosText {
+            Text {
                 Layout.fillWidth: true
                 text: "Unlock"
-                font.pixelSize: Theme.typography.titleText
-                font.weight: Theme.typography.weightBold
+                font.pixelSize: 30
+                font.weight: Font.Bold
+                color: root.textColor
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            LogosText {
+            Text {
                 text: "PIN"
-                color: Theme.palette.textSecondary
-                font.pixelSize: Theme.typography.secondaryText
+                color: root.textSecondary
+                font.pixelSize: 12
             }
 
-            LogosTextField {
+            TextField {
                 id: unlockPinField
                 Layout.fillWidth: true
                 placeholderText: "Enter PIN"
                 echoMode: TextInput.Password
+                color: root.textColor
+                font.pixelSize: 14
+                placeholderTextColor: root.textPlaceholder
+                background: Rectangle {
+                    color: root.bgSecondary
+                    radius: 4
+                    border.width: 1
+                    border.color: unlockPinField.activeFocus
+                                  ? root.overlayOrange : root.bgElevated
+                }
                 Keys.onReturnPressed: unlockButton.clicked()
             }
 
-            LogosText {
+            Text {
                 Layout.fillWidth: true
                 text: root.errorMessage
-                color: Theme.palette.error
-                font.pixelSize: Theme.typography.secondaryText
+                color: root.errorColor
+                font.pixelSize: 12
                 visible: root.currentScreen === "unlock" && root.errorMessage.length > 0
                 wrapMode: Text.WordWrap
             }
 
-            LogosButton {
+            Button {
                 id: unlockButton
                 Layout.fillWidth: true
                 text: "Unlock"
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    color: root.textColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
                 background: Rectangle {
-                    color: parent.isActive ? Theme.palette.primaryHover : Theme.palette.primary
-                    radius: Theme.spacing.radiusXlarge
+                    color: parent.pressed ? root.primaryHover : root.primary
+                    radius: 16
+                    implicitHeight: 44
                 }
                 onClicked: {
                     root.errorMessage = ""
@@ -198,11 +257,11 @@ Item {
         }
 
         // DEV/DEMO reset
-        LogosText {
-            anchors { bottom: parent.bottom; right: parent.right; margins: Theme.spacing.medium }
+        Text {
+            anchors { bottom: parent.bottom; right: parent.right; margins: 12 }
             text: "Reset"
-            color: Theme.palette.error
-            font.pixelSize: Theme.typography.secondaryText
+            color: root.errorColor
+            font.pixelSize: 12
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
@@ -216,7 +275,7 @@ Item {
         }
     }
 
-    // ── Note screen ──────────────────────────────────────────────────────────
+    // ── Note screen ─────────────────────────────────────────────────────────
     Item {
         id: noteScreen
         anchors.fill: parent
@@ -235,23 +294,23 @@ Item {
             id: editor
             anchors {
                 fill: parent
-                topMargin: Theme.spacing.xxlarge
-                leftMargin: Theme.spacing.xlarge
-                rightMargin: Theme.spacing.xlarge
-                bottomMargin: Theme.spacing.xlarge
+                topMargin: 40
+                leftMargin: 20
+                rightMargin: 20
+                bottomMargin: 20
             }
-            color: Theme.palette.text
+            color: root.textColor
             font.family: "Courier New, monospace"
-            font.pixelSize: Theme.typography.primaryText
+            font.pixelSize: 14
             wrapMode: TextEdit.Wrap
-            selectionColor: Theme.palette.overlayOrange
-            selectedTextColor: Theme.palette.text
+            selectionColor: root.overlayOrange
+            selectedTextColor: root.textColor
 
-            LogosText {
+            Text {
                 visible: editor.text.length === 0
-                text: "Start writing…"
-                color: Theme.palette.textPlaceholder
-                font.pixelSize: Theme.typography.primaryText
+                text: "Start writing..."
+                color: root.textPlaceholder
+                font.pixelSize: 14
             }
 
             onTextChanged: saveTimer.restart()
@@ -267,11 +326,11 @@ Item {
         }
 
         // DEV/DEMO reset
-        LogosText {
-            anchors { bottom: parent.bottom; right: parent.right; margins: Theme.spacing.medium }
+        Text {
+            anchors { bottom: parent.bottom; right: parent.right; margins: 12 }
             text: "Reset"
-            color: Theme.palette.error
-            font.pixelSize: Theme.typography.secondaryText
+            color: root.errorColor
+            font.pixelSize: 12
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor

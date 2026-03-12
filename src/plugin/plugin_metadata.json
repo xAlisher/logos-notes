@@ -1,1 +1,10 @@
-{}
+{
+  "author": "Logos Notes",
+  "category": "notes",
+  "dependencies": [],
+  "description": "Encrypted local-first notes for the Logos ecosystem",
+  "main": "notes_plugin",
+  "name": "notes",
+  "type": "core",
+  "version": "1.0.0"
+}

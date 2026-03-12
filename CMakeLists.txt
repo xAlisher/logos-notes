@@ -154,6 +154,7 @@ install(FILES modules/notes/manifest.json
 )
 install(FILES
     plugins/notes_ui/manifest.json
-    plugins/notes_ui/main.qml
+    plugins/notes_ui/metadata.json
+    plugins/notes_ui/Main.qml
     DESTINATION "${NOTES_UI_DIR}"
 )

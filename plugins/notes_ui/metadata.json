@@ -1,0 +1,13 @@
+{
+  "name": "notes_ui",
+  "version": "1.0.0",
+  "description": "Encrypted local-first notes — UI",
+  "author": "Logos Notes",
+  "type": "ui_qml",
+  "pluginType": "qml",
+  "main": "Main.qml",
+  "dependencies": ["notes"],
+  "category": "notes",
+  "capabilities": [],
+  "icon": ""
+}

@@ -10,7 +10,7 @@
 class NotesPlugin : public QObject, public PluginInterface
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID PluginInterface_iid FILE "plugin_metadata.json")
+    Q_PLUGIN_METADATA(IID "org.logos.NotesModuleInterface" FILE "plugin_metadata.json")
     Q_INTERFACES(PluginInterface)
 
 public:
