@@ -301,6 +301,34 @@ logos-notes/
 
 ---
 
+## NotesBackend Q_INVOKABLE API
+
+### Phase 0 (single note, id=1)
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `importMnemonic` | `(QString mnemonic, QString pin, QString pinConfirm)` | void — navigates to note screen |
+| `unlockWithPin` | `(QString pin)` | void — navigates to note screen |
+| `saveNote` | `(QString plaintext)` | void — encrypts + saves as id=1 |
+| `loadNote` | `()` | `QString` — decrypted note text for id=1 |
+| `lock` | `()` | void — wipes key, navigates to unlock |
+| `resetAndWipe` | `()` | void — deletes DB, navigates to import |
+
+### Phase 1 (multi-note CRUD) — 9/9 unit tests pass
+
+| Method | Signature | Returns |
+|--------|-----------|---------|
+| `createNote` | `()` | `QString` JSON `{"id": N}` |
+| `loadNotes` | `()` | `QString` JSON array `[{"id", "title", "updatedAt"}, ...]` sorted by most recent |
+| `loadNote` | `(int id)` | `QString` decrypted plaintext |
+| `saveNote` | `(int id, QString plaintext)` | `QString` `"ok"` — auto-extracts title from first line, sets updated_at |
+| `deleteNote` | `(int id)` | `QString` `"ok"` |
+
+Schema migration adds `title TEXT` and `updated_at INTEGER` columns non-destructively.
+Run tests: `cmake --build build --target test_multi_note && ./build/test_multi_note`
+
+---
+
 ## Build Commands
 
 ```bash
@@ -339,6 +367,7 @@ QML_IMPORT_PATH=/nix/store/w9ra12n0yabd275v33m8x7lqnnrcgb9f-logos-design-system-
 - [x] Build 3 QML screens
 - [x] Wire C++ backend to QML via Q_PROPERTY / signals
 - [x] Test end-to-end: import → unlock → write note → kill app → unlock → note still there
+- [x] Phase 1: Multi-note backend (DatabaseManager + NotesBackend CRUD, 9/9 tests pass)
 - [ ] Register as Logos App module (metadata.json + plugin interface)
 - [ ] Update https://github.com/logos-co/ideas/issues/13 with Phase 0 definition
 
