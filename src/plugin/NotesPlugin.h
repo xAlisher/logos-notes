@@ -38,6 +38,7 @@ public:
     Q_INVOKABLE QString loadNote();
     Q_INVOKABLE QString saveNote(const QString& text);
     Q_INVOKABLE QString lockSession();
+    Q_INVOKABLE QString resetAndWipe();
 
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);

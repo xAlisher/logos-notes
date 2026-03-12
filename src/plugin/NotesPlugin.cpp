@@ -75,6 +75,12 @@ QString NotesPlugin::lockSession()
     return ok();
 }
 
+QString NotesPlugin::resetAndWipe()
+{
+    m_backend.resetAndWipe();
+    return ok();
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 QString NotesPlugin::ok()
