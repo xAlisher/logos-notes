@@ -660,6 +660,23 @@ When integrating with storage for encrypted note backup:
 
 ---
 
+## Lessons Learned
+
+**NotesPlugin is the only surface QML can see.**
+Phase 1 multi-note methods (`createNote`, `loadNotes`, `loadNote(int)`,
+`saveNote(int, text)`, `deleteNote`) were implemented in `NotesBackend`
+and tested, but never exposed as `Q_INVOKABLE` on `NotesPlugin`.
+`logos.callModule` calls silently fail when the method doesn't exist
+on the plugin — no error, just empty/null response.
+
+**Rule:** every method added to `NotesBackend` that QML needs must also
+be explicitly added to `NotesPlugin` as `Q_INVOKABLE`. The plugin is
+the only surface the QML bridge can see. This applies to both the
+Logos App plugin path (`logos.callModule`) and any future direct
+`Q_INVOKABLE` usage.
+
+---
+
 ## Notes for Claude Code Sessions
 
 When starting a new Claude Code session:

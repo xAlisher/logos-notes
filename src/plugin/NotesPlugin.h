@@ -34,9 +34,17 @@ public:
                                        const QString& confirm);
     Q_INVOKABLE QString unlockWithPin(const QString& pin);
 
-    // Note persistence
+    // Note persistence (Phase 0 compat)
     Q_INVOKABLE QString loadNote();
     Q_INVOKABLE QString saveNote(const QString& text);
+
+    // Phase 1: multi-note CRUD
+    Q_INVOKABLE QString createNote();
+    Q_INVOKABLE QString loadNotes();
+    Q_INVOKABLE QString loadNote(int id);
+    Q_INVOKABLE QString saveNote(int id, const QString& text);
+    Q_INVOKABLE QString deleteNote(int id);
+
     Q_INVOKABLE QString lockSession();
     Q_INVOKABLE QString resetAndWipe();
 

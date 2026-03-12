@@ -67,6 +67,33 @@ QString NotesPlugin::saveNote(const QString& text)
     return ok();
 }
 
+// ── Phase 1: multi-note CRUD ────────────────────────────────────────────────
+
+QString NotesPlugin::createNote()
+{
+    return m_backend.createNote();
+}
+
+QString NotesPlugin::loadNotes()
+{
+    return m_backend.loadNotes();
+}
+
+QString NotesPlugin::loadNote(int id)
+{
+    return m_backend.loadNote(id);
+}
+
+QString NotesPlugin::saveNote(int id, const QString& text)
+{
+    return m_backend.saveNote(id, text);
+}
+
+QString NotesPlugin::deleteNote(int id)
+{
+    return m_backend.deleteNote(id);
+}
+
 // ── Session management ──────────────────────────────────────────────────────
 
 QString NotesPlugin::lockSession()
