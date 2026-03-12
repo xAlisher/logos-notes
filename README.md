@@ -18,7 +18,10 @@ Built as a Qt6/QML desktop application targeting the Logos App (Basecamp) module
 No accounts, no servers, no plaintext on disk.
 
 ---
+## Phase 0 Screencast
+https://github.com/user-attachments/assets/59ef5b7b-d02e-4a77-97e0-a629ba17ec28
 
+---
 ## Screenshots
 
 Running inside [Logos App](https://github.com/logos-co/logos-app-poc) (Basecamp):
