@@ -268,18 +268,17 @@ Item {
         }
 
         ScrollBar.vertical: ScrollBar {
-            policy: editorFlick.contentHeight > editorFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+            policy: ScrollBar.AsNeeded
+            topPadding: 0
+            bottomPadding: 0
+            leftPadding: 0
+            rightPadding: 0
             contentItem: Rectangle {
                 implicitWidth: 6
                 radius: 3
                 color: "#3a3a3a"
-                opacity: 0.5
             }
-            background: Rectangle {
-                implicitWidth: 6
-                color: "#2a2a2a"
-                opacity: 0.3
-            }
+            background: Item {}
         }
     }
 
