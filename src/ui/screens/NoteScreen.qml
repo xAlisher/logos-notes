@@ -106,6 +106,15 @@ Item {
 
                 property bool isActive: model.id === root.activeNoteId
 
+                // Background click area — declared first so it has lowest z-order
+                MouseArea {
+                    id: delegateArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.selectNote(model.id)
+                }
+
                 // Orange left border for active note
                 Rectangle {
                     visible: noteDelegate.isActive
@@ -139,7 +148,7 @@ Item {
                     }
                 }
 
-                // Delete button — visible on hover
+                // Delete button — visible on hover, higher z-order than delegateArea
                 LogosText {
                     id: deleteBtn
                     anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
@@ -151,20 +160,13 @@ Item {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
+                            console.log("deleteNote id=" + model.id)
                             backend.deleteNote(model.id)
                             if (model.id === root.activeNoteId)
                                 root.activeNoteId = -1
                             root.refreshList()
                         }
                     }
-                }
-
-                MouseArea {
-                    id: delegateArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.selectNote(model.id)
                 }
             }
         }
@@ -216,18 +218,23 @@ Item {
     }
 
     // ── Editor area ──────────────────────────────────────────────────
-    ScrollView {
-        id: editorScroll
+    Flickable {
+        id: editorFlick
         anchors {
             top: parent.top; topMargin: Theme.spacing.xxlarge
-            left: sidebar.right; leftMargin: Theme.spacing.xlarge
-            right: parent.right; rightMargin: Theme.spacing.xlarge
+            left: sidebar.right; leftMargin: 20
+            right: parent.right; rightMargin: 20
             bottom: parent.bottom; bottomMargin: Theme.spacing.xlarge
         }
+        contentWidth: width
+        contentHeight: editor.height
+        clip: true
+        flickableDirection: Flickable.VerticalFlick
+        boundsBehavior: Flickable.StopAtBounds
 
         TextEdit {
             id: editor
-            width: editorScroll.availableWidth
+            width: editorFlick.width
             wrapMode: TextEdit.Wrap
             color: Theme.palette.text
             font.family: "Courier New, monospace"
@@ -235,17 +242,32 @@ Item {
             selectionColor: Theme.palette.overlayOrange
             selectedTextColor: Theme.palette.text
 
-            LogosText {
-                visible: editor.text.length === 0
-                text: "Start writing…"
-                color: Theme.palette.textPlaceholder
-                font.pixelSize: Theme.typography.primaryText
-            }
-
             onTextChanged: {
                 if (!root.loading)
                     saveTimer.restart()
             }
+            onCursorRectangleChanged: {
+                // Keep cursor visible while typing
+                var r = cursorRectangle
+                if (r.y < editorFlick.contentY)
+                    editorFlick.contentY = r.y
+                else if (r.y + r.height > editorFlick.contentY + editorFlick.height)
+                    editorFlick.contentY = r.y + r.height - editorFlick.height
+            }
+        }
+
+        // Placeholder overlay
+        Text {
+            visible: editor.text.length === 0
+            text: "Start writing…"
+            color: Theme.palette.textPlaceholder
+            font.family: editor.font.family
+            font.pixelSize: Theme.typography.primaryText
+            opacity: 0.6
+        }
+
+        ScrollBar.vertical: ScrollBar {
+            policy: editorFlick.contentHeight > editorFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
         }
     }
 
