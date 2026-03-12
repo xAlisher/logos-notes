@@ -223,7 +223,7 @@ Item {
         anchors {
             top: parent.top; topMargin: Theme.spacing.xxlarge
             left: sidebar.right; leftMargin: 20
-            right: parent.right; rightMargin: 20
+            right: parent.right
             bottom: parent.bottom; bottomMargin: Theme.spacing.xlarge
         }
         contentWidth: width
@@ -235,6 +235,7 @@ Item {
         TextEdit {
             id: editor
             width: editorFlick.width
+            rightPadding: 20
             wrapMode: TextEdit.Wrap
             color: Theme.palette.text
             font.family: "Courier New, monospace"
@@ -268,6 +269,17 @@ Item {
 
         ScrollBar.vertical: ScrollBar {
             policy: editorFlick.contentHeight > editorFlick.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded
+            contentItem: Rectangle {
+                implicitWidth: 6
+                radius: 3
+                color: "#3a3a3a"
+                opacity: 0.5
+            }
+            background: Rectangle {
+                implicitWidth: 6
+                color: "#2a2a2a"
+                opacity: 0.3
+            }
         }
     }
 
