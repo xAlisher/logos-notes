@@ -460,6 +460,15 @@ Also: `storageResponse(StorageSignal, int, QString)` — internal signal bridgin
 
 ---
 
+## Open Questions
+
+- **`initLogos` signature discrepancy** — `chat_interface.h` declares `initLogos(LogosAPI*)` but
+  the `storage_module_plugin.so` binary shows `initLogos(QVariant)`. Must verify against actual
+  running modules (inspect `chatsdk_module_plugin.so` and `chat_plugin.so` symbols) before
+  implementing `PluginInterface` in logos-notes-core. Getting this wrong silently breaks loading.
+
+---
+
 ## Notes for Claude Code Sessions
 
 When starting a new Claude Code session:
