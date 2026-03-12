@@ -2,10 +2,19 @@
 
 #include <QByteArray>
 #include <QString>
+#include <QList>
 
-// Manages the SQLite database that stores the encrypted note.
+struct NoteHeader {
+    int     id;
+    QString title;
+    qint64  updatedAt;
+};
+
+// Manages the SQLite database that stores encrypted notes.
 // Schema:
-//   notes(id INTEGER PRIMARY KEY, ciphertext BLOB, nonce BLOB)
+//   notes(id INTEGER PRIMARY KEY AUTOINCREMENT,
+//         ciphertext BLOB, nonce BLOB,
+//         title TEXT DEFAULT '', updated_at INTEGER DEFAULT 0)
 //   wrapped_key(id INTEGER PRIMARY KEY,
 //               ciphertext BLOB,   -- master key encrypted with PIN-derived key
 //               nonce      BLOB,   -- AES-GCM nonce for the wrapping operation
@@ -22,11 +31,29 @@ public:
     // Returns true if the account has been set up (mnemonic imported).
     bool isInitialized() const;
 
-    // Persist the encrypted note. Upserts row with id=1.
+    // Persist the encrypted note. Upserts row with id=1 (Phase 0 compat).
     bool saveNote(const QByteArray &ciphertext, const QByteArray &nonce);
 
-    // Load the encrypted note. Returns false if no note exists yet.
+    // Load the encrypted note for id=1. Returns false if no note exists yet.
     bool loadNote(QByteArray &ciphertextOut, QByteArray &nonceOut) const;
+
+    // ── Phase 1: multi-note CRUD ────────────────────────────────────────
+
+    // Create a new empty note. Returns the new row id, or -1 on failure.
+    int createNote();
+
+    // Save encrypted content + plaintext title for a specific note.
+    bool saveNote(int id, const QByteArray &ciphertext, const QByteArray &nonce,
+                  const QString &title);
+
+    // Load encrypted content for a specific note.
+    bool loadNote(int id, QByteArray &ciphertextOut, QByteArray &nonceOut) const;
+
+    // Delete a note by id.
+    bool deleteNote(int id);
+
+    // Return headers for all notes, ordered by updated_at descending.
+    QList<NoteHeader> loadNoteHeaders() const;
 
     // Mark the account as initialized (called after successful import).
     bool setInitialized();

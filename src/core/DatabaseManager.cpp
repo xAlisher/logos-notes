@@ -1,5 +1,6 @@
 #include "DatabaseManager.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QSqlDatabase>
@@ -33,8 +34,10 @@ bool DatabaseManager::init()
     }
 
     QSqlQuery q(db);
+
+    // Phase 0 schema
     if (!q.exec("CREATE TABLE IF NOT EXISTS notes ("
-                "  id        INTEGER PRIMARY KEY,"
+                "  id        INTEGER PRIMARY KEY AUTOINCREMENT,"
                 "  ciphertext BLOB NOT NULL,"
                 "  nonce      BLOB NOT NULL"
                 ")")) {
@@ -56,6 +59,29 @@ bool DatabaseManager::init()
                 ")")) {
         qWarning() << "DatabaseManager: create meta table failed:" << q.lastError();
         return false;
+    }
+
+    // Phase 1 migration: add title + updated_at columns if missing.
+    // PRAGMA table_info returns column names; check if updated_at exists.
+    bool hasUpdatedAt = false;
+    if (q.exec("PRAGMA table_info(notes)")) {
+        while (q.next()) {
+            if (q.value(1).toString() == "updated_at") {
+                hasUpdatedAt = true;
+                break;
+            }
+        }
+    }
+    if (!hasUpdatedAt) {
+        if (!q.exec("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT ''")) {
+            qWarning() << "DatabaseManager: migration add title failed:" << q.lastError();
+            return false;
+        }
+        if (!q.exec("ALTER TABLE notes ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0")) {
+            qWarning() << "DatabaseManager: migration add updated_at failed:" << q.lastError();
+            return false;
+        }
+        qDebug() << "DatabaseManager: migrated notes table (added title, updated_at)";
     }
 
     m_ready = true;
@@ -153,4 +179,85 @@ bool DatabaseManager::setInitialized()
         return false;
     }
     return true;
+}
+
+// ── Phase 1: multi-note CRUD ────────────────────────────────────────────
+
+int DatabaseManager::createNote()
+{
+    QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+    QSqlQuery q(db);
+    // Insert an empty note with zero-length ciphertext/nonce.
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    q.prepare("INSERT INTO notes (ciphertext, nonce, title, updated_at)"
+              " VALUES (X'', X'', '', ?)");
+    q.addBindValue(now);
+    if (!q.exec()) {
+        qWarning() << "DatabaseManager: createNote failed:" << q.lastError();
+        return -1;
+    }
+    return q.lastInsertId().toInt();
+}
+
+bool DatabaseManager::saveNote(int id, const QByteArray &ciphertext,
+                                const QByteArray &nonce, const QString &title)
+{
+    QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+    QSqlQuery q(db);
+    qint64 now = QDateTime::currentSecsSinceEpoch();
+    q.prepare("UPDATE notes SET ciphertext = ?, nonce = ?, title = ?, updated_at = ?"
+              " WHERE id = ?");
+    q.addBindValue(ciphertext);
+    q.addBindValue(nonce);
+    q.addBindValue(title);
+    q.addBindValue(now);
+    q.addBindValue(id);
+    if (!q.exec()) {
+        qWarning() << "DatabaseManager: saveNote(id) failed:" << q.lastError();
+        return false;
+    }
+    return q.numRowsAffected() > 0;
+}
+
+bool DatabaseManager::loadNote(int id, QByteArray &ciphertextOut,
+                                QByteArray &nonceOut) const
+{
+    QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+    QSqlQuery q(db);
+    q.prepare("SELECT ciphertext, nonce FROM notes WHERE id = ?");
+    q.addBindValue(id);
+    if (!q.exec() || !q.next())
+        return false;
+    ciphertextOut = q.value(0).toByteArray();
+    nonceOut      = q.value(1).toByteArray();
+    return true;
+}
+
+bool DatabaseManager::deleteNote(int id)
+{
+    QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+    QSqlQuery q(db);
+    q.prepare("DELETE FROM notes WHERE id = ?");
+    q.addBindValue(id);
+    if (!q.exec()) {
+        qWarning() << "DatabaseManager: deleteNote failed:" << q.lastError();
+        return false;
+    }
+    return q.numRowsAffected() > 0;
+}
+
+QList<NoteHeader> DatabaseManager::loadNoteHeaders() const
+{
+    QList<NoteHeader> result;
+    QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+    QSqlQuery q(db);
+    q.prepare("SELECT id, title, updated_at FROM notes ORDER BY updated_at DESC");
+    if (!q.exec())
+        return result;
+    while (q.next()) {
+        result.append({q.value(0).toInt(),
+                       q.value(1).toString(),
+                       q.value(2).toLongLong()});
+    }
+    return result;
 }

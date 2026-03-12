@@ -138,6 +138,30 @@ configure_file(
     COPYONLY
 )
 
+# ── Tests ─────────────────────────────────────────────────────────────────────
+enable_testing()
+find_package(Qt6 REQUIRED COMPONENTS Test)
+
+add_executable(test_multi_note
+    tests/test_multi_note.cpp
+    src/core/DatabaseManager.h
+    src/core/DatabaseManager.cpp
+    src/core/CryptoManager.h
+    src/core/CryptoManager.cpp
+    src/core/KeyManager.h
+    src/core/KeyManager.cpp
+    src/core/NotesBackend.h
+    src/core/NotesBackend.cpp
+)
+target_include_directories(test_multi_note PRIVATE src)
+target_link_libraries(test_multi_note PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Sql
+    PkgConfig::sodium
+)
+add_test(NAME test_multi_note COMMAND test_multi_note)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 
 set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
