@@ -10,10 +10,14 @@ Built as a Qt6/QML desktop application targeting the Logos App (Basecamp) module
 
 ## What it does
 
+- **Multiple encrypted notes** with a sidebar for navigation
 - Enter a BIP39 recovery phrase once to derive your encryption key
 - Set a PIN that protects access across sessions — the mnemonic is never stored
-- Write a note — it is AES-256-GCM encrypted before hitting disk
-- On every relaunch, enter your PIN to decrypt and resume
+- Create, edit, and delete notes — each is AES-256-GCM encrypted before hitting disk
+- Auto-save per note on a 1.5s timer
+- Sidebar shows note title (first line) and relative timestamp
+- Lock/unlock flow wipes the master key from memory on lock
+- Single encrypted SQLite database — no plaintext on disk
 
 No accounts, no servers, no plaintext on disk.
 
@@ -26,9 +30,13 @@ https://github.com/user-attachments/assets/59ef5b7b-d02e-4a77-97e0-a629ba17ec28
 
 Running inside [Logos App](https://github.com/logos-co/logos-app-poc) (Basecamp):
 
-| Import | Unlock | Note |
-|--------|--------|------|
-| ![Import](Assets/Screenshots/import.png) | ![Unlock](Assets/Screenshots/Unlock.png) | ![Note](Assets/Screenshots/note.png) |
+| Import | Unlock |
+|--------|--------|
+| ![Import](Assets/Screenshots/import.png) | ![Unlock](Assets/Screenshots/Unlock.png) |
+
+| Sidebar + Notes | Active note with orange border |
+|-----------------|-------------------------------|
+| ![Sidebar](Assets/Screenshots/sidebar.png) | ![Active note](Assets/Screenshots/active-note.png) |
 
 ---
 
@@ -71,7 +79,7 @@ The mnemonic is only entered once (import). All subsequent unlocks use the PIN a
 |--------|-----------|
 | **Import** | First launch — enter recovery phrase + set PIN |
 | **Unlock** | Every subsequent launch — enter PIN |
-| **Note** | After unlock — single auto-saving plain-text editor |
+| **Notes** | After unlock — sidebar with note list + auto-saving editor |
 
 ---
 
@@ -173,9 +181,10 @@ logos-notes/
 
 | Phase | Goal |
 |-------|------|
-| **0** ✓ (2025-03-12) | Standalone encrypted notes app + Logos App module — import, unlock, write, lock |
-| **1** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) |
-| **2** | Logos Messaging sync — share encrypted notes across devices |
+| **0** ✓ | Standalone encrypted notes app + Logos App module — import, unlock, write, lock |
+| **1** ✓ | Multiple notes with sidebar UI, CRUD, auto-save, delete, title extraction |
+| **2** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) |
+| **3** | Logos Storage backup + Logos Messaging sync across devices |
 
 See [logos-co/ideas#13](https://github.com/logos-co/ideas/issues/13) for the detailed roadmap and phase definitions.
 
