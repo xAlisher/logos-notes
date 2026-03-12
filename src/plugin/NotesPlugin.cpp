@@ -23,8 +23,9 @@ QString NotesPlugin::initialize()
 
 QString NotesPlugin::isInitialized()
 {
-    // If the DB has a wrapped key the user is returning; otherwise first run.
-    return (m_backend.currentScreen() == QStringLiteral("unlock"))
+    // Check the database directly — currentScreen may be "note" after import,
+    // but on UI reload we need to know if the account exists.
+    return m_backend.hasAccount()
                ? QStringLiteral("true")
                : QStringLiteral("false");
 }
@@ -63,6 +64,14 @@ QString NotesPlugin::loadNote()
 QString NotesPlugin::saveNote(const QString& text)
 {
     m_backend.saveNote(text);
+    return ok();
+}
+
+// ── Session management ──────────────────────────────────────────────────────
+
+QString NotesPlugin::lockSession()
+{
+    m_backend.lock();
     return ok();
 }
 

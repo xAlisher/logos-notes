@@ -37,6 +37,7 @@ public:
     // Note persistence
     Q_INVOKABLE QString loadNote();
     Q_INVOKABLE QString saveNote(const QString& text);
+    Q_INVOKABLE QString lockSession();
 
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);

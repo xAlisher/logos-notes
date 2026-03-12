@@ -43,17 +43,31 @@ Item {
         onTriggered: backend.saveNote(editor.text)
     }
 
-    // DEV/DEMO reset — remove before production
-    LogosText {
+    // Bottom bar: Lock + Reset
+    Row {
         anchors { bottom: parent.bottom; right: parent.right; margins: Theme.spacing.medium }
-        text: "Reset"
-        color: Theme.palette.error
-        font.pixelSize: Theme.typography.secondaryText
+        spacing: Theme.spacing.large
 
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: backend.resetAndWipe()
+        LogosText {
+            text: "Lock"
+            color: Theme.palette.primary
+            font.pixelSize: Theme.typography.secondaryText
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: backend.lock()
+            }
+        }
+
+        LogosText {
+            text: "Reset"
+            color: Theme.palette.error
+            font.pixelSize: Theme.typography.secondaryText
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: backend.resetAndWipe()
+            }
         }
     }
 }

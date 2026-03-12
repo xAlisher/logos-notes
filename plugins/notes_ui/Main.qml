@@ -325,20 +325,40 @@ Item {
             }
         }
 
-        // DEV/DEMO reset
-        Text {
+        // Bottom bar: Lock + Reset
+        Row {
             anchors { bottom: parent.bottom; right: parent.right; margins: 12 }
-            text: "Reset"
-            color: root.errorColor
-            font.pixelSize: 12
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (typeof logos !== "undefined" && logos.callModule)
-                        logos.callModule("notes", "resetAndWipe", [])
-                    root.errorMessage = ""
-                    root.currentScreen = "import"
+            spacing: 16
+
+            Text {
+                text: "Lock"
+                color: root.primary
+                font.pixelSize: 12
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof logos !== "undefined" && logos.callModule)
+                            logos.callModule("notes", "lockSession", [])
+                        unlockPinField.text = ""
+                        root.currentScreen = "unlock"
+                    }
+                }
+            }
+
+            Text {
+                text: "Reset"
+                color: root.errorColor
+                font.pixelSize: 12
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof logos !== "undefined" && logos.callModule)
+                            logos.callModule("notes", "resetAndWipe", [])
+                        root.errorMessage = ""
+                        root.currentScreen = "import"
+                    }
                 }
             }
         }

@@ -36,6 +36,12 @@ public:
     // Called from NoteScreen on load: decrypt and return the note.
     Q_INVOKABLE QString loadNote();
 
+    // Lock session: wipe in-memory key, go back to unlock screen.
+    Q_INVOKABLE void lock();
+
+    // Returns true if the database has a stored account (wrapped key).
+    bool hasAccount() const;
+
     // DEV/DEMO: wipe the database and return to the import screen.
     Q_INVOKABLE void resetAndWipe();
 

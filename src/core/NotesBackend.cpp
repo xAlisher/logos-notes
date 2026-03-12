@@ -147,6 +147,18 @@ QString NotesBackend::loadNote()
     return QString::fromUtf8(plaintext);
 }
 
+void NotesBackend::lock()
+{
+    m_keys.lock();
+    setError({});
+    setScreen("unlock");
+}
+
+bool NotesBackend::hasAccount() const
+{
+    return m_db.isInitialized();
+}
+
 void NotesBackend::resetAndWipe()
 {
     m_keys.lock();
