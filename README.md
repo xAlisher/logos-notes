@@ -4,7 +4,7 @@ Encrypted, local-first notes app for the [Logos](https://logos.co) ecosystem.
 
 Built as a Qt6/QML desktop application targeting the Logos App (Basecamp) module host. Phase 0 ships as a standalone app; later phases integrate with Logos Messaging and Logos Storage.
 
-**Approved idea**: [logos-co/ideas#13](https://github.com/logos-co/ideas/issues/13)
+**Approved idea & detailed roadmap**: [logos-co/ideas#13](https://github.com/logos-co/ideas/issues/13)
 
 ---
 
@@ -16,6 +16,16 @@ Built as a Qt6/QML desktop application targeting the Logos App (Basecamp) module
 - On every relaunch, enter your PIN to decrypt and resume
 
 No accounts, no servers, no plaintext on disk.
+
+---
+
+## Screenshots
+
+Running inside [Logos App](https://github.com/logos-co/logos-app-poc) (Basecamp):
+
+| Import | Unlock | Note |
+|--------|--------|------|
+| ![Import](Assets/Screenshots/import.png) | ![Unlock](Assets/Screenshots/Unlock.png) | ![Note](Assets/Screenshots/note.png) |
 
 ---
 
@@ -97,11 +107,23 @@ cmake -B build -G Ninja \
 cmake --build build
 ```
 
-### Run
+### Run standalone
 
 ```bash
 ./build/logos-notes
 ```
+
+### Install as Logos App module
+
+```bash
+cmake -DCMAKE_INSTALL_PREFIX=$HOME -P build/cmake_install.cmake
+```
+
+This installs:
+- `notes_plugin.so` → `~/.local/share/Logos/LogosApp/modules/notes/`
+- `notes_ui` QML plugin → `~/.local/share/Logos/LogosApp/plugins/notes_ui/`
+
+Then launch the Logos App and click **Load** on `notes_ui` in the UI Modules tab.
 
 ### Nix dev shell
 
@@ -117,13 +139,21 @@ nix develop   # drops into a shell with Qt6, libsodium, cmake, ninja, clangd
 logos-notes/
 ├── CMakeLists.txt
 ├── flake.nix
+├── modules/notes/manifest.json        # Core module manifest
+├── plugins/notes_ui/
+│   ├── manifest.json                  # UI plugin manifest
+│   ├── metadata.json                  # QML plugin metadata
+│   └── Main.qml                      # Module UI (all 3 screens)
 └── src/
-    ├── main.cpp
+    ├── main.cpp                       # Standalone app entry point
     ├── core/
-    │   ├── CryptoManager.h/cpp     # AES-256-GCM + Argon2id (libsodium)
-    │   ├── DatabaseManager.h/cpp   # SQLite: notes, wrapped_key, meta
-    │   ├── KeyManager.h/cpp        # BIP39 validation, in-memory key lifecycle
-    │   └── NotesBackend.h/cpp      # QML context property, screen navigation
+    │   ├── CryptoManager.h/cpp        # AES-256-GCM + Argon2id (libsodium)
+    │   ├── DatabaseManager.h/cpp      # SQLite: notes, wrapped_key, meta
+    │   ├── KeyManager.h/cpp           # BIP39 validation, in-memory key lifecycle
+    │   └── NotesBackend.h/cpp         # Screen navigation, note persistence
+    ├── plugin/
+    │   ├── NotesPlugin.h/cpp          # PluginInterface for Logos App
+    │   └── plugin_metadata.json       # Embedded Qt plugin metadata
     └── ui/
         ├── main.qml
         ├── screens/
@@ -140,9 +170,11 @@ logos-notes/
 
 | Phase | Goal |
 |-------|------|
-| **0** ✓ | Standalone encrypted notes app — import, unlock, write |
+| **0** ✓ (2025-03-12) | Standalone encrypted notes app + Logos App module — import, unlock, write, lock |
 | **1** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) |
 | **2** | Logos Messaging sync — share encrypted notes across devices |
+
+See [logos-co/ideas#13](https://github.com/logos-co/ideas/issues/13) for the detailed roadmap and phase definitions.
 
 ---
 
