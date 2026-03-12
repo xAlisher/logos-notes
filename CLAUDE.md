@@ -469,6 +469,168 @@ Also: `storageResponse(StorageSignal, int, QString)` — internal signal bridgin
 
 ---
 
+## Storage Module Research
+
+> Researched 2026-03-12 by reverse-engineering installed binaries and GitHub sources.
+
+### Architecture
+
+The storage module is a **Codex node** (decentralised filesharing) wrapped for Logos App:
+
+```
+libstorage.so          — Nim library (logos-storage-nim), ~14 MB
+                         Built from codexdht + nim-leveldb + libp2p
+storage_module_plugin.so — Qt C++ wrapper (PluginInterface, Q_INVOKABLE methods)
+storage_ui.so          — QML UI plugin (StorageBackend class + embedded QML)
+```
+
+Source repos:
+- Nim library: `https://github.com/logos-storage/logos-storage-nim`
+- Vendor deps inside: `logos-storage-nim-dht/codexdht` (DiscoveryV5), `nim-leveldbstatic`
+
+### C FFI — `libstorage.so`
+
+```c
+typedef void (*StorageCallback)(int callerRet, const char *msg, size_t len, void *userData);
+
+void *storage_new(const char *configJson, StorageCallback callback, void *userData);
+int   storage_start(void *ctx, StorageCallback callback, void *userData);
+int   storage_stop(void *ctx, StorageCallback callback, void *userData);
+int   storage_close(void *ctx, StorageCallback callback, void *userData);
+int   storage_destroy(void *ctx);
+
+// Return codes: RET_OK=0, RET_ERR=1, RET_MISSING_CALLBACK=2, RET_PROGRESS=3
+```
+
+All operations are async — dispatched to a background thread, results arrive via callback.
+`RET_PROGRESS` can fire multiple times before final `RET_OK`/`RET_ERR`.
+
+### Config JSON keys (passed to `storage_new` / `StorageModulePlugin::init`)
+
+Extracted from `libstorage.so` symbol table. Priority order: CLI > env > config file.
+
+| Key | JSON alias | Default | Purpose |
+|-----|-----------|---------|---------|
+| `listen-port` | `listenPort` | **8500** | libp2p TCP listen port |
+| `listen-ip` | `listenIp` | `0.0.0.0` | libp2p bind IP |
+| `disc-port` | `discoveryPort` | **8090** | DiscoveryV5 UDP port |
+| `api-port` | `apiPort` | **8080** | REST API port (`/api/storage/v1/...`) |
+| `api-bindaddr` | `apiBindAddress` | `127.0.0.1` | REST API bind address |
+| `api-cors-origin` | `apiCorsAllowedOrigin` | — | CORS header for REST API |
+| `data-dir` | `dataDir` | — | Node data directory (LevelDB + blocks) |
+| `bootstrap-node` | `bootstrapNodes` | — | Multiaddr(s) of bootstrap peers |
+| `max-peers` | `maxPeers` | — | Maximum connected peers |
+| `cache-size` | `cacheSize` | — | Block cache size |
+| `block-ttl` | `blockTtl` | — | Block time-to-live |
+| `block-mi` | `blockMaintenanceInterval` | — | Block maintenance interval |
+| `block-mn` | `blockMaintenanceNumberOfBlocks` | — | Blocks per maintenance cycle |
+| `block-retries` | `blockRetries` | — | Block fetch retry count |
+| `storage-quota` | `storageQuota` | — | Max bytes for storage |
+| `log-level` | `logLevel` | — | Logging level |
+| `log-file` | `logFile` | — | Log output file |
+| `log-format` | `logFormat` | — | Log format |
+| `metrics` | `metricsEnabled` | — | Enable metrics |
+| `metrics-port` | `metricsPort` | — | Metrics endpoint port |
+| `metrics-address` | `metricsAddress` | — | Metrics bind address |
+| `net-privkey` | `netPrivKeyFile` | — | libp2p private key file |
+| `repo-kind` | `repoKind` | — | Repository backend type |
+| `nat` | — | — | NAT traversal mode (`none`, `upnp`, `pmp`, `any`) |
+
+### Network ports summary
+
+| Port | Protocol | Service |
+|------|----------|---------|
+| 8500 | TCP | libp2p transport (peer connections, block exchange) |
+| 8090 | UDP | DiscoveryV5 (peer discovery, DHT) |
+| 8080 | TCP | REST API (`http://localhost:8080/api/storage/v1/...`) |
+
+### REST API endpoints (at `api-port`)
+
+```
+GET    /api/storage/v1/data                  — list local CIDs
+POST   /api/storage/v1/data                  — upload file (streaming)
+GET    /api/storage/v1/data/{cid}            — download from local
+DELETE /api/storage/v1/data/{cid}            — delete
+POST   /api/storage/v1/data/{cid}/network    — fetch from network (async)
+GET    /api/storage/v1/data/{cid}/exists     — check existence
+GET    /api/storage/v1/space                 — storage quota/usage
+GET    /api/storage/v1/connect/{peerId}      — connect to peer
+GET    /api/storage/v1/spr                   — Signed Peer Record
+GET    /api/storage/v1/peerid               — node's Peer ID
+GET    /api/storage/v1/debug/info            — node debug info
+POST   /api/storage/v1/debug/chronicles/loglevel — set log level
+```
+
+Full spec: https://api.codex.storage
+
+### How `storage_ui` configures the node at runtime
+
+1. `StorageBackend::defaultConfig()` generates a default JSON config (listen port 8500, disc port 8090)
+2. `StorageBackend::loadUserConfig()` reads user's saved config from `<dataDir>/config.json`
+   — falls back to default if file missing or invalid
+3. QML exposes a `JsonEditor` component that lets user edit raw JSON config
+4. `StorageBackend::saveUserConfig(json)` persists modified config
+5. `StorageBackend::init(configJson)` → calls `StorageModule::init(configJson)`
+   → which calls C FFI `storage_new(configJson, callback, userData)`
+6. `StorageBackend::start()` → `storage_start(ctx, ...)`
+7. NAT config: `enableUpnpConfig()` or `enableNatExtConfig(tcpPort)` for manual port forwarding
+8. `checkNodeIsUp()` calls `storage_debug()`, checks for peers, then calls
+   `https://portchecker.io/api/` to verify external reachability
+
+### How it connects to peers (Waku / P2P)
+
+- Storage does **not** use Waku directly — it uses **libp2p + DiscoveryV5 (codexdht)**
+- Peer discovery: UDP DiscoveryV5 on `disc-port` (8090) — same protocol family as Ethereum
+- Block exchange: TCP libp2p on `listen-port` (8500) — custom bitswap-like protocol
+- Bootstrap: `bootstrap-node` config key accepts multiaddr(s) of known peers
+- `connect(peerId, addrs)` method for manual peer connection
+- `announceAddresses` — external addresses advertised to other peers
+- NAT traversal supported via UPnP or NAT-PMP
+
+### Data storage
+
+- **LevelDB** for metadata (via `nim-leveldbstatic`)
+- Block data stored in `data-dir` directory
+- No persisted config file by default — `storage_ui` manages `config.json` in the data dir
+- `storage_module_plugin.so` itself has no companion config files
+
+### Phase 0 Testing Results (2026-03-12)
+
+Tested on cellular connection (restrictive NAT).
+
+**NAT & connectivity:**
+- Storage node works on cellular with `nat: "none"` in Advanced config
+- UPnP and Port Forwarding both fail on cellular/restrictive NAT — the onboarding
+  wizard blocks Continue on reachability failure (UX bug worth reporting to Logos team)
+- **Workaround**: use Advanced config, set `nat: "none"` to skip reachability check
+
+**Upload / Fetch:**
+- Upload works: file → CID confirmed
+- Fetch works: CID → file confirmed (while file exists on local node)
+
+**Propagation & replication:**
+- Blobs are stored locally only — deleting removes them permanently if no other
+  node has fetched the CID first
+- 3 peers connected via bootstrap nodes, but peers do **not** automatically
+  replicate your content
+- **Single device limitation**: full sync story requires minimum 2 nodes — one
+  uploading, one fetching while uploader is online
+
+**Phase 2 open question**: find a test pinning node or ask Logos team if a public
+pinning service exists for testnet.
+
+### Key insight for logos-notes Phase 2
+
+When integrating with storage for encrypted note backup:
+- Storage is content-addressed (CID-based) — upload returns a CID, download takes a CID
+- Notes module would call `storage_module` via `LogosAPIClient::invokeRemoteMethod()`
+- Upload flow: `uploadInit(filepath, chunkSize)` → `uploadChunk()` → `uploadFinalize()` → get CID
+- Download flow: `downloadToUrl(cid, destUrl, local, chunkSize)` → file at destination
+- All operations are async via `eventResponse` signal
+- Storage and notes would be separate core modules communicating via LogosAPI IPC
+
+---
+
 ## Notes for Claude Code Sessions
 
 When starting a new Claude Code session:
