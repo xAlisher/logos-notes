@@ -1,16 +1,16 @@
 import QtQuick
-import QtQuick.Controls
+import Logos.Controls
 
-// Reusable PIN input field. Emits accepted() when the user presses Return.
-TextField {
+// Reusable PIN input field. Emits pinAccepted() when the user presses Return.
+LogosTextField {
     id: root
 
-    signal accepted(string pin)
+    signal pinAccepted(string pin)
 
-    echoMode: TextField.Password
-    inputMethodHints: Qt.ImhDigitsOnly
+    echoMode: TextInput.Password
     placeholderText: "PIN"
-    maximumLength: 8
 
-    Keys.onReturnPressed: root.accepted(root.text)
+    textInput.inputMethodHints: Qt.ImhDigitsOnly
+    textInput.maximumLength: 8
+    textInput.Keys.onReturnPressed: root.pinAccepted(root.text)
 }

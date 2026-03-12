@@ -1,17 +1,38 @@
 import QtQuick
-import QtQuick.Controls
+import Logos.Theme
+import Logos.Controls
 
 Item {
     property string savedText: backend.loadNote()
 
-    TextArea {
-        id: editor
+    Rectangle {
         anchors.fill: parent
-        anchors.margins: 16
+        color: Theme.palette.background
+    }
+
+    TextEdit {
+        id: editor
+        anchors {
+            fill: parent
+            topMargin: Theme.spacing.xxlarge
+            leftMargin: Theme.spacing.xlarge
+            rightMargin: Theme.spacing.xlarge
+            bottomMargin: Theme.spacing.xlarge
+        }
         text: savedText
-        wrapMode: TextArea.Wrap
-        placeholderText: "Start writing…"
-        font.pixelSize: 15
+        wrapMode: TextEdit.Wrap
+        color: Theme.palette.text
+        font.family: "Courier New, monospace"
+        font.pixelSize: Theme.typography.primaryText
+        selectionColor: Theme.palette.overlayOrange
+        selectedTextColor: Theme.palette.text
+
+        LogosText {
+            visible: editor.text.length === 0
+            text: "Start writing…"
+            color: Theme.palette.textPlaceholder
+            font.pixelSize: Theme.typography.primaryText
+        }
 
         onTextChanged: saveTimer.restart()
     }
@@ -23,11 +44,11 @@ Item {
     }
 
     // DEV/DEMO reset — remove before production
-    Text {
-        anchors { bottom: parent.bottom; right: parent.right; margins: 12 }
+    LogosText {
+        anchors { bottom: parent.bottom; right: parent.right; margins: Theme.spacing.medium }
         text: "Reset"
-        color: "#cc4444"
-        font.pixelSize: 12
+        color: Theme.palette.error
+        font.pixelSize: Theme.typography.secondaryText
 
         MouseArea {
             anchors.fill: parent

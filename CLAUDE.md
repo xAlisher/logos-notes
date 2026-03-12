@@ -118,6 +118,112 @@ or provide a proper icon.
 
 ---
 
+## Plugin Contract — How Core Modules Integrate with Logos App
+
+> Verified by reading logos-chat-module source (`chat_interface.h`, `chat_plugin.h`) and logos-cpp-sdk headers.
+
+### The mandatory sequence
+
+```
+Shell → initLogos(LogosAPI*)   // inject SDK — called first, before anything else
+Shell → initialize()            // start the module (connect, open DB, etc.)
+Module → eventResponse(name, data)  // all async events go back through this ONE signal
+```
+
+logos-notes-core must implement exactly this same contract.
+
+### PluginInterface (from logos-liblogos `interface.h`)
+
+```cpp
+#include "logos_api.h"
+
+class PluginInterface {
+public:
+    virtual ~PluginInterface() {}
+    virtual QString name() const = 0;
+    virtual QString version() const = 0;
+    LogosAPI* logosAPI = nullptr;
+};
+#define PluginInterface_iid "com.example.PluginInterface"
+Q_DECLARE_INTERFACE(PluginInterface, PluginInterface_iid)
+```
+
+Headers live in the Nix store at:
+- `/nix/store/092zxk8qbm9zxqigq1z0a5l901a068cz-logos-liblogos-headers-0.1.0/include/interface.h`
+- `/nix/store/047dmhc4gi7yib02i1fbwidxpksqvcc2-logos-cpp-sdk/include/cpp/logos_api.h`
+
+### What logos-notes-core plugin class must look like
+
+```cpp
+class NotesPlugin : public QObject, public PluginInterface {
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID PluginInterface_iid FILE "metadata.json")
+    Q_INTERFACES(PluginInterface)
+
+public:
+    QString name() const override { return "notes"; }
+    QString version() const override { return "1.0.0"; }
+
+    Q_INVOKABLE void initLogos(LogosAPI* api);   // shell calls this first
+    Q_INVOKABLE bool initialize();                // shell calls this second
+
+signals:
+    void eventResponse(const QString& eventName, const QVariantList& data);
+    // ↑ all async results/events go through this single signal
+};
+```
+
+### LogosAPI surface (logos-cpp-sdk)
+
+```cpp
+// LogosAPI is the SDK entry point injected by the shell
+class LogosAPI : public QObject {
+    LogosAPIProvider* getProvider() const;                     // register objects for remote access
+    LogosAPIClient*   getClient(const QString& targetModule);  // call another module
+    TokenManager*     getTokenManager() const;                 // auth tokens
+};
+
+// To call another core module:
+auto* client = logosAPI->getClient("package_manager");
+QVariant result = client->invokeRemoteMethod("SomeObject", "someMethod", args);
+
+// To listen for events from another module:
+client->onEvent(originObj, this, "eventName", [](auto name, auto data) { ... });
+
+// To expose this module's objects to other modules:
+logosAPI->getProvider()->registerObject("NotesBackend", backendObj);
+```
+
+### metadata.json (core module)
+
+```json
+{
+  "name": "notes",
+  "version": "1.0.0",
+  "type": "core",
+  "category": "notes",
+  "main": "notes_plugin",
+  "dependencies": []
+}
+```
+
+`type: "core"` means it runs as a background plugin process. The companion `type: "ui"` entry
+is the QML plugin that creates the visible widget.
+
+### Logos core C API (how the shell loads modules)
+
+```c
+logos_core_set_plugins_dir(dir);       // tell core where .so files live
+logos_core_start();                    // start core process
+logos_core_load_plugin("notes");       // load our plugin
+logos_core_call_plugin_method_async(   // call a method with JSON params
+    "notes", "initialize", "[]", callback, userData);
+logos_core_register_event_listener(   // subscribe to our eventResponse signal
+    "notes", "eventResponse", callback, userData);
+```
+
+---
+
 ## Logos App Shell — Key QML Patterns
 
 ```qml
@@ -206,8 +312,9 @@ cmake -B build -G Ninja \
 # Build
 cmake --build build
 
-# Run standalone (Phase 0)
-./build/logos-notes
+# Run standalone (Phase 0) — must set QML_IMPORT_PATH for Logos.Theme / Logos.Controls
+QML_IMPORT_PATH=/nix/store/w9ra12n0yabd275v33m8x7lqnnrcgb9f-logos-design-system-1.0.0/lib \
+  ./build/logos-notes
 
 # Run inside Logos App (later)
 ./result/logos-app.AppImage  # loads modules from known paths
@@ -237,6 +344,110 @@ cmake --build build
 
 ---
 
+## Installed Modules in Running Logos App
+
+> Verified by running `~/.local/share/Logos/LogosApp/` after the Downloads AppImage installs them.
+> Module `.so` files are at `~/.local/share/Logos/LogosApp/modules/<name>/` and
+> UI plugins at `~/.local/share/Logos/LogosApp/plugins/<name>/`.
+
+### Full module inventory
+
+| Module | Type | Dependencies | Description |
+|--------|------|-------------|-------------|
+| `chat` | core | `waku_module` | Classic Waku relay chat |
+| `chat-mix` | core | `waku_module` | Chat via mixnet (AnonComms) |
+| `chatsdk_module` | core | _(none)_ | LogosChat SDK (nim-chat-poc C FFI wrapper) |
+| `storage_module` | core | _(none)_ | Logos Storage (logos-storage-nim C FFI wrapper) |
+| `delivery_module` | core | _(none)_ | High-level message-delivery API |
+| `waku_module` | core | _(none)_ | Waku P2P transport |
+| `accounts_module` | core | _(none)_ | Accounts via go-wallet-sdk |
+| `package_manager` | core | _(none)_ | Module installer |
+| `capability_module` | core | _(none)_ | Capability discovery |
+| `chat_ui` | ui | `chat` | Chat UI (classic) |
+| `chat_ui_mix` | ui | `chat` | Chat UI (mixnet) |
+| `chatsdk_ui` | ui | `chatsdk_module` | Private messaging UI |
+| `storage_ui` | ui | `storage_module` | Storage UI |
+| `accounts_ui` | ui | `accounts_module` | Accounts UI |
+
+### `manifest.json` schema (real format — use this for logos-notes)
+
+```json
+{
+  "author": "...",
+  "category": "notes",
+  "dependencies": [],
+  "description": "...",
+  "icon": "icon.png",
+  "main": {
+    "linux-amd64": "notes_plugin.so",
+    "darwin-arm64": "notes_plugin.dylib"
+  },
+  "manifestVersion": "0.1.0",
+  "name": "notes",
+  "type": "core",
+  "version": "1.0.0"
+}
+```
+
+Note: the real field is `"main": { "linux-amd64": "..." }` (platform map), **not** `"main": "notes_plugin"`.
+
+### `ChatSDKModulePlugin` Q_INVOKABLE methods (extracted from binary)
+
+These are what the chatsdk_ui calls via `LogosAPIClient::invokeRemoteMethod`:
+
+| Method | Signature |
+|--------|-----------|
+| `initChat` | `initChat(QString config)` |
+| `stopChat` | `stopChat()` |
+| `destroyChat` | `destroyChat()` |
+| `getId` | `getId()` |
+| `getIdentity` | `getIdentity()` |
+| `createIntroBundle` | `createIntroBundle()` |
+| `listConversations` | `listConversations()` |
+| `getConversation` | `getConversation(QString convoId)` |
+| `newPrivateConversation` | `newPrivateConversation(QString introBundle, QString content)` |
+| `sendMessage` | `sendMessage(QString convoId, QString content)` |
+
+Signal: `eventResponse(QString eventName, QVariantList data)` — all async results come back here.
+Internal callbacks: `init_callback`, `start_callback`, `event_callback`, etc. (bridge to C FFI).
+
+### `StorageModulePlugin` Q_INVOKABLE methods (extracted from binary)
+
+| Method | Signature |
+|--------|-----------|
+| `initLogos` | `initLogos(LogosAPI*)` — shell injection |
+| `init` | `init(QString configJson)` |
+| `start` | `start()` |
+| `stop` | `stop()` |
+| `destroy` | `destroy()` |
+| `version` | `version()` |
+| `spr` | `spr()` — Signed Peer Record |
+| `peerId` | `peerId()` |
+| `debug` | `debug()` |
+| `dataDir` | `dataDir()` |
+| `connect` | `connect(QString peerId, QList<QString> addrs)` |
+| `updateLogLevel` | `updateLogLevel(QString level)` |
+| `uploadUrl` | `uploadUrl(QUrl url, int chunkSize)` |
+| `uploadInit` | `uploadInit(QString filepath, int chunkSize)` |
+| `uploadChunk` | `uploadChunk(QString sessionId, QByteArray data)` |
+| `uploadFinalize` | `uploadFinalize(QString sessionId)` |
+| `uploadCancel` | `uploadCancel(QString sessionId)` |
+| `importFiles` | `importFiles(QString path)` |
+| `downloadToUrl` | `downloadToUrl(QString cid, QUrl dest, bool local, int chunkSize)` |
+| `downloadChunks` | `downloadChunks(QString cid, bool local, int chunkSize, QString filepath)` |
+| `downloadManifest` | `downloadManifest(QString cid)` |
+| `downloadCancel` | `downloadCancel(QString cid)` |
+| `manifests` | `manifests()` — list local CIDs |
+| `space` | `space()` |
+| `exists` | `exists(QString cid)` |
+| `fetch` | `fetch(QString cid)` — pull from network |
+| `remove` | `remove(QString cid)` |
+
+Signal: `eventResponse(QString eventName, QVariantList data)`
+Also: `storageResponse(StorageSignal, int, QString)` — internal signal bridging C FFI callbacks.
+
+---
+
 ## Key Contacts / Links
 
 - Ideas issue: https://github.com/logos-co/ideas/issues/13
@@ -244,6 +455,8 @@ cmake --build build
 - Chat UI reference: https://github.com/logos-co/logos-chat-ui
 - Waku docs (messaging, Phase 2): https://docs.waku.org
 - Logos Storage (Phase 2): https://github.com/logos-storage/logos-storage-nim
+- nim-chat-poc / LogosChat (Phase 2 messaging): https://github.com/logos-messaging/nim-chat-poc
+  — C FFI: `liblogoschat.so` + `library/liblogoschat.h`, async callback pattern identical to logos-storage-nim
 
 ---
 

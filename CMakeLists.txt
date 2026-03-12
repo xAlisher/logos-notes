@@ -56,5 +56,22 @@ target_link_libraries(logos-notes PRIVATE
 
 target_include_directories(logos-notes PRIVATE src)
 
+# ── Logos Design System ──────────────────────────────────────────────────────
+# Permanent path in nix store — set QML_IMPORT_PATH at runtime for standalone runs:
+#   QML_IMPORT_PATH=/nix/store/w9ra12n0yabd275v33m8x7lqnnrcgb9f-logos-design-system-1.0.0/lib \
+#     ./build/logos-notes
+if(DEFINED ENV{LOGOS_DESIGN_SYSTEM_ROOT})
+    set(LOGOS_DS_LIB "$ENV{LOGOS_DESIGN_SYSTEM_ROOT}/lib")
+else()
+    set(LOGOS_DS_LIB "/nix/store/w9ra12n0yabd275v33m8x7lqnnrcgb9f-logos-design-system-1.0.0/lib")
+endif()
+set_target_properties(logos-notes PROPERTIES
+    QT_QML_IMPORT_PATH "${LOGOS_DS_LIB}"
+)
+# Also bake it in for qmlsc / Qt Creator tooling
+target_compile_definitions(logos-notes PRIVATE
+    LOGOS_DS_LIB="${LOGOS_DS_LIB}"
+)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 install(TARGETS logos-notes DESTINATION bin)

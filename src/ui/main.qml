@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls
+import Logos.Theme
 
 Window {
     id: root
@@ -7,6 +7,7 @@ Window {
     height: 600
     visible: true
     title: "Immutable Notes"
+    color: Theme.palette.background
 
     Loader {
         anchors.fill: parent
