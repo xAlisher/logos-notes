@@ -93,7 +93,7 @@ Item {
         // Note list
         ListView {
             id: noteList
-            anchors { top: newNoteBtn.bottom; bottom: parent.bottom; left: parent.left; right: parent.right }
+            anchors { top: newNoteBtn.bottom; bottom: sidebarBottomBar.top; left: parent.left; right: parent.right }
             model: noteModel
             clip: true
             currentIndex: -1
@@ -168,6 +168,51 @@ Item {
                 }
             }
         }
+
+        // ── Sidebar bottom bar: Lock + Reset ─────────────────────────
+        Rectangle {
+            id: sidebarBottomBar
+            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+            height: 44
+            color: Theme.palette.backgroundSecondary
+
+            // Top edge gradient so list fades under
+            Rectangle {
+                anchors { bottom: parent.top; left: parent.left; right: parent.right }
+                height: 24
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "transparent" }
+                    GradientStop { position: 1.0; color: Theme.palette.backgroundSecondary }
+                }
+            }
+
+            Row {
+                anchors.centerIn: parent
+                spacing: Theme.spacing.large
+
+                LogosText {
+                    text: "Lock"
+                    color: Theme.palette.primary
+                    font.pixelSize: Theme.typography.secondaryText
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: backend.lock()
+                    }
+                }
+
+                LogosText {
+                    text: "Reset"
+                    color: Theme.palette.error
+                    font.pixelSize: Theme.typography.secondaryText
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: backend.resetAndWipe()
+                    }
+                }
+            }
+        }
     }
 
     // ── Editor area ──────────────────────────────────────────────────
@@ -177,7 +222,7 @@ Item {
             top: parent.top; topMargin: Theme.spacing.xxlarge
             left: sidebar.right; leftMargin: Theme.spacing.xlarge
             right: parent.right; rightMargin: Theme.spacing.xlarge
-            bottom: bottomBar.top; bottomMargin: Theme.spacing.small
+            bottom: parent.bottom; bottomMargin: Theme.spacing.xlarge
         }
 
         TextEdit {
@@ -211,35 +256,6 @@ Item {
             if (root.activeNoteId !== -1) {
                 backend.saveNote(root.activeNoteId, editor.text)
                 root.refreshList()
-            }
-        }
-    }
-
-    // ── Bottom bar: Lock + Reset ─────────────────────────────────────
-    Row {
-        id: bottomBar
-        anchors { bottom: parent.bottom; right: parent.right; margins: Theme.spacing.medium }
-        spacing: Theme.spacing.large
-
-        LogosText {
-            text: "Lock"
-            color: Theme.palette.primary
-            font.pixelSize: Theme.typography.secondaryText
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: backend.lock()
-            }
-        }
-
-        LogosText {
-            text: "Reset"
-            color: Theme.palette.error
-            font.pixelSize: Theme.typography.secondaryText
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: backend.resetAndWipe()
             }
         }
     }
