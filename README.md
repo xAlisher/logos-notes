@@ -19,6 +19,18 @@ No accounts, no servers, no plaintext on disk.
 
 ---
 
+## Security model
+
+Your recovery phrase is the root of everything. When you first import it, the app derives a master encryption key from it and then forgets the phrase entirely. It is never written to disk, never stored in a database, never logged. If you lose your recovery phrase, there is no way to recover your notes on a new device.
+
+The PIN exists to protect day-to-day access. During import, the app encrypts your master key with a key derived from your PIN and stores that encrypted bundle in the local database. On every subsequent launch, you enter your PIN to unwrap the master key back into memory. A wrong PIN fails the decryption — there is no hint or retry limit, just a cryptographic pass-or-fail check.
+
+When you lock the app, the master key is wiped from memory immediately. The encrypted note and the PIN-wrapped master key remain on disk, but neither is readable without the PIN. Nothing sensitive lives in memory while the app is locked.
+
+An attacker with access to your device would find only encrypted blobs in the SQLite database. To read your notes, they would need your PIN to unwrap the master key, or your original recovery phrase to re-derive it. Without either, the AES-256-GCM ciphertext is computationally infeasible to break.
+
+---
+
 ## Encryption
 
 ```
