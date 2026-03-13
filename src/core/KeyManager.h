@@ -9,7 +9,7 @@
 class KeyManager
 {
 public:
-    static constexpr int PIN_MIN_LENGTH = 4;
+    static constexpr int PIN_MIN_LENGTH = 6;
 
     KeyManager();
     ~KeyManager();
