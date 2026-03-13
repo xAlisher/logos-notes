@@ -91,7 +91,7 @@ Item {
             TextField {
                 id: importPinField
                 Layout.fillWidth: true
-                placeholderText: "PIN (min 4 digits)"
+                placeholderText: "PIN (min 6 characters)"
                 echoMode: TextInput.Password
                 color: root.textColor
                 font.pixelSize: 14
