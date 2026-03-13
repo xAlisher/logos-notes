@@ -86,8 +86,12 @@ void TestMultiNote::testSaveAndLoadNote()
     QByteArray ciphertext = m_crypto.encrypt(plaintext, m_key, nonce);
     QVERIFY(!ciphertext.isEmpty());
 
+    // Encrypt title
+    QByteArray titleNonce;
+    QByteArray titleCt = m_crypto.encrypt(QByteArray("Hello, multi-note world!"), m_key, titleNonce);
+
     // Save
-    QVERIFY(m_db->saveNote(id, ciphertext, nonce, "Hello, multi-note world!"));
+    QVERIFY(m_db->saveNote(id, ciphertext, nonce, titleCt, titleNonce));
 
     // Load back
     QByteArray loadedCipher, loadedNonce;
@@ -111,10 +115,14 @@ void TestMultiNote::testLoadNoteHeaders()
     QByteArray ct1 = m_crypto.encrypt("First note", m_key, nonce1);
     QByteArray ct2 = m_crypto.encrypt("Second note", m_key, nonce2);
 
-    QVERIFY(m_db->saveNote(id1, ct1, nonce1, "First note"));
+    QByteArray tn1, tn2;
+    QByteArray tct1 = m_crypto.encrypt(QByteArray("First note"), m_key, tn1);
+    QByteArray tct2 = m_crypto.encrypt(QByteArray("Second note"), m_key, tn2);
+
+    QVERIFY(m_db->saveNote(id1, ct1, nonce1, tct1, tn1));
     // Small delay to ensure different timestamps
     QThread::msleep(1100);
-    QVERIFY(m_db->saveNote(id2, ct2, nonce2, "Second note"));
+    QVERIFY(m_db->saveNote(id2, ct2, nonce2, tct2, tn2));
 
     auto headers = m_db->loadNoteHeaders();
     QVERIFY(headers.size() >= 2);
@@ -132,11 +140,19 @@ void TestMultiNote::testLoadNoteHeaders()
     }
     QVERIFY(foundId2First);
 
-    // Check titles
+    // Check encrypted titles — decrypt and verify
     bool foundTitle1 = false, foundTitle2 = false;
     for (const auto &h : headers) {
-        if (h.id == id1) { QCOMPARE(h.title, "First note"); foundTitle1 = true; }
-        if (h.id == id2) { QCOMPARE(h.title, "Second note"); foundTitle2 = true; }
+        if (h.id == id1) {
+            QByteArray decTitle = m_crypto.decrypt(h.titleCiphertext, m_key, h.titleNonce);
+            QCOMPARE(QString::fromUtf8(decTitle), "First note");
+            foundTitle1 = true;
+        }
+        if (h.id == id2) {
+            QByteArray decTitle = m_crypto.decrypt(h.titleCiphertext, m_key, h.titleNonce);
+            QCOMPARE(QString::fromUtf8(decTitle), "Second note");
+            foundTitle2 = true;
+        }
     }
     QVERIFY(foundTitle1);
     QVERIFY(foundTitle2);
@@ -179,7 +195,9 @@ void TestMultiNote::testPhase0Compat()
     // Update via Phase 1 API
     QByteArray nonce2;
     QByteArray ct2 = m_crypto.encrypt("Updated phase 0", m_key, nonce2);
-    QVERIFY(m_db->saveNote(1, ct2, nonce2, "Updated phase 0"));
+    QByteArray tn;
+    QByteArray tct = m_crypto.encrypt(QByteArray("Updated phase 0"), m_key, tn);
+    QVERIFY(m_db->saveNote(1, ct2, nonce2, tct, tn));
 
     // Phase 0 load should see the update
     QByteArray loadedCt3, loadedNonce3;
@@ -195,13 +213,16 @@ void TestMultiNote::testTitleFromFirstLine()
     QByteArray nonce;
     QString text = "\n\n  My Title Here  \nBody text";
     QByteArray ct = m_crypto.encrypt(text.toUtf8(), m_key, nonce);
-    QVERIFY(m_db->saveNote(id, ct, nonce, "My Title Here"));
+    QByteArray titleNonce;
+    QByteArray titleCt = m_crypto.encrypt(QByteArray("My Title Here"), m_key, titleNonce);
+    QVERIFY(m_db->saveNote(id, ct, nonce, titleCt, titleNonce));
 
     auto headers = m_db->loadNoteHeaders();
     bool found = false;
     for (const auto &h : headers) {
         if (h.id == id) {
-            QCOMPARE(h.title, "My Title Here");
+            QByteArray decTitle = m_crypto.decrypt(h.titleCiphertext, m_key, h.titleNonce);
+            QCOMPARE(QString::fromUtf8(decTitle), "My Title Here");
             found = true;
             break;
         }

@@ -84,6 +84,28 @@ bool DatabaseManager::init()
         qDebug() << "DatabaseManager: migrated notes table (added title, updated_at)";
     }
 
+    // Phase 1.5 migration: add encrypted title columns if missing.
+    bool hasTitleCiphertext = false;
+    if (q.exec("PRAGMA table_info(notes)")) {
+        while (q.next()) {
+            if (q.value(1).toString() == "title_ciphertext") {
+                hasTitleCiphertext = true;
+                break;
+            }
+        }
+    }
+    if (!hasTitleCiphertext) {
+        if (!q.exec("ALTER TABLE notes ADD COLUMN title_ciphertext BLOB DEFAULT X''")) {
+            qWarning() << "DatabaseManager: migration add title_ciphertext failed:" << q.lastError();
+            return false;
+        }
+        if (!q.exec("ALTER TABLE notes ADD COLUMN title_nonce BLOB DEFAULT X''")) {
+            qWarning() << "DatabaseManager: migration add title_nonce failed:" << q.lastError();
+            return false;
+        }
+        qDebug() << "DatabaseManager: migrated notes table (added title_ciphertext, title_nonce)";
+    }
+
     m_ready = true;
     return true;
 }
@@ -231,16 +253,20 @@ int DatabaseManager::createNote()
 }
 
 bool DatabaseManager::saveNote(int id, const QByteArray &ciphertext,
-                                const QByteArray &nonce, const QString &title)
+                                const QByteArray &nonce,
+                                const QByteArray &titleCiphertext,
+                                const QByteArray &titleNonce)
 {
     QSqlDatabase db = QSqlDatabase::database(CONNECTION);
     QSqlQuery q(db);
     qint64 now = QDateTime::currentSecsSinceEpoch();
-    q.prepare("UPDATE notes SET ciphertext = ?, nonce = ?, title = ?, updated_at = ?"
+    q.prepare("UPDATE notes SET ciphertext = ?, nonce = ?, "
+              "title_ciphertext = ?, title_nonce = ?, title = '', updated_at = ?"
               " WHERE id = ?");
     q.addBindValue(ciphertext);
     q.addBindValue(nonce);
-    q.addBindValue(title);
+    q.addBindValue(titleCiphertext);
+    q.addBindValue(titleNonce);
     q.addBindValue(now);
     q.addBindValue(id);
     if (!q.exec()) {
@@ -282,13 +308,18 @@ QList<NoteHeader> DatabaseManager::loadNoteHeaders() const
     QList<NoteHeader> result;
     QSqlDatabase db = QSqlDatabase::database(CONNECTION);
     QSqlQuery q(db);
-    q.prepare("SELECT id, title, updated_at FROM notes ORDER BY updated_at DESC");
+    q.prepare("SELECT id, title_ciphertext, title_nonce, title, updated_at"
+              " FROM notes ORDER BY updated_at DESC");
     if (!q.exec())
         return result;
     while (q.next()) {
-        result.append({q.value(0).toInt(),
-                       q.value(1).toString(),
-                       q.value(2).toLongLong()});
+        NoteHeader h;
+        h.id              = q.value(0).toInt();
+        h.titleCiphertext = q.value(1).toByteArray();
+        h.titleNonce      = q.value(2).toByteArray();
+        h.titlePlaintext  = q.value(3).toString(); // legacy unmigrated
+        h.updatedAt       = q.value(4).toLongLong();
+        result.append(h);
     }
     return result;
 }

@@ -5,9 +5,11 @@
 #include <QList>
 
 struct NoteHeader {
-    int     id;
-    QString title;
-    qint64  updatedAt;
+    int        id;
+    QByteArray titleCiphertext;
+    QByteArray titleNonce;
+    QString    titlePlaintext; // legacy: non-empty only for unmigrated rows
+    qint64     updatedAt;
 };
 
 // Manages the SQLite database that stores encrypted notes.
@@ -42,9 +44,9 @@ public:
     // Create a new empty note. Returns the new row id, or -1 on failure.
     int createNote();
 
-    // Save encrypted content + plaintext title for a specific note.
+    // Save encrypted content + encrypted title for a specific note.
     bool saveNote(int id, const QByteArray &ciphertext, const QByteArray &nonce,
-                  const QString &title);
+                  const QByteArray &titleCiphertext, const QByteArray &titleNonce);
 
     // Load encrypted content for a specific note.
     bool loadNote(int id, QByteArray &ciphertextOut, QByteArray &nonceOut) const;
