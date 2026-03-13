@@ -675,6 +675,14 @@ the only surface the QML bridge can see. This applies to both the
 Logos App plugin path (`logos.callModule`) and any future direct
 `Q_INVOKABLE` usage.
 
+**`logos.callModule` returns JSON, not raw text.**
+`logos.callModule("notes", "loadNote", [id])` returns the note text
+as a JSON-wrapped string, not raw plaintext. QML must parse the
+response before assigning to `editor.text`. Assigning the raw
+`callModule` result directly to `TextEdit.text` will show JSON
+instead of content. On error it returns `{"error":"..."}` — guard
+against this in QML to avoid flashing error JSON in the editor.
+
 ---
 
 ## Notes for Claude Code Sessions
