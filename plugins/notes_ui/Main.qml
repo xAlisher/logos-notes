@@ -355,10 +355,37 @@ Item {
         function selectNote(id) {
             activeNoteId = id
             loading = true
-            if (typeof logos !== "undefined" && logos.callModule)
-                editor.text = logos.callModule("notes", "loadNote", [id])
+            if (typeof logos !== "undefined" && logos.callModule) {
+                var result = logos.callModule("notes", "loadNote", [id])
+                // loadNote returns plaintext on success, or empty/error JSON on failure.
+                // Guard against error responses showing up in the editor.
+                if (result && result.charAt(0) === '{') {
+                    try {
+                        var parsed = JSON.parse(result)
+                        if (parsed.error) {
+                            console.log("notes: loadNote error, retrying: " + parsed.error)
+                            loading = false
+                            retryNoteId = id
+                            retryTimer.start()
+                            return
+                        }
+                    } catch(e) {}
+                }
+                editor.text = result || ""
+            }
             loading = false
             editor.forceActiveFocus()
+        }
+
+        property int retryNoteId: -1
+        Timer {
+            id: retryTimer
+            interval: 300
+            onTriggered: {
+                if (noteScreen.retryNoteId !== -1)
+                    noteScreen.selectNote(noteScreen.retryNoteId)
+                noteScreen.retryNoteId = -1
+            }
         }
 
         function createNewNote() {
