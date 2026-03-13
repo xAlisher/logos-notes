@@ -325,8 +325,14 @@ Item {
         onVisibleChanged: {
             if (visible) {
                 activeNoteId = -1
-                refreshList()
+                deferredRefresh.start()
             }
+        }
+
+        Timer {
+            id: deferredRefresh
+            interval: 150
+            onTriggered: noteScreen.refreshList()
         }
 
         function refreshList() {

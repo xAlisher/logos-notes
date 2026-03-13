@@ -11,7 +11,13 @@ Item {
     // Suppress save while loading a note
     property bool loading: false
 
-    Component.onCompleted: refreshList()
+    Component.onCompleted: deferredRefresh.start()
+
+    Timer {
+        id: deferredRefresh
+        interval: 150
+        onTriggered: root.refreshList()
+    }
 
     function refreshList() {
         var json = backend.loadNotes()
