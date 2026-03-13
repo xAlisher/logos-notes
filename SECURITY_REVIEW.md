@@ -67,25 +67,21 @@ Current top residual risks:
 - Either encrypt titles (or derive non-sensitive summaries client-side in-memory) OR
 - Clearly document that note titles are plaintext metadata.
 
-## 5) Memory zeroization is incomplete (Medium)
+## 5) Memory zeroization is incomplete (Medium) — ✅ RESOLVED
 
-**Evidence:**
-- `m_masterKey` is wiped on lock, but temporary key buffers (`pinKey`, `masterKey` locals, derived keys in `CryptoManager`) are returned/copied as ordinary `QByteArray` and not explicitly cleared after use.
+**Status:** Fixed in `security/p1-fixes` (Issue #6).
 
-**Risk:** Sensitive material may persist in heap pages longer than needed.
+Introduced `SecureBuffer` RAII wrapper that calls `sodium_memzero` on destruction.
+All temporary key material in `CryptoManager` and `NotesBackend` (mnemonic UTF-8,
+PIN UTF-8, derived keys, master key locals) is now wrapped in `SecureBuffer`.
 
-**Recommendation:**
-- Introduce secure buffer lifecycle helpers and explicit `sodium_memzero` for temporary secret arrays after final use.
-- Minimize copies of key material (move semantics / dedicated secure container where possible).
+## 6) AES-256-GCM hardware availability not checked (Medium) — ✅ RESOLVED
 
-## 6) AES-256-GCM hardware availability not checked (Medium)
+**Status:** Fixed in `security/p2-fixes` (Issue #7).
 
-**Evidence:** Code directly uses `crypto_aead_aes256gcm_*` APIs without checking `crypto_aead_aes256gcm_is_available()`.
-
-**Risk:** On CPUs lacking AES acceleration, API may be unavailable and encryption/decryption will fail unexpectedly.
-
-**Recommendation:**
-- Check availability at startup; fallback to `crypto_aead_xchacha20poly1305_ietf` when unavailable.
+`CryptoManager` constructor now calls `crypto_aead_aes256gcm_is_available()`.
+If AES-NI is unavailable, falls back to `crypto_aead_xchacha20poly1305_ietf`.
+Cipher selection logged at startup.
 
 ## 7) AEAD input validation and domain separation hardening (Low)
 
@@ -97,20 +93,17 @@ Current top residual risks:
 - Validate key/nonce sizes before AEAD calls.
 - Add AAD binding (record id/schema version) to reduce cross-context misuse risk.
 
-## 8) SQLite privacy hardening opportunities (Low)
+## 8) SQLite privacy hardening opportunities (Low) — ✅ RESOLVED
 
-**Evidence:** Standard SQLite usage; no explicit PRAGMA hardening for secure deletion/journal handling.
+**Status:** Fixed in `security/p2-fixes` (Issue #9).
 
-**Risk:** Deleted plaintext metadata (like titles) may remain in freelists/WAL; forensic recoverability increases.
+- `PRAGMA secure_delete=ON` set on DB open.
+- `PRAGMA journal_mode=DELETE` (no WAL residue).
+- DB file permissions set to `0600` (owner read/write only).
 
-**Recommendation:**
-- Consider `PRAGMA secure_delete=ON`.
-- Define WAL/journal policy aligned with threat model.
-- Revisit DB file permissions and backup/export paths.
+## ~~Consistency issue in documentation~~ — ✅ RESOLVED
 
-## Consistency issue in documentation
-
-README states "no plaintext on disk," but title metadata is currently plaintext in `notes.title`. Update docs or implementation to match.
+Titles are now encrypted (Issue #5). README updated to match.
 
 ## Prioritized remediation plan
 
