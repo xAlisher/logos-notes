@@ -1,4 +1,5 @@
 #include "CryptoManager.h"
+#include "SecureBuffer.h"
 
 #include <sodium.h>
 
@@ -16,8 +17,8 @@ QByteArray CryptoManager::deriveKey(const QString &mnemonic,
     if (salt.size() < static_cast<int>(crypto_pwhash_SALTBYTES))
         return {};
 
-    QByteArray key(KEY_BYTES, '\0');
-    const QByteArray pw = mnemonic.toUtf8();
+    SecureBuffer key(KEY_BYTES);
+    SecureBuffer pw(mnemonic.toUtf8());
 
     int rc = crypto_pwhash(
         reinterpret_cast<unsigned char *>(key.data()), KEY_BYTES,
@@ -27,11 +28,11 @@ QByteArray CryptoManager::deriveKey(const QString &mnemonic,
         crypto_pwhash_MEMLIMIT_MODERATE,
         crypto_pwhash_ALG_ARGON2ID13);
 
-    if (rc != 0) {
-        sodium_memzero(key.data(), KEY_BYTES);
-        return {};
-    }
-    return key;
+    if (rc != 0)
+        return {}; // SecureBuffer destructor wipes key
+
+    return key.toByteArray();
+    // pw wiped by SecureBuffer destructor
 }
 
 QByteArray CryptoManager::encrypt(const QByteArray &plaintext,
@@ -89,24 +90,22 @@ QByteArray CryptoManager::deriveKeyFromPin(const QString &pin,
     if (salt.size() < static_cast<int>(crypto_pwhash_SALTBYTES))
         return {};
 
-    const QByteArray &paddedSalt = salt;
-
-    QByteArray key(KEY_BYTES, '\0');
-    const QByteArray pw = pin.toUtf8();
+    SecureBuffer key(KEY_BYTES);
+    SecureBuffer pw(pin.toUtf8());
 
     int rc = crypto_pwhash(
         reinterpret_cast<unsigned char *>(key.data()), KEY_BYTES,
         pw.constData(), static_cast<unsigned long long>(pw.size()),
-        reinterpret_cast<const unsigned char *>(paddedSalt.constData()),
+        reinterpret_cast<const unsigned char *>(salt.constData()),
         crypto_pwhash_OPSLIMIT_MODERATE,
         crypto_pwhash_MEMLIMIT_MODERATE,
         crypto_pwhash_ALG_ARGON2ID13);
 
-    if (rc != 0) {
-        sodium_memzero(key.data(), KEY_BYTES);
-        return {};
-    }
-    return key;
+    if (rc != 0)
+        return {}; // SecureBuffer destructor wipes key
+
+    return key.toByteArray();
+    // pw wiped by SecureBuffer destructor
 }
 
 QByteArray CryptoManager::randomSalt()
@@ -115,4 +114,3 @@ QByteArray CryptoManager::randomSalt()
     randombytes_buf(salt.data(), salt.size());
     return salt;
 }
-

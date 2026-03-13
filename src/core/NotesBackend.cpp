@@ -1,4 +1,5 @@
 #include "NotesBackend.h"
+#include "SecureBuffer.h"
 
 #include <QDateTime>
 #include <QDebug>
@@ -62,7 +63,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
     // 1. Derive the master key from the mnemonic with a random salt (never stored).
     const QByteArray mnemonicSalt = CryptoManager::randomSalt();
-    const QByteArray masterKey = m_crypto.deriveKey(mnemonic, mnemonicSalt);
+    SecureBuffer masterKey(m_crypto.deriveKey(mnemonic, mnemonicSalt));
     if (masterKey.isEmpty()) {
         setError("Key derivation failed.");
         return;
@@ -70,7 +71,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
     // 2. Derive a wrapping key from the PIN with a fresh random salt.
     const QByteArray pinSalt = CryptoManager::randomSalt();
-    const QByteArray pinKey  = m_crypto.deriveKeyFromPin(pin, pinSalt);
+    SecureBuffer pinKey(m_crypto.deriveKeyFromPin(pin, pinSalt));
     if (pinKey.isEmpty()) {
         setError("PIN key derivation failed.");
         return;
@@ -78,7 +79,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
     // 3. Encrypt the master key with the PIN-derived key.
     QByteArray wrapNonce;
-    const QByteArray wrappedKey = m_crypto.encrypt(masterKey, pinKey, wrapNonce);
+    const QByteArray wrappedKey = m_crypto.encrypt(masterKey.ref(), pinKey.ref(), wrapNonce);
     if (wrappedKey.isEmpty()) {
         setError("Key wrapping failed.");
         return;
@@ -96,7 +97,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
 
     // 6. Hold the master key in memory for this session.
-    m_keys.setMasterKey(masterKey);
+    m_keys.setMasterKey(masterKey.toByteArray());
 
     m_db.setInitialized();
     setError({});
@@ -139,7 +140,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
     }
 
     // 2. Re-derive the PIN wrapping key using the stored salt.
-    const QByteArray pinKey = m_crypto.deriveKeyFromPin(pin, pinSalt);
+    SecureBuffer pinKey(m_crypto.deriveKeyFromPin(pin, pinSalt));
     if (pinKey.isEmpty()) {
         setError("Key derivation failed.");
         return;
@@ -147,7 +148,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
 
     // 3. Decrypt the master key. AES-GCM authentication tag verification
     //    happens here — wrong PIN produces an empty result.
-    const QByteArray masterKey = m_crypto.decrypt(wrappedKey, pinKey, wrapNonce);
+    SecureBuffer masterKey(m_crypto.decrypt(wrappedKey, pinKey.ref(), wrapNonce));
     if (masterKey.isEmpty()) {
         ++m_failedAttempts;
         if (!m_db.saveMeta("pin_failed_attempts", QString::number(m_failedAttempts)))
@@ -174,7 +175,11 @@ void NotesBackend::unlockWithPin(const QString &pin)
         qWarning() << "NotesBackend: failed to reset PIN lockout timestamp";
 
     // 5. Master key is back in memory; ready to decrypt notes.
-    m_keys.setMasterKey(masterKey);
+    m_keys.setMasterKey(masterKey.toByteArray());
+
+    // 6. Migrate any legacy plaintext titles to encrypted.
+    migratePlaintextTitles();
+
     setError({});
     setScreen("note");
 }
@@ -195,10 +200,15 @@ void NotesBackend::saveNote(const QString &plaintext)
         return;
     }
 
+    // Encrypt the title.
+    const QString title = titleFromPlaintext(plaintext);
+    QByteArray titleNonce;
+    const QByteArray titleCt =
+        m_crypto.encrypt(title.toUtf8(), m_keys.masterKey(), titleNonce);
+
     // Phase 0 compat: always targets id=1.
-    // Use the old upsert to ensure the row exists, then update with title + timestamp.
     m_db.saveNote(ciphertext, nonce);
-    m_db.saveNote(1, ciphertext, nonce, titleFromPlaintext(plaintext));
+    m_db.saveNote(1, ciphertext, nonce, titleCt, titleNonce);
 }
 
 QString NotesBackend::loadNote()
@@ -245,7 +255,17 @@ QString NotesBackend::loadNotes()
     for (const auto &h : headers) {
         QJsonObject obj;
         obj["id"] = h.id;
-        obj["title"] = h.title;
+
+        // Decrypt title if encrypted; fall back to legacy plaintext.
+        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty()) {
+            QByteArray titlePt = m_crypto.decrypt(h.titleCiphertext,
+                                                   m_keys.masterKey(),
+                                                   h.titleNonce);
+            obj["title"] = QString::fromUtf8(titlePt);
+        } else {
+            obj["title"] = h.titlePlaintext;
+        }
+
         obj["updatedAt"] = h.updatedAt;
         arr.append(obj);
     }
@@ -283,7 +303,10 @@ QString NotesBackend::saveNote(int id, const QString &plaintext)
         return {};
     }
     const QString title = titleFromPlaintext(plaintext);
-    if (!m_db.saveNote(id, ciphertext, nonce, title)) {
+    QByteArray titleNonce;
+    const QByteArray titleCt =
+        m_crypto.encrypt(title.toUtf8(), m_keys.masterKey(), titleNonce);
+    if (!m_db.saveNote(id, ciphertext, nonce, titleCt, titleNonce)) {
         setError("Failed to save note.");
         return {};
     }
@@ -322,6 +345,40 @@ void NotesBackend::resetAndWipe()
     m_db.init();
     setError({});
     setScreen("import");
+}
+
+void NotesBackend::migratePlaintextTitles()
+{
+    if (!m_keys.isUnlocked())
+        return;
+
+    const auto headers = m_db.loadNoteHeaders();
+    int migrated = 0;
+    for (const auto &h : headers) {
+        // Skip notes that already have encrypted titles.
+        if (!h.titleCiphertext.isEmpty())
+            continue;
+        // Skip notes with no legacy plaintext title.
+        if (h.titlePlaintext.isEmpty())
+            continue;
+
+        // Encrypt the legacy plaintext title.
+        QByteArray titleNonce;
+        QByteArray titleCt = m_crypto.encrypt(h.titlePlaintext.toUtf8(),
+                                               m_keys.masterKey(), titleNonce);
+        if (titleCt.isEmpty())
+            continue;
+
+        // Load the note's body ciphertext/nonce to pass through unchanged.
+        QByteArray bodyCt, bodyNonce;
+        if (!m_db.loadNote(h.id, bodyCt, bodyNonce))
+            continue;
+
+        m_db.saveNote(h.id, bodyCt, bodyNonce, titleCt, titleNonce);
+        ++migrated;
+    }
+    if (migrated > 0)
+        qDebug() << "NotesBackend: migrated" << migrated << "plaintext title(s) to encrypted";
 }
 
 void NotesBackend::setScreen(const QString &screen)
