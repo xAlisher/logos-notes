@@ -5,14 +5,14 @@ Scope: `src/core/*` and security claims in `README.md`.
 
 ## Executive summary
 
-The project has a solid encrypted-at-rest foundation (libsodium Argon2id + AEAD, wrapped master key design), but there are several high-impact gaps that should be addressed before positioning it as strongly secure against local/offline attackers.
+The project has a strong encrypted-at-rest baseline (libsodium Argon2id + AEAD, wrapped master key design), and previously identified P0 issues have been fixed.
 
-Top risks:
-1. **Weak mnemonic validation** (not true BIP39 validation) can silently accept invalid phrases.
-2. **Deterministic salt from mnemonic** enables cross-user precomputation attacks for common mnemonic inputs.
-3. **PIN-unlock hardening is incomplete** (no retry throttling/lockout; interactive Argon2 profile only).
-4. **Data minimization/privacy mismatch**: note titles are stored plaintext while docs claim no plaintext on disk.
-5. **Memory hygiene gaps**: derived keys and temporary key material are not consistently zeroized.
+Current top residual risks:
+1. **PIN lockout is bypassable for offline attackers** because counters are stored in the same editable DB.
+2. **AEAD portability gap**: AES-256-GCM hardware availability is not checked (`crypto_aead_aes256gcm_is_available()`).
+3. **Memory hygiene is improved but not complete**: `SecureBuffer` is used in key paths, but copies can still exist in regular `QByteArray` values.
+4. **AEAD hardening opportunities**: nonce/key length validation and AAD domain separation are still open.
+5. **SQLite privacy hardening** (`secure_delete`, journal policy) remains open.
 
 ## What is implemented well
 
@@ -23,45 +23,45 @@ Top risks:
 
 ## Findings
 
-## 1) Incomplete mnemonic validation (High)
+## 1) Incomplete mnemonic validation (High) — **Resolved**
 
-**Evidence:** `KeyManager::isValidMnemonic()` only checks 12/24 words and that the first char of each token is alphabetic, without BIP39 wordlist membership or checksum verification.
+**Updated validation:** `KeyManager::isValidMnemonic()` now performs BIP39-style validation: allowed word counts, wordlist membership lookup, checksum verification, and NFKD normalization.
 
-**Risk:** User can import invalid recovery phrase text and still derive/store a key, causing possible irrecoverable data loss and false security assumptions.
+**Status:** No longer a current issue.
 
 **Recommendation:**
 - Implement full BIP39 validation (wordlist + checksum).
 - Normalize input using BIP39 canonical rules (NFKD).
 
-## 2) Deterministic salt derived from mnemonic (High)
+## 2) Deterministic salt derived from mnemonic (High) — **Resolved**
 
-**Evidence:** `CryptoManager::saltFromMnemonic()` returns `SHA-256(mnemonic)` and `deriveKey()` uses it as Argon2 salt.
+**Updated validation:** `CryptoManager::randomSalt()` is used for mnemonic KDF, and the salt is persisted via DB metadata (`mnemonic_kdf_salt`).
 
-**Risk:** This creates deterministic KDF inputs per mnemonic, making large-scale precomputation/rainbow-style optimizations possible for common/weak phrase patterns. A random persisted salt is safer for password-style KDF workflows.
+**Status:** No longer a current issue.
 
 **Recommendation:**
 - Use a **random per-account salt** for mnemonic derivation and store it in DB metadata.
 - If deterministic re-derivation without storage is a hard requirement, explicitly document reduced resistance to precomputation and increase Argon2 cost materially.
 
-## 3) PIN brute-force resistance is weak (High)
+## 3) PIN brute-force resistance is weak (High) — **Partially resolved**
 
-**Evidence:**
-- PIN minimum is 4 (`PIN_MIN_LENGTH = 4`).
-- No retry counter, delay, or lockout is enforced in `unlockWithPin()`.
-- Argon2 uses `OPSLIMIT_INTERACTIVE/MEMLIMIT_INTERACTIVE` for PIN KDF.
+**Updated validation:**
+- PIN minimum is 6 (`PIN_MIN_LENGTH = 6`).
+- Retry counter + exponential lockout is enforced in `unlockWithPin()` and persisted in DB metadata.
+- PIN KDF uses Argon2id `OPSLIMIT_MODERATE/MEMLIMIT_MODERATE`.
 
-**Risk:** Offline DB attackers can attempt high-rate PIN guesses, especially if users choose short numeric PINs.
+**Residual risk:** Offline DB attackers can still reset lockout counters because lockout state is not tamper-resistant (see Known Limitations / Issue #10).
 
 **Recommendation:**
 - Raise minimum PIN length and permit/encourage passphrases.
 - Use stronger Argon2 profile for PIN wrapping (e.g., sensitive/moderate tuned to UX budget).
 - Add local retry backoff / lockout policy for online attempts.
 
-## 4) Plaintext titles in database (Medium)
+## 4) Plaintext titles in database (Medium) — **Resolved (with legacy caveat)**
 
-**Evidence:** `notes.title` is stored as plaintext and filled from first plaintext line before DB write.
+**Updated validation:** current save path encrypts titles into `title_ciphertext` + `title_nonce`, clears plaintext title on write, and includes migration logic for legacy plaintext titles.
 
-**Risk:** Leaks sensitive note content metadata even when note body is encrypted. Also conflicts with README claim of "no plaintext on disk."
+**Residual caveat:** legacy DB pages may still contain old plaintext title remnants depending on SQLite journaling/secure-delete settings.
 
 **Recommendation:**
 - Either encrypt titles (or derive non-sensitive summaries client-side in-memory) OR
@@ -162,6 +162,20 @@ significantly.
   offline PIN brute-force entirely
 
 ## Review History
+
+### Round 3 — 2026-03-13 (Codex re-validation)
+
+**Reviewer:** OpenAI Codex
+**Scope:** `SECURITY_REVIEW.md` claim validation against current `src/core/*` and tests
+**Branch:** current working branch
+
+**Validation outcome:**
+
+- Confirmed fixed: #2 (PIN hardening baseline), #3 (BIP39 validation), #4 (random mnemonic salt), #5 (encrypted titles in current write path).
+- Confirmed still open: #6 (temporary key copies may persist), #7 (AES-GCM availability fallback), #8 (nonce/AAD hardening), #9 (SQLite privacy pragmas).
+- Confirmed known limitation remains: #10 (offline lockout counter reset).
+
+This document has been updated to reflect current status so unresolved risks are not mixed with already remediated findings.
 
 ### Round 1 — 2026-03-13 (AI review by Claude Code)
 
