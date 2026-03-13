@@ -106,6 +106,10 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 void NotesBackend::unlockWithPin(const QString &pin)
 {
     // ── Brute-force protection (Issue #2) ──────────────────────────────
+    // NOTE: lockout state is stored in the same DB as the wrapped key.
+    // An offline attacker can reset the counters directly in SQLite.
+    // This is a known limitation (Issue #10, see SECURITY_REVIEW.md).
+    // The primary offline defense is Argon2id cost, not this counter.
     static constexpr int MAX_ATTEMPTS = 5;
     // Backoff schedule: 0, 0, 0, 0, 0, then 30s, 60s, 120s, 300s, 600s…
     static constexpr int BACKOFF_SECS[] = {30, 60, 120, 300, 600};
@@ -146,11 +150,13 @@ void NotesBackend::unlockWithPin(const QString &pin)
     const QByteArray masterKey = m_crypto.decrypt(wrappedKey, pinKey, wrapNonce);
     if (masterKey.isEmpty()) {
         ++m_failedAttempts;
-        m_db.saveMeta("pin_failed_attempts", QString::number(m_failedAttempts));
+        if (!m_db.saveMeta("pin_failed_attempts", QString::number(m_failedAttempts)))
+            qWarning() << "NotesBackend: failed to persist PIN attempt counter";
         if (m_failedAttempts >= MAX_ATTEMPTS) {
             int idx = qMin(m_failedAttempts - MAX_ATTEMPTS, BACKOFF_COUNT - 1);
             m_lockoutUntil = QDateTime::currentSecsSinceEpoch() + BACKOFF_SECS[idx];
-            m_db.saveMeta("pin_lockout_until", QString::number(m_lockoutUntil));
+            if (!m_db.saveMeta("pin_lockout_until", QString::number(m_lockoutUntil)))
+                qWarning() << "NotesBackend: failed to persist PIN lockout timestamp";
             setError(QString("Wrong PIN. Locked out for %1 seconds.").arg(BACKOFF_SECS[idx]));
         } else {
             int remaining = MAX_ATTEMPTS - m_failedAttempts;
@@ -162,8 +168,10 @@ void NotesBackend::unlockWithPin(const QString &pin)
     // 4. Success — reset brute-force counter.
     m_failedAttempts = 0;
     m_lockoutUntil = 0;
-    m_db.saveMeta("pin_failed_attempts", "0");
-    m_db.saveMeta("pin_lockout_until", "0");
+    if (!m_db.saveMeta("pin_failed_attempts", "0"))
+        qWarning() << "NotesBackend: failed to reset PIN attempt counter";
+    if (!m_db.saveMeta("pin_lockout_until", "0"))
+        qWarning() << "NotesBackend: failed to reset PIN lockout timestamp";
 
     // 5. Master key is back in memory; ready to decrypt notes.
     m_keys.setMasterKey(masterKey);

@@ -61,7 +61,7 @@ Top risks:
 
 **Evidence:** `notes.title` is stored as plaintext and filled from first plaintext line before DB write.
 
-**Risk:** Leaks sensitive note content metadata even when note body is encrypted. Also conflicts with README claim of “no plaintext on disk.”
+**Risk:** Leaks sensitive note content metadata even when note body is encrypted. Also conflicts with README claim of "no plaintext on disk."
 
 **Recommendation:**
 - Either encrypt titles (or derive non-sensitive summaries client-side in-memory) OR
@@ -110,7 +110,7 @@ Top risks:
 
 ## Consistency issue in documentation
 
-README states “no plaintext on disk,” but title metadata is currently plaintext in `notes.title`. Update docs or implementation to match.
+README states "no plaintext on disk," but title metadata is currently plaintext in `notes.title`. Update docs or implementation to match.
 
 ## Prioritized remediation plan
 
@@ -121,3 +121,90 @@ README states “no plaintext on disk,” but title metadata is currently plaint
 5. **P1:** Add secure key-buffer zeroization strategy.
 6. **P2:** Add AEAD availability fallback and input validation/AAD hardening.
 7. **P2:** SQLite privacy hardening pragmas.
+
+## Known Limitations
+
+### PIN lockout counter is not integrity-protected (Issue #10)
+
+The PIN brute-force counter (`pin_failed_attempts`, `pin_lockout_until`)
+is stored in the same SQLite database as the encrypted notes and wrapped
+key. There is no HMAC or integrity check on these values.
+
+**Implication:** An offline attacker with direct DB access can reset the
+lockout counters before each PIN guess, bypassing the retry throttle
+entirely.
+
+**Why this is acceptable for now:**
+
+The lockout counter is a **defense-in-depth** measure against casual and
+online attackers (e.g., someone who picks up an unlocked laptop). It is
+**not** the primary defense against offline brute-force.
+
+The primary offline defense is the **Argon2id KDF cost**
+(`OPSLIMIT_MODERATE` / `MEMLIMIT_MODERATE`), which makes each PIN guess
+take ~0.7s on modern hardware with ~256 MB RAM. Combined with the 6+
+character PIN minimum, this raises the cost of exhaustive search
+significantly.
+
+**Threat model summary:**
+
+| Attacker | Lockout effective? | Primary defense |
+|----------|-------------------|-----------------|
+| Casual (tries PINs via UI) | Yes | Lockout + Argon2 |
+| Offline (copies DB file) | No | Argon2 cost + PIN length |
+| Forensic (full disk access) | No | Argon2 cost + PIN length |
+
+**Future hardening (if needed):**
+
+- HMAC the lockout state with a key derived from a platform keychain or
+  hardware token (not from the master key — that's circular)
+- Move to hardware-backed key storage (Phase 1: Keycard) which eliminates
+  offline PIN brute-force entirely
+
+## Review History
+
+### Round 1 — 2026-03-13 (AI review by Claude Code)
+
+**Reviewer:** Claude Code (Opus)
+**Scope:** Full codebase — `src/core/`, `src/ui/`, database schema, encryption architecture
+**Branch:** `master` (pre-security-fixes)
+
+**Findings (8 total):**
+
+| # | Severity | Issue | Summary |
+|---|----------|-------|---------|
+| #2 | P0 | PIN brute-force resistance | No retry counter or lockout; 4-digit PIN minimum; Argon2 OPSLIMIT_INTERACTIVE too weak |
+| #3 | P0 | BIP39 wordlist validation | isValidMnemonic() only checked word count, no wordlist or checksum verification |
+| #4 | P0 | Deterministic mnemonic salt | SHA-256(mnemonic) as Argon2 salt enables precomputation attacks |
+| #5 | P1 | Plaintext note titles | `notes.title` stored unencrypted in SQLite, contradicts "no plaintext on disk" claim |
+| #6 | P1 | Temporary key buffers not zeroed | QByteArray locals holding key material not wiped after use |
+| #7 | P1 | AES-256-GCM hardware check missing | No `crypto_aead_aes256gcm_is_available()` call; silent failure on CPUs without AES-NI |
+| #8 | P2 | AEAD input validation / AAD | No nonce length validation; no AAD for domain separation |
+| #9 | P2 | SQLite privacy hardening | No `PRAGMA secure_delete`; default journal mode; no file permission enforcement |
+
+**P0 issues fixed on `security/p0-fixes` branch. P1/P2 issues remain open.**
+
+---
+
+### Round 2 — 2026-03-13 (Codex review of P0 fixes)
+
+**Reviewer:** OpenAI Codex (via `scripts/security-review-loop.sh`)
+**Scope:** `src/core/` diff on `security/p0-fixes` branch (commits `b18df1d`..`c009e88`)
+**Branch:** `security/p0-fixes`
+
+**Findings (2 total):**
+
+| # | Severity | Issue | Summary |
+|---|----------|-------|---------|
+| #10 | P1 | PIN lockout state bypassable | Lockout counters in same DB as wrapped key; offline attacker can reset before each guess |
+| #11 | P2 | saveMeta() return unchecked | Failed counter persistence silently ignored; restart resets attempt count |
+
+**Confirmed correct:**
+- Random salt generation and persistence (Issue #4 fix)
+- BIP39 wordlist + checksum validation (Issue #3 fix)
+- Argon2id cost upgrade to OPSLIMIT_MODERATE
+- Brute-force backoff logic (exponential schedule)
+
+**No critical crypto regressions found.**
+
+Both findings addressed: #11 fixed (return value checks + warnings), #10 documented as known limitation (see above).
