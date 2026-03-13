@@ -23,6 +23,25 @@ Item {
     // ── Screen state ────────────────────────────────────────────────────────
     property string currentScreen: "import"
     property string errorMessage:  ""
+    property int lockoutRemaining: 0
+
+    function parseLockoutSeconds(msg) {
+        var match = msg.match(/(\d+)\s*seconds/)
+        return match ? parseInt(match[1]) : 0
+    }
+
+    Timer {
+        id: lockoutTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            root.lockoutRemaining--
+            if (root.lockoutRemaining <= 0) {
+                root.lockoutRemaining = 0
+                lockoutTimer.stop()
+            }
+        }
+    }
 
     Component.onCompleted: {
         if (typeof logos === "undefined" || !logos.callModule) return
@@ -201,6 +220,7 @@ Item {
                 Layout.fillWidth: true
                 placeholderText: "Enter PIN"
                 echoMode: TextInput.Password
+                enabled: root.lockoutRemaining === 0
                 color: root.textColor
                 font.pixelSize: 14
                 placeholderTextColor: root.textPlaceholder
@@ -211,22 +231,31 @@ Item {
                     border.color: unlockPinField.activeFocus
                                   ? root.overlayOrange : root.bgElevated
                 }
-                Keys.onReturnPressed: unlockButton.clicked()
+                Keys.onReturnPressed: {
+                    if (root.lockoutRemaining === 0)
+                        unlockButton.clicked()
+                }
             }
 
             Text {
                 Layout.fillWidth: true
-                text: root.errorMessage
+                text: root.lockoutRemaining > 0
+                      ? "Locked out. Try again in " + root.lockoutRemaining + "s"
+                      : root.errorMessage
                 color: root.errorColor
                 font.pixelSize: 12
-                visible: root.currentScreen === "unlock" && root.errorMessage.length > 0
+                visible: root.lockoutRemaining > 0
+                         || (root.currentScreen === "unlock" && root.errorMessage.length > 0)
                 wrapMode: Text.WordWrap
             }
 
             Button {
                 id: unlockButton
                 Layout.fillWidth: true
-                text: "Unlock"
+                enabled: root.lockoutRemaining === 0
+                text: root.lockoutRemaining > 0
+                      ? "Locked (" + root.lockoutRemaining + "s)"
+                      : "Unlock"
                 contentItem: Text {
                     text: parent.text
                     font.pixelSize: 14
@@ -236,7 +265,9 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                 }
                 background: Rectangle {
-                    color: parent.pressed ? root.primaryHover : root.primary
+                    color: root.lockoutRemaining > 0
+                           ? root.bgSecondary
+                           : (parent.pressed ? root.primaryHover : root.primary)
                     radius: 16
                     implicitHeight: 44
                 }
@@ -247,9 +278,16 @@ Item {
                                                   [unlockPinField.text])
                     var parsed = JSON.parse(result)
                     if (parsed.success) {
+                        root.lockoutRemaining = 0
+                        lockoutTimer.stop()
                         root.currentScreen = "note"
                     } else {
                         root.errorMessage = parsed.error || "Unlock failed"
+                        var secs = root.parseLockoutSeconds(root.errorMessage)
+                        if (secs > 0) {
+                            root.lockoutRemaining = secs
+                            lockoutTimer.start()
+                        }
                     }
                 }
             }
