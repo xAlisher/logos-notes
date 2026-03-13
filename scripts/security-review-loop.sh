@@ -44,8 +44,14 @@ $(cat "$DIFF_FILE")
 EOF
 
 echo "=== Sending to Codex for security review ==="
-if ! codex < "$PROMPT_FILE"; then
-  EXIT_CODE=$?
+PROMPT=$(cat "$PROMPT_FILE")
+
+set +e
+codex exec "$PROMPT"
+EXIT_CODE=$?
+set -e
+
+if [ "$EXIT_CODE" -ne 0 ]; then
   echo ""
   echo "ERROR: codex exited with code $EXIT_CODE"
   echo "Diff saved at: $DIFF_FILE"
