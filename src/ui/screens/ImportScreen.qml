@@ -66,7 +66,7 @@ Item {
         LogosTextField {
             id: pinField
             Layout.fillWidth: true
-            placeholderText: "PIN (min 4 digits)"
+            placeholderText: "PIN (min 6 characters)"
             echoMode: TextInput.Password
         }
 

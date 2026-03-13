@@ -66,4 +66,8 @@ private:
 
     QString m_currentScreen;
     QString m_errorMessage;
+
+    // PIN brute-force protection (Issue #2)
+    int  m_failedAttempts = 0;
+    qint64 m_lockoutUntil = 0; // epoch seconds; 0 = no lockout
 };
