@@ -39,6 +39,7 @@ Item {
             if (root.lockoutRemaining <= 0) {
                 root.lockoutRemaining = 0
                 lockoutTimer.stop()
+                root.errorMessage = ""
             }
         }
     }

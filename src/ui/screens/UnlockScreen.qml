@@ -7,10 +7,8 @@ Item {
     id: unlockRoot
 
     property int lockoutRemaining: 0
+    property bool hideError: false
 
-    // Parse lockout seconds from error messages like:
-    //   "Wrong PIN. Locked out for 30 seconds."
-    //   "Too many failed attempts. Try again in 25 seconds."
     function parseLockoutSeconds(msg) {
         var match = msg.match(/(\d+)\s*seconds/)
         return match ? parseInt(match[1]) : 0
@@ -19,6 +17,7 @@ Item {
     Connections {
         target: backend
         function onErrorMessageChanged() {
+            hideError = false
             var secs = unlockRoot.parseLockoutSeconds(backend.errorMessage)
             if (secs > 0) {
                 unlockRoot.lockoutRemaining = secs
@@ -36,6 +35,7 @@ Item {
             if (unlockRoot.lockoutRemaining <= 0) {
                 unlockRoot.lockoutRemaining = 0
                 lockoutTimer.stop()
+                hideError = true
             }
         }
     }
@@ -83,7 +83,8 @@ Item {
                   : backend.errorMessage
             color: Theme.palette.error
             font.pixelSize: Theme.typography.secondaryText
-            visible: unlockRoot.lockoutRemaining > 0 || backend.errorMessage.length > 0
+            visible: unlockRoot.lockoutRemaining > 0
+                     || (!hideError && backend.errorMessage.length > 0)
             wrapMode: Text.WordWrap
         }
 
