@@ -86,8 +86,10 @@ QByteArray CryptoManager::decrypt(const QByteArray &ciphertext,
 QByteArray CryptoManager::deriveKeyFromPin(const QString &pin,
                                             const QByteArray &salt) const
 {
-    QByteArray paddedSalt = salt;
-    paddedSalt.resize(crypto_pwhash_SALTBYTES, '\0');
+    if (salt.size() < static_cast<int>(crypto_pwhash_SALTBYTES))
+        return {};
+
+    const QByteArray &paddedSalt = salt;
 
     QByteArray key(KEY_BYTES, '\0');
     const QByteArray pw = pin.toUtf8();
