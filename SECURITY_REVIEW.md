@@ -79,9 +79,20 @@ PIN UTF-8, derived keys, master key locals) is now wrapped in `SecureBuffer`.
 
 **Status:** Fixed in `security/p2-fixes` (Issue #7).
 
-`CryptoManager` constructor now calls `crypto_aead_aes256gcm_is_available()`.
-If AES-NI is unavailable, falls back to `crypto_aead_xchacha20poly1305_ietf`.
-Cipher selection logged at startup.
+**Design decision: fail-fast, no cipher fallback.**
+
+`CryptoManager` constructor checks `crypto_aead_aes256gcm_is_available()`.
+If AES-NI is unavailable, `isAvailable()` returns false and `NotesBackend`
+shows a clear error to the user and refuses to proceed.
+
+XChaCha20-Poly1305 fallback was considered and rejected because:
+- Dual-cipher support creates cipher persistence and cross-device migration
+  complexity (confirmed by a Codex review regression finding)
+- AES-NI has been standard on x86_64 since Intel Westmere (2010) and
+  AMD Bulldozer (2011); ARM equivalent (ARMv8 crypto) covers Apple Silicon
+  and modern Android
+- The edge case of a CPU without AES-NI in 2026 is near-nonexistent
+- Single cipher = simpler code, fewer bugs, no migration paths
 
 ## 7) AEAD input validation and domain separation hardening (Low)
 

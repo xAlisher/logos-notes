@@ -3,32 +3,18 @@
 #include <QByteArray>
 #include <QString>
 
-// Wraps libsodium AEAD encryption and Argon2id key derivation.
-// Cipher is chosen once at account creation (import) and persisted
-// in the DB. Existing accounts always use the persisted cipher,
-// regardless of current hardware capabilities.
+// Wraps libsodium: AES-256-GCM encryption and Argon2id key derivation.
+// Requires AES-NI hardware — fails fast at construction if unavailable.
 class CryptoManager
 {
 public:
-    static constexpr int KEY_BYTES = 32;
-
-    enum Cipher { AES256GCM, XCHACHA20POLY1305 };
+    static constexpr int KEY_BYTES   = 32; // crypto_aead_aes256gcm_KEYBYTES
+    static constexpr int NONCE_BYTES = 12; // crypto_aead_aes256gcm_NPUBBYTES
 
     CryptoManager();
 
-    // Set cipher explicitly (called after loading from DB meta).
-    void setCipher(Cipher c);
-
-    // Detect best cipher for this hardware (used only for new accounts).
-    static Cipher detectBestCipher();
-
-    Cipher cipher() const { return m_cipher; }
-    int    nonceBytes() const;
-    int    aBytes() const;
-
-    // String ↔ enum for DB persistence.
-    static QString cipherToString(Cipher c);
-    static Cipher  cipherFromString(const QString &s);
+    // Returns true if AES-256-GCM hardware is available.
+    bool isAvailable() const { return m_available; }
 
     // Derive a 256-bit master key from a BIP39 mnemonic using Argon2id.
     QByteArray deriveKey(const QString &mnemonic,
@@ -40,16 +26,16 @@ public:
 
     static QByteArray randomSalt();
 
-    // Encrypt plaintext with selected AEAD cipher. Returns ciphertext; fills nonce.
+    // Encrypt plaintext with AES-256-GCM. Returns ciphertext; fills nonce.
     QByteArray encrypt(const QByteArray &plaintext,
                        const QByteArray &key,
                        QByteArray       &nonceOut) const;
 
-    // Decrypt ciphertext with selected AEAD cipher. Returns plaintext, or empty on failure.
+    // Decrypt ciphertext with AES-256-GCM. Returns plaintext, or empty on failure.
     QByteArray decrypt(const QByteArray &ciphertext,
                        const QByteArray &key,
                        const QByteArray &nonce) const;
 
 private:
-    Cipher m_cipher;
+    bool m_available = false;
 };

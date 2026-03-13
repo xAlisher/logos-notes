@@ -5,53 +5,16 @@
 #include <QDebug>
 
 CryptoManager::CryptoManager()
-    : m_cipher(AES256GCM) // default; overridden by setCipher() or detectBestCipher()
 {
     if (sodium_init() < 0) {
         // -1 means failure; 1 means already initialised — both fine here.
     }
-}
 
-void CryptoManager::setCipher(Cipher c)
-{
-    m_cipher = c;
-    qDebug() << "CryptoManager: cipher set to" << cipherToString(c);
-}
-
-CryptoManager::Cipher CryptoManager::detectBestCipher()
-{
-    // Ensure sodium is initialised before checking.
-    sodium_init();
-    if (crypto_aead_aes256gcm_is_available())
-        return AES256GCM;
-    return XCHACHA20POLY1305;
-}
-
-QString CryptoManager::cipherToString(Cipher c)
-{
-    return c == AES256GCM ? QStringLiteral("aes256gcm")
-                          : QStringLiteral("xchacha20");
-}
-
-CryptoManager::Cipher CryptoManager::cipherFromString(const QString &s)
-{
-    if (s == QStringLiteral("xchacha20"))
-        return XCHACHA20POLY1305;
-    return AES256GCM; // default for legacy DBs (all existing data is AES-GCM)
-}
-
-int CryptoManager::nonceBytes() const
-{
-    return m_cipher == AES256GCM
-        ? static_cast<int>(crypto_aead_aes256gcm_NPUBBYTES)               // 12
-        : static_cast<int>(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES); // 24
-}
-
-int CryptoManager::aBytes() const
-{
-    return m_cipher == AES256GCM
-        ? static_cast<int>(crypto_aead_aes256gcm_ABYTES)               // 16
-        : static_cast<int>(crypto_aead_xchacha20poly1305_ietf_ABYTES); // 16
+    m_available = crypto_aead_aes256gcm_is_available() != 0;
+    if (m_available)
+        qDebug() << "CryptoManager: AES-256-GCM available (AES-NI)";
+    else
+        qWarning() << "CryptoManager: AES-256-GCM NOT available — encryption will fail";
 }
 
 QByteArray CryptoManager::deriveKey(const QString &mnemonic,
@@ -81,29 +44,18 @@ QByteArray CryptoManager::encrypt(const QByteArray &plaintext,
                                    const QByteArray &key,
                                    QByteArray       &nonceOut) const
 {
-    const int nb = nonceBytes();
-    nonceOut.resize(nb);
-    randombytes_buf(nonceOut.data(), nb);
+    nonceOut.resize(NONCE_BYTES);
+    randombytes_buf(nonceOut.data(), NONCE_BYTES);
 
-    QByteArray ciphertext(plaintext.size() + aBytes(), '\0');
+    QByteArray ciphertext(plaintext.size() + crypto_aead_aes256gcm_ABYTES, '\0');
     unsigned long long cipherLen = 0;
-    int rc;
 
-    if (m_cipher == AES256GCM) {
-        rc = crypto_aead_aes256gcm_encrypt(
-            reinterpret_cast<unsigned char *>(ciphertext.data()), &cipherLen,
-            reinterpret_cast<const unsigned char *>(plaintext.constData()), plaintext.size(),
-            nullptr, 0, nullptr,
-            reinterpret_cast<const unsigned char *>(nonceOut.constData()),
-            reinterpret_cast<const unsigned char *>(key.constData()));
-    } else {
-        rc = crypto_aead_xchacha20poly1305_ietf_encrypt(
-            reinterpret_cast<unsigned char *>(ciphertext.data()), &cipherLen,
-            reinterpret_cast<const unsigned char *>(plaintext.constData()), plaintext.size(),
-            nullptr, 0, nullptr,
-            reinterpret_cast<const unsigned char *>(nonceOut.constData()),
-            reinterpret_cast<const unsigned char *>(key.constData()));
-    }
+    int rc = crypto_aead_aes256gcm_encrypt(
+        reinterpret_cast<unsigned char *>(ciphertext.data()), &cipherLen,
+        reinterpret_cast<const unsigned char *>(plaintext.constData()), plaintext.size(),
+        nullptr, 0, nullptr,
+        reinterpret_cast<const unsigned char *>(nonceOut.constData()),
+        reinterpret_cast<const unsigned char *>(key.constData()));
 
     if (rc != 0)
         return {};
@@ -116,37 +68,26 @@ QByteArray CryptoManager::decrypt(const QByteArray &ciphertext,
                                    const QByteArray &key,
                                    const QByteArray &nonce) const
 {
-    if (ciphertext.size() < aBytes())
+    if (ciphertext.size() < static_cast<int>(crypto_aead_aes256gcm_ABYTES))
         return {};
 
     // Validate nonce length before passing to libsodium.
-    if (nonce.size() != nonceBytes()) {
+    if (nonce.size() != NONCE_BYTES) {
         qWarning() << "CryptoManager::decrypt: nonce size mismatch:"
-                   << nonce.size() << "expected" << nonceBytes();
+                   << nonce.size() << "expected" << NONCE_BYTES;
         return {};
     }
 
-    QByteArray plaintext(ciphertext.size() - aBytes(), '\0');
+    QByteArray plaintext(ciphertext.size() - crypto_aead_aes256gcm_ABYTES, '\0');
     unsigned long long plainLen = 0;
-    int rc;
 
-    if (m_cipher == AES256GCM) {
-        rc = crypto_aead_aes256gcm_decrypt(
-            reinterpret_cast<unsigned char *>(plaintext.data()), &plainLen,
-            nullptr,
-            reinterpret_cast<const unsigned char *>(ciphertext.constData()), ciphertext.size(),
-            nullptr, 0,
-            reinterpret_cast<const unsigned char *>(nonce.constData()),
-            reinterpret_cast<const unsigned char *>(key.constData()));
-    } else {
-        rc = crypto_aead_xchacha20poly1305_ietf_decrypt(
-            reinterpret_cast<unsigned char *>(plaintext.data()), &plainLen,
-            nullptr,
-            reinterpret_cast<const unsigned char *>(ciphertext.constData()), ciphertext.size(),
-            nullptr, 0,
-            reinterpret_cast<const unsigned char *>(nonce.constData()),
-            reinterpret_cast<const unsigned char *>(key.constData()));
-    }
+    int rc = crypto_aead_aes256gcm_decrypt(
+        reinterpret_cast<unsigned char *>(plaintext.data()), &plainLen,
+        nullptr,
+        reinterpret_cast<const unsigned char *>(ciphertext.constData()), ciphertext.size(),
+        nullptr, 0,
+        reinterpret_cast<const unsigned char *>(nonce.constData()),
+        reinterpret_cast<const unsigned char *>(key.constData()));
 
     if (rc != 0)
         return {};

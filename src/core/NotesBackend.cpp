@@ -22,18 +22,19 @@ static QString titleFromPlaintext(const QString &text)
 NotesBackend::NotesBackend(QObject *parent)
     : QObject(parent)
 {
+    // Fail fast if AES-NI hardware is not available.
+    if (!m_crypto.isAvailable()) {
+        m_currentScreen = "import";
+        m_errorMessage = "AES hardware acceleration not available on this CPU. "
+                         "Immutable Notes requires AES-NI (available on all CPUs since 2010).";
+        return;
+    }
+
     m_db.init();
 
     // Restore brute-force counter from DB (survives app restarts).
     m_failedAttempts = m_db.loadMeta("pin_failed_attempts", "0").toInt();
     m_lockoutUntil = m_db.loadMeta("pin_lockout_until", "0").toLongLong();
-
-    // Restore persisted cipher choice. For existing accounts without a stored
-    // cipher, default to AES256GCM (all legacy data was encrypted with it).
-    // New accounts choose the best available cipher at import time.
-    QString storedCipher = m_db.loadMeta("cipher");
-    if (!storedCipher.isEmpty())
-        m_crypto.setCipher(CryptoManager::cipherFromString(storedCipher));
 
     if (m_db.isInitialized())
         m_currentScreen = "unlock";
@@ -68,9 +69,6 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
-    // 0. Choose and persist the AEAD cipher for this account.
-    m_crypto.setCipher(CryptoManager::detectBestCipher());
-
     // 1. Derive the master key from the mnemonic with a random salt (never stored).
     const QByteArray mnemonicSalt = CryptoManager::randomSalt();
     SecureBuffer masterKey(m_crypto.deriveKey(mnemonic, mnemonicSalt));
@@ -102,9 +100,8 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
-    // 5. Persist the mnemonic KDF salt and cipher choice.
+    // 5. Persist the mnemonic KDF salt.
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
-    m_db.saveMeta("cipher", CryptoManager::cipherToString(m_crypto.cipher()));
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());
