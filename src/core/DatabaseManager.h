@@ -69,6 +69,14 @@ public:
                         QByteArray &nonceOut,
                         QByteArray &pinSaltOut) const;
 
+    // Generic meta key-value store (text values).
+    bool saveMeta(const QString &key, const QString &value);
+    QString loadMeta(const QString &key, const QString &defaultValue = {}) const;
+
+    // Binary meta storage (for salts, etc.).
+    bool saveMetaBlob(const QString &key, const QByteArray &blob);
+    QByteArray loadMetaBlob(const QString &key) const;
+
     // Close the connection and delete the database file.
     void wipe();
 

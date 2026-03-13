@@ -39,10 +39,11 @@ void TestMultiNote::initTestCase()
     m_db = new DatabaseManager(m_tmpDir->path() + "/test.db");
     QVERIFY(m_db->init());
 
-    // Derive a test key from a fixed mnemonic.
+    // Derive a test key from a fixed mnemonic + random salt.
+    QByteArray salt = CryptoManager::randomSalt();
     m_key = m_crypto.deriveKey("abandon abandon abandon abandon abandon "
                                "abandon abandon abandon abandon abandon "
-                               "abandon about");
+                               "abandon about", salt);
     QVERIFY(!m_key.isEmpty());
 }
 

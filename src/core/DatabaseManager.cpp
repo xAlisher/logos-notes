@@ -171,14 +171,45 @@ void DatabaseManager::wipe()
 
 bool DatabaseManager::setInitialized()
 {
+    return saveMeta("initialized", "1");
+}
+
+bool DatabaseManager::saveMeta(const QString &key, const QString &value)
+{
     QSqlDatabase db = QSqlDatabase::database(CONNECTION);
     QSqlQuery q(db);
-    q.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('initialized', '1')");
+    q.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
+    q.addBindValue(key);
+    q.addBindValue(value);
     if (!q.exec()) {
-        qWarning() << "DatabaseManager: setInitialized failed:" << q.lastError();
+        qWarning() << "DatabaseManager: saveMeta failed:" << q.lastError();
         return false;
     }
     return true;
+}
+
+QString DatabaseManager::loadMeta(const QString &key, const QString &defaultValue) const
+{
+    QSqlDatabase db = QSqlDatabase::database(CONNECTION);
+    QSqlQuery q(db);
+    q.prepare("SELECT value FROM meta WHERE key = ?");
+    q.addBindValue(key);
+    if (!q.exec() || !q.next())
+        return defaultValue;
+    return q.value(0).toString();
+}
+
+bool DatabaseManager::saveMetaBlob(const QString &key, const QByteArray &blob)
+{
+    return saveMeta(key, QString::fromLatin1(blob.toBase64()));
+}
+
+QByteArray DatabaseManager::loadMetaBlob(const QString &key) const
+{
+    QString b64 = loadMeta(key);
+    if (b64.isEmpty())
+        return {};
+    return QByteArray::fromBase64(b64.toLatin1());
 }
 
 // ── Phase 1: multi-note CRUD ────────────────────────────────────────────

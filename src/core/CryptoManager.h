@@ -13,10 +13,10 @@ public:
     CryptoManager();
 
     // Derive a 256-bit master key from a BIP39 mnemonic using Argon2id.
-    // Salt is derived deterministically from the mnemonic so the same phrase
-    // always produces the same master key (no salt storage needed).
+    // Caller must supply a random salt (16 bytes) that is persisted in the DB.
     // Returns empty QByteArray on failure.
-    QByteArray deriveKey(const QString &mnemonic) const;
+    QByteArray deriveKey(const QString &mnemonic,
+                         const QByteArray &salt) const;
 
     // Derive a 256-bit wrapping key from a PIN + caller-supplied random salt.
     // The salt must be crypto_pwhash_SALTBYTES (16) bytes and stored in the DB
@@ -39,7 +39,4 @@ public:
                        const QByteArray &nonce) const;
 
 private:
-    // Salt derived deterministically from the mnemonic (not random, by design:
-    // same mnemonic must always produce the same master key).
-    QByteArray saltFromMnemonic(const QString &mnemonic) const;
 };

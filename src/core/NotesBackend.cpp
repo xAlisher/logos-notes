@@ -1,5 +1,6 @@
 #include "NotesBackend.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -55,8 +56,9 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
-    // 1. Derive the master key from the mnemonic (never stored).
-    const QByteArray masterKey = m_crypto.deriveKey(mnemonic);
+    // 1. Derive the master key from the mnemonic with a random salt (never stored).
+    const QByteArray mnemonicSalt = CryptoManager::randomSalt();
+    const QByteArray masterKey = m_crypto.deriveKey(mnemonic, mnemonicSalt);
     if (masterKey.isEmpty()) {
         setError("Key derivation failed.");
         return;
@@ -85,7 +87,11 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
-    // 5. Hold the master key in memory for this session.
+    // 5. Persist the mnemonic KDF salt so re-import from same phrase
+    //    can reproduce the same master key (needed if wrapped key is lost).
+    m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
+
+    // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey);
 
     m_db.setInitialized();
@@ -95,8 +101,25 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
 void NotesBackend::unlockWithPin(const QString &pin)
 {
+    // ── Brute-force protection (Issue #2) ──────────────────────────────
+    static constexpr int MAX_ATTEMPTS = 5;
+    // Backoff schedule: 0, 0, 0, 0, 0, then 30s, 60s, 120s, 300s, 600s…
+    static constexpr int BACKOFF_SECS[] = {30, 60, 120, 300, 600};
+    static constexpr int BACKOFF_COUNT = sizeof(BACKOFF_SECS) / sizeof(BACKOFF_SECS[0]);
+
+    if (m_lockoutUntil > 0) {
+        qint64 now = QDateTime::currentSecsSinceEpoch();
+        if (now < m_lockoutUntil) {
+            int remaining = static_cast<int>(m_lockoutUntil - now);
+            setError(QString("Too many failed attempts. Try again in %1 seconds.")
+                         .arg(remaining));
+            return;
+        }
+        m_lockoutUntil = 0; // lockout expired
+    }
+
     if (pin.length() < KeyManager::PIN_MIN_LENGTH) {
-        setError(QString("PIN must be at least %1 digits.").arg(KeyManager::PIN_MIN_LENGTH));
+        setError(QString("PIN must be at least %1 characters.").arg(KeyManager::PIN_MIN_LENGTH));
         return;
     }
 
@@ -118,11 +141,23 @@ void NotesBackend::unlockWithPin(const QString &pin)
     //    happens here — wrong PIN produces an empty result.
     const QByteArray masterKey = m_crypto.decrypt(wrappedKey, pinKey, wrapNonce);
     if (masterKey.isEmpty()) {
-        setError("Wrong PIN.");
+        ++m_failedAttempts;
+        if (m_failedAttempts >= MAX_ATTEMPTS) {
+            int idx = qMin(m_failedAttempts - MAX_ATTEMPTS, BACKOFF_COUNT - 1);
+            m_lockoutUntil = QDateTime::currentSecsSinceEpoch() + BACKOFF_SECS[idx];
+            setError(QString("Wrong PIN. Locked out for %1 seconds.").arg(BACKOFF_SECS[idx]));
+        } else {
+            int remaining = MAX_ATTEMPTS - m_failedAttempts;
+            setError(QString("Wrong PIN. %1 attempt(s) remaining.").arg(remaining));
+        }
         return;
     }
 
-    // 4. Master key is back in memory; ready to decrypt notes.
+    // 4. Success — reset brute-force counter.
+    m_failedAttempts = 0;
+    m_lockoutUntil = 0;
+
+    // 5. Master key is back in memory; ready to decrypt notes.
     m_keys.setMasterKey(masterKey);
     setError({});
     setScreen("note");

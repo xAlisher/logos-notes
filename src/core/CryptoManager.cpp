@@ -1,7 +1,6 @@
 #include "CryptoManager.h"
 
 #include <sodium.h>
-#include <QCryptographicHash>
 
 CryptoManager::CryptoManager()
 {
@@ -11,11 +10,11 @@ CryptoManager::CryptoManager()
     }
 }
 
-QByteArray CryptoManager::deriveKey(const QString &mnemonic) const
+QByteArray CryptoManager::deriveKey(const QString &mnemonic,
+                                     const QByteArray &salt) const
 {
-    QByteArray salt = saltFromMnemonic(mnemonic);
-    // Pad or truncate salt to crypto_pwhash_SALTBYTES (16 bytes).
-    salt.resize(crypto_pwhash_SALTBYTES, '\0');
+    if (salt.size() < static_cast<int>(crypto_pwhash_SALTBYTES))
+        return {};
 
     QByteArray key(KEY_BYTES, '\0');
     const QByteArray pw = mnemonic.toUtf8();
@@ -24,8 +23,8 @@ QByteArray CryptoManager::deriveKey(const QString &mnemonic) const
         reinterpret_cast<unsigned char *>(key.data()), KEY_BYTES,
         pw.constData(), static_cast<unsigned long long>(pw.size()),
         reinterpret_cast<const unsigned char *>(salt.constData()),
-        crypto_pwhash_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_MEMLIMIT_INTERACTIVE,
+        crypto_pwhash_OPSLIMIT_MODERATE,
+        crypto_pwhash_MEMLIMIT_MODERATE,
         crypto_pwhash_ALG_ARGON2ID13);
 
     if (rc != 0) {
@@ -97,8 +96,8 @@ QByteArray CryptoManager::deriveKeyFromPin(const QString &pin,
         reinterpret_cast<unsigned char *>(key.data()), KEY_BYTES,
         pw.constData(), static_cast<unsigned long long>(pw.size()),
         reinterpret_cast<const unsigned char *>(paddedSalt.constData()),
-        crypto_pwhash_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_MEMLIMIT_INTERACTIVE,
+        crypto_pwhash_OPSLIMIT_MODERATE,
+        crypto_pwhash_MEMLIMIT_MODERATE,
         crypto_pwhash_ALG_ARGON2ID13);
 
     if (rc != 0) {
@@ -115,8 +114,3 @@ QByteArray CryptoManager::randomSalt()
     return salt;
 }
 
-QByteArray CryptoManager::saltFromMnemonic(const QString &mnemonic) const
-{
-    // Deterministic salt: SHA-256 of the mnemonic (truncated to SALTBYTES).
-    return QCryptographicHash::hash(mnemonic.toUtf8(), QCryptographicHash::Sha256);
-}
