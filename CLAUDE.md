@@ -683,6 +683,11 @@ response before assigning to `editor.text`. Assigning the raw
 instead of content. On error it returns `{"error":"..."}` — guard
 against this in QML to avoid flashing error JSON in the editor.
 
+**Rule: update README after every master merge.**
+After merging feature or security branches to master, always update
+README.md (features, roadmap status, security tracker) and commit
+with message `docs: update README for vX.X`.
+
 **Active DB path is `~/.local/share/logos_host/notes.db`.**
 Both the standalone app and the Logos App plugin write to
 `~/.local/share/logos_host/notes.db`. The path
