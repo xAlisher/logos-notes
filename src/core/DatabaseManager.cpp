@@ -33,7 +33,15 @@ bool DatabaseManager::init()
         return false;
     }
 
+    // Set file permissions to owner-only (0600).
+    QFile::setPermissions(m_dbPath,
+        QFile::ReadOwner | QFile::WriteOwner);
+
     QSqlQuery q(db);
+
+    // Privacy hardening: overwrite deleted content, use DELETE journal mode.
+    q.exec("PRAGMA secure_delete=ON");
+    q.exec("PRAGMA journal_mode=DELETE");
 
     // Phase 0 schema
     if (!q.exec("CREATE TABLE IF NOT EXISTS notes ("
