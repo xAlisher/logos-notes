@@ -683,6 +683,13 @@ response before assigning to `editor.text`. Assigning the raw
 instead of content. On error it returns `{"error":"..."}` — guard
 against this in QML to avoid flashing error JSON in the editor.
 
+**Active DB path is `~/.local/share/logos_host/notes.db`.**
+Both the standalone app and the Logos App plugin write to
+`~/.local/share/logos_host/notes.db`. The path
+`~/.local/share/logos-co/logos-notes/notes.db` is a stale DB from
+an earlier run and is **not** used by the current code. When verifying
+DB contents (schema, plaintext leaks, etc.), always check `logos_host`.
+
 ---
 
 ## Notes for Claude Code Sessions
