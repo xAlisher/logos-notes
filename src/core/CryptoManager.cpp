@@ -2,13 +2,35 @@
 #include "SecureBuffer.h"
 
 #include <sodium.h>
+#include <QDebug>
 
 CryptoManager::CryptoManager()
 {
     if (sodium_init() < 0) {
-        // sodium_init() returns 1 if already initialised — that's fine.
-        // A return of -1 means failure; nothing more we can do here.
+        // -1 means failure; 1 means already initialised — both fine here.
     }
+
+    if (crypto_aead_aes256gcm_is_available()) {
+        m_cipher = AES256GCM;
+        qDebug() << "CryptoManager: using AES-256-GCM (hardware AES-NI)";
+    } else {
+        m_cipher = XCHACHA20POLY1305;
+        qDebug() << "CryptoManager: AES-NI unavailable, using XChaCha20-Poly1305";
+    }
+}
+
+int CryptoManager::nonceBytes() const
+{
+    return m_cipher == AES256GCM
+        ? static_cast<int>(crypto_aead_aes256gcm_NPUBBYTES)               // 12
+        : static_cast<int>(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES); // 24
+}
+
+int CryptoManager::aBytes() const
+{
+    return m_cipher == AES256GCM
+        ? static_cast<int>(crypto_aead_aes256gcm_ABYTES)               // 16
+        : static_cast<int>(crypto_aead_xchacha20poly1305_ietf_ABYTES); // 16
 }
 
 QByteArray CryptoManager::deriveKey(const QString &mnemonic,
@@ -29,28 +51,38 @@ QByteArray CryptoManager::deriveKey(const QString &mnemonic,
         crypto_pwhash_ALG_ARGON2ID13);
 
     if (rc != 0)
-        return {}; // SecureBuffer destructor wipes key
+        return {};
 
     return key.toByteArray();
-    // pw wiped by SecureBuffer destructor
 }
 
 QByteArray CryptoManager::encrypt(const QByteArray &plaintext,
                                    const QByteArray &key,
                                    QByteArray       &nonceOut) const
 {
-    nonceOut.resize(NONCE_BYTES);
-    randombytes_buf(nonceOut.data(), NONCE_BYTES);
+    const int nb = nonceBytes();
+    nonceOut.resize(nb);
+    randombytes_buf(nonceOut.data(), nb);
 
-    QByteArray ciphertext(plaintext.size() + crypto_aead_aes256gcm_ABYTES, '\0');
+    QByteArray ciphertext(plaintext.size() + aBytes(), '\0');
     unsigned long long cipherLen = 0;
+    int rc;
 
-    int rc = crypto_aead_aes256gcm_encrypt(
-        reinterpret_cast<unsigned char *>(ciphertext.data()), &cipherLen,
-        reinterpret_cast<const unsigned char *>(plaintext.constData()), plaintext.size(),
-        nullptr, 0, nullptr,
-        reinterpret_cast<const unsigned char *>(nonceOut.constData()),
-        reinterpret_cast<const unsigned char *>(key.constData()));
+    if (m_cipher == AES256GCM) {
+        rc = crypto_aead_aes256gcm_encrypt(
+            reinterpret_cast<unsigned char *>(ciphertext.data()), &cipherLen,
+            reinterpret_cast<const unsigned char *>(plaintext.constData()), plaintext.size(),
+            nullptr, 0, nullptr,
+            reinterpret_cast<const unsigned char *>(nonceOut.constData()),
+            reinterpret_cast<const unsigned char *>(key.constData()));
+    } else {
+        rc = crypto_aead_xchacha20poly1305_ietf_encrypt(
+            reinterpret_cast<unsigned char *>(ciphertext.data()), &cipherLen,
+            reinterpret_cast<const unsigned char *>(plaintext.constData()), plaintext.size(),
+            nullptr, 0, nullptr,
+            reinterpret_cast<const unsigned char *>(nonceOut.constData()),
+            reinterpret_cast<const unsigned char *>(key.constData()));
+    }
 
     if (rc != 0)
         return {};
@@ -63,19 +95,30 @@ QByteArray CryptoManager::decrypt(const QByteArray &ciphertext,
                                    const QByteArray &key,
                                    const QByteArray &nonce) const
 {
-    if (ciphertext.size() < static_cast<int>(crypto_aead_aes256gcm_ABYTES))
+    if (ciphertext.size() < aBytes())
         return {};
 
-    QByteArray plaintext(ciphertext.size() - crypto_aead_aes256gcm_ABYTES, '\0');
+    QByteArray plaintext(ciphertext.size() - aBytes(), '\0');
     unsigned long long plainLen = 0;
+    int rc;
 
-    int rc = crypto_aead_aes256gcm_decrypt(
-        reinterpret_cast<unsigned char *>(plaintext.data()), &plainLen,
-        nullptr,
-        reinterpret_cast<const unsigned char *>(ciphertext.constData()), ciphertext.size(),
-        nullptr, 0,
-        reinterpret_cast<const unsigned char *>(nonce.constData()),
-        reinterpret_cast<const unsigned char *>(key.constData()));
+    if (m_cipher == AES256GCM) {
+        rc = crypto_aead_aes256gcm_decrypt(
+            reinterpret_cast<unsigned char *>(plaintext.data()), &plainLen,
+            nullptr,
+            reinterpret_cast<const unsigned char *>(ciphertext.constData()), ciphertext.size(),
+            nullptr, 0,
+            reinterpret_cast<const unsigned char *>(nonce.constData()),
+            reinterpret_cast<const unsigned char *>(key.constData()));
+    } else {
+        rc = crypto_aead_xchacha20poly1305_ietf_decrypt(
+            reinterpret_cast<unsigned char *>(plaintext.data()), &plainLen,
+            nullptr,
+            reinterpret_cast<const unsigned char *>(ciphertext.constData()), ciphertext.size(),
+            nullptr, 0,
+            reinterpret_cast<const unsigned char *>(nonce.constData()),
+            reinterpret_cast<const unsigned char *>(key.constData()));
+    }
 
     if (rc != 0)
         return {};
@@ -102,10 +145,9 @@ QByteArray CryptoManager::deriveKeyFromPin(const QString &pin,
         crypto_pwhash_ALG_ARGON2ID13);
 
     if (rc != 0)
-        return {}; // SecureBuffer destructor wipes key
+        return {};
 
     return key.toByteArray();
-    // pw wiped by SecureBuffer destructor
 }
 
 QByteArray CryptoManager::randomSalt()
