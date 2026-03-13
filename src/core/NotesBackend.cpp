@@ -28,6 +28,13 @@ NotesBackend::NotesBackend(QObject *parent)
     m_failedAttempts = m_db.loadMeta("pin_failed_attempts", "0").toInt();
     m_lockoutUntil = m_db.loadMeta("pin_lockout_until", "0").toLongLong();
 
+    // Restore persisted cipher choice. For existing accounts without a stored
+    // cipher, default to AES256GCM (all legacy data was encrypted with it).
+    // New accounts choose the best available cipher at import time.
+    QString storedCipher = m_db.loadMeta("cipher");
+    if (!storedCipher.isEmpty())
+        m_crypto.setCipher(CryptoManager::cipherFromString(storedCipher));
+
     if (m_db.isInitialized())
         m_currentScreen = "unlock";
     else
@@ -61,6 +68,9 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
+    // 0. Choose and persist the AEAD cipher for this account.
+    m_crypto.setCipher(CryptoManager::detectBestCipher());
+
     // 1. Derive the master key from the mnemonic with a random salt (never stored).
     const QByteArray mnemonicSalt = CryptoManager::randomSalt();
     SecureBuffer masterKey(m_crypto.deriveKey(mnemonic, mnemonicSalt));
@@ -92,9 +102,9 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
-    // 5. Persist the mnemonic KDF salt so re-import from same phrase
-    //    can reproduce the same master key (needed if wrapped key is lost).
+    // 5. Persist the mnemonic KDF salt and cipher choice.
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
+    m_db.saveMeta("cipher", CryptoManager::cipherToString(m_crypto.cipher()));
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());

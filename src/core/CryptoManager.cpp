@@ -5,18 +5,39 @@
 #include <QDebug>
 
 CryptoManager::CryptoManager()
+    : m_cipher(AES256GCM) // default; overridden by setCipher() or detectBestCipher()
 {
     if (sodium_init() < 0) {
         // -1 means failure; 1 means already initialised — both fine here.
     }
+}
 
-    if (crypto_aead_aes256gcm_is_available()) {
-        m_cipher = AES256GCM;
-        qDebug() << "CryptoManager: using AES-256-GCM (hardware AES-NI)";
-    } else {
-        m_cipher = XCHACHA20POLY1305;
-        qDebug() << "CryptoManager: AES-NI unavailable, using XChaCha20-Poly1305";
-    }
+void CryptoManager::setCipher(Cipher c)
+{
+    m_cipher = c;
+    qDebug() << "CryptoManager: cipher set to" << cipherToString(c);
+}
+
+CryptoManager::Cipher CryptoManager::detectBestCipher()
+{
+    // Ensure sodium is initialised before checking.
+    sodium_init();
+    if (crypto_aead_aes256gcm_is_available())
+        return AES256GCM;
+    return XCHACHA20POLY1305;
+}
+
+QString CryptoManager::cipherToString(Cipher c)
+{
+    return c == AES256GCM ? QStringLiteral("aes256gcm")
+                          : QStringLiteral("xchacha20");
+}
+
+CryptoManager::Cipher CryptoManager::cipherFromString(const QString &s)
+{
+    if (s == QStringLiteral("xchacha20"))
+        return XCHACHA20POLY1305;
+    return AES256GCM; // default for legacy DBs (all existing data is AES-GCM)
 }
 
 int CryptoManager::nonceBytes() const
@@ -97,6 +118,13 @@ QByteArray CryptoManager::decrypt(const QByteArray &ciphertext,
 {
     if (ciphertext.size() < aBytes())
         return {};
+
+    // Validate nonce length before passing to libsodium.
+    if (nonce.size() != nonceBytes()) {
+        qWarning() << "CryptoManager::decrypt: nonce size mismatch:"
+                   << nonce.size() << "expected" << nonceBytes();
+        return {};
+    }
 
     QByteArray plaintext(ciphertext.size() - aBytes(), '\0');
     unsigned long long plainLen = 0;

@@ -4,8 +4,9 @@
 #include <QString>
 
 // Wraps libsodium AEAD encryption and Argon2id key derivation.
-// Automatically selects AES-256-GCM (if hardware AES-NI available)
-// or XChaCha20-Poly1305 as fallback.
+// Cipher is chosen once at account creation (import) and persisted
+// in the DB. Existing accounts always use the persisted cipher,
+// regardless of current hardware capabilities.
 class CryptoManager
 {
 public:
@@ -15,9 +16,19 @@ public:
 
     CryptoManager();
 
+    // Set cipher explicitly (called after loading from DB meta).
+    void setCipher(Cipher c);
+
+    // Detect best cipher for this hardware (used only for new accounts).
+    static Cipher detectBestCipher();
+
     Cipher cipher() const { return m_cipher; }
     int    nonceBytes() const;
     int    aBytes() const;
+
+    // String ↔ enum for DB persistence.
+    static QString cipherToString(Cipher c);
+    static Cipher  cipherFromString(const QString &s);
 
     // Derive a 256-bit master key from a BIP39 mnemonic using Argon2id.
     QByteArray deriveKey(const QString &mnemonic,
