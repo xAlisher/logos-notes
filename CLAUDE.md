@@ -763,7 +763,19 @@ The AppImage approach is simpler — use it for testing.
 Logos App spawns `logos_host` child processes per module. These survive
 the parent `LogosApp` process being killed. Old `logos_host` processes
 hold stale `.so` files and block new module loads. Always kill
-everything: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`
+everything: `kill -9 $(ps aux | grep logos | grep -v grep | awk '{print $2}')`
+
+**Always run `qmllint` on plugin Main.qml before installing.**
+The Logos App QML sandbox silently fails on syntax errors — no error
+shown to user, just "Load" does nothing. On retry it enters an infinite
+loop. Run: `~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml`
+If qmllint shows no syntax errors, the plugin will load. Warnings
+about `unqualified` access for `logos` are expected and harmless.
+
+**Python brace counting is unreliable for QML validation.**
+QML uses `{}` in JavaScript blocks (onClicked, functions) differently
+from QML object declarations. Python `{`/`}` counting gives wrong
+results. Always use `qmllint` as the authoritative syntax checker.
 
 ---
 
