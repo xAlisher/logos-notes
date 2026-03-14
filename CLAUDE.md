@@ -736,6 +736,19 @@ DB contents (schema, plaintext leaks, etc.), always check `logos_host`.
 - Check SQLite: `sqlite3 ~/.local/share/logos_host/notes.db "SELECT hex(title_ciphertext) FROM notes LIMIT 1;"`
   (should show hex blob, not readable text)
 
+### Logos App updates
+- Check for logos-app-poc updates weekly:
+  `cd ~/logos-app && git fetch && git log HEAD..origin/master --oneline`
+- If updates exist, pull and rebuild:
+  `git pull && nix build`
+- Re-test notes module after every Logos App update:
+  run full UI/UX checklist
+- Watch for changes to:
+  - `PluginInterface` (breaking changes to module contract)
+  - `LogosQmlBridge` (new methods or behavior changes)
+  - `logos-design-system` (token changes affecting hardcoded colors)
+- If `PluginInterface` changes — update `NotesPlugin` immediately
+
 ### Branch naming
 - `feature/description` — new features
 - `security/pX-fixes` — security fixes by priority
