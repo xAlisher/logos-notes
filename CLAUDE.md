@@ -751,7 +751,9 @@ initialized account that shows the unlock screen on next launch.
 5. Merge to master
 6. Update README.md — features, roadmap, screenshots
 7. Create GitHub release with version tag
-8. Post to X
+8. Write blog post in `blog/` — builder reflection, what was built,
+   what broke, what was learned. Update `blog/README.md` index.
+9. Post to X
 
 ### Security fix routine
 1. Create branch: `security/pX-fixes`
