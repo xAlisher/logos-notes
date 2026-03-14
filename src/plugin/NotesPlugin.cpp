@@ -102,6 +102,11 @@ QString NotesPlugin::lockSession()
     return ok();
 }
 
+QString NotesPlugin::getAccountFingerprint()
+{
+    return m_backend.getAccountFingerprint();
+}
+
 QString NotesPlugin::resetAndWipe()
 {
     m_backend.resetAndWipe();

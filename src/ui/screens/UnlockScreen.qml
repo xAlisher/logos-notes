@@ -59,6 +59,15 @@ Item {
         }
 
         LogosText {
+            Layout.fillWidth: true
+            text: backend.getAccountFingerprint()
+            color: Theme.palette.textPlaceholder
+            font.pixelSize: 11
+            font.family: "Courier New, monospace"
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        LogosText {
             text: "PIN"
             color: Theme.palette.textSecondary
             font.pixelSize: Theme.typography.secondaryText
@@ -104,17 +113,4 @@ Item {
         }
     }
 
-    // DEV/DEMO reset — remove before production
-    LogosText {
-        anchors { bottom: parent.bottom; right: parent.right; margins: Theme.spacing.medium }
-        text: "Reset"
-        color: Theme.palette.error
-        font.pixelSize: Theme.typography.secondaryText
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: backend.resetAndWipe()
-        }
-    }
 }

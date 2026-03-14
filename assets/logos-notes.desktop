@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Immutable Notes
+Comment=Encrypted, local-first notes for the Logos ecosystem
+Exec=logos-notes
+Icon=logos-notes
+Categories=Utility;TextEditor;
+Terminal=false

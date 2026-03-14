@@ -1,6 +1,7 @@
 #include "NotesBackend.h"
 #include "SecureBuffer.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDebug>
 #include <QJsonArray>
@@ -100,8 +101,12 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
-    // 5. Persist the mnemonic KDF salt.
+    // 5. Persist the mnemonic KDF salt and account fingerprint.
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
+    m_db.saveMeta("account_fingerprint",
+                  QCryptographicHash::hash(masterKey.toByteArray(),
+                                           QCryptographicHash::Sha256)
+                      .left(8).toHex().toUpper());
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());
@@ -338,6 +343,18 @@ void NotesBackend::lock()
     m_keys.lock();
     setError({});
     setScreen("unlock");
+}
+
+QString NotesBackend::getAccountFingerprint() const
+{
+    // Try live computation first (when unlocked).
+    if (m_keys.isUnlocked()) {
+        QByteArray hash = QCryptographicHash::hash(m_keys.masterKey(),
+                                                    QCryptographicHash::Sha256);
+        return hash.left(8).toHex().toUpper();
+    }
+    // Fall back to stored fingerprint (works on unlock screen).
+    return m_db.loadMeta("account_fingerprint");
 }
 
 bool NotesBackend::hasAccount() const

@@ -2,3 +2,7 @@ build/
 result/
 .direnv/
 .claude/
+AppDir
+tools/
+build-release/
+*.AppImage

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import Logos.Theme
 import Logos.Controls
 
@@ -10,6 +11,8 @@ Item {
     property int activeNoteId: -1
     // Suppress save while loading a note
     property bool loading: false
+    // Show settings screen
+    property bool showSettings: false
 
     Component.onCompleted: deferredRefresh.start()
 
@@ -69,6 +72,7 @@ Item {
     // ── Sidebar ──────────────────────────────────────────────────────
     Rectangle {
         id: sidebar
+        visible: !root.showSettings
         width: 220
         anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
         color: Theme.palette.backgroundSecondary
@@ -177,14 +181,13 @@ Item {
             }
         }
 
-        // ── Sidebar bottom bar: Lock + Reset ─────────────────────────
+        // ── Sidebar bottom bar: Settings + Lock ─────────────────────
         Rectangle {
             id: sidebarBottomBar
             anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
             height: 44
             color: Theme.palette.backgroundSecondary
 
-            // Top edge gradient so list fades under
             Rectangle {
                 anchors { bottom: parent.top; left: parent.left; right: parent.right }
                 height: 24
@@ -199,6 +202,17 @@ Item {
                 spacing: Theme.spacing.large
 
                 LogosText {
+                    text: "Settings"
+                    color: Theme.palette.textSecondary
+                    font.pixelSize: Theme.typography.secondaryText
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.showSettings = true
+                    }
+                }
+
+                LogosText {
                     text: "Lock"
                     color: Theme.palette.primary
                     font.pixelSize: Theme.typography.secondaryText
@@ -208,17 +222,6 @@ Item {
                         onClicked: backend.lock()
                     }
                 }
-
-                LogosText {
-                    text: "Reset"
-                    color: Theme.palette.error
-                    font.pixelSize: Theme.typography.secondaryText
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: backend.resetAndWipe()
-                    }
-                }
             }
         }
     }
@@ -226,6 +229,7 @@ Item {
     // ── Editor area ──────────────────────────────────────────────────
     Flickable {
         id: editorFlick
+        visible: !root.showSettings
         anchors {
             top: parent.top; topMargin: Theme.spacing.xxlarge
             left: sidebar.right; leftMargin: 20
@@ -286,6 +290,185 @@ Item {
             }
             background: Item {}
         }
+    }
+
+    // ── Settings panel (full width, overlays sidebar) ─────────────────
+    Item {
+        id: settingsPanel
+        visible: root.showSettings
+        anchors {
+            top: parent.top; topMargin: Theme.spacing.xxlarge
+            left: parent.left; leftMargin: 40
+            right: parent.right; rightMargin: 40
+            bottom: parent.bottom; bottomMargin: Theme.spacing.xlarge
+        }
+
+        ColumnLayout {
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            spacing: Theme.spacing.large
+            width: Math.min(parent.width, 480)
+
+            // Back button
+            LogosText {
+                text: "< Back"
+                color: Theme.palette.primary
+                font.pixelSize: Theme.typography.secondaryText
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showSettings = false
+                }
+            }
+
+            LogosText {
+                text: "Settings"
+                font.pixelSize: Theme.typography.titleText
+                font.weight: Theme.typography.weightBold
+            }
+
+            // ── Account section ──────────────────────────────────────
+            Rectangle {
+                Layout.fillWidth: true
+                height: accountCol.height + 32
+                color: Theme.palette.backgroundSecondary
+                radius: 8
+
+                Column {
+                    id: accountCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                    spacing: 8
+
+                    LogosText {
+                        text: "Account"
+                        font.pixelSize: Theme.typography.primaryText
+                        font.weight: Theme.typography.weightBold
+                    }
+
+                    Row {
+                        spacing: 12
+
+                        LogosText {
+                            text: "Fingerprint:"
+                            color: Theme.palette.textSecondary
+                            font.pixelSize: Theme.typography.secondaryText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        LogosText {
+                            id: fingerprintText
+                            text: backend.getAccountFingerprint()
+                            font.family: "Courier New, monospace"
+                            font.pixelSize: Theme.typography.secondaryText
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        LogosText {
+                            text: copyTimer.running ? "Copied!" : "Copy"
+                            color: Theme.palette.primary
+                            font.pixelSize: Theme.typography.secondaryText
+                            anchors.verticalCenter: parent.verticalCenter
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    // Copy fingerprint to clipboard
+                                    fingerprintHelper.text = fingerprintText.text
+                                    fingerprintHelper.selectAll()
+                                    fingerprintHelper.copy()
+                                    copyTimer.start()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Danger Zone ──────────────────────────────────────────
+            Rectangle {
+                Layout.fillWidth: true
+                height: dangerCol.height + 32
+                color: Theme.palette.backgroundSecondary
+                radius: 8
+                border.width: 1
+                border.color: Theme.palette.error
+
+                Column {
+                    id: dangerCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                    spacing: 12
+
+                    LogosText {
+                        text: "Danger Zone"
+                        color: Theme.palette.error
+                        font.pixelSize: Theme.typography.primaryText
+                        font.weight: Theme.typography.weightBold
+                    }
+
+                    LogosText {
+                        text: "Removing your account will permanently delete all notes\nfrom this device. This cannot be undone."
+                        color: Theme.palette.textSecondary
+                        font.pixelSize: Theme.typography.secondaryText
+                        wrapMode: Text.WordWrap
+                        width: parent.width
+                    }
+
+                    Row {
+                        spacing: 8
+
+                        CheckBox {
+                            id: confirmCheck
+                            width: 20; height: 20
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        LogosText {
+                            text: "I understand all notes will be permanently deleted"
+                            color: Theme.palette.textSecondary
+                            font.pixelSize: Theme.typography.secondaryText
+                            anchors.verticalCenter: parent.verticalCenter
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: confirmCheck.checked = !confirmCheck.checked
+                            }
+                        }
+                    }
+
+                    LogosButton {
+                        text: "Remove Account"
+                        enabled: confirmCheck.checked
+                        opacity: confirmCheck.checked ? 1.0 : 0.35
+                        contentItem: LogosText {
+                            text: parent.text
+                            color: "#FFFFFF"
+                            font.pixelSize: Theme.typography.primaryText
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        onClicked: {
+                            backend.resetAndWipe()
+                            root.showSettings = false
+                        }
+                        background: Rectangle {
+                            color: parent.isActive ? "#d9272e" : Theme.palette.error
+                            radius: Theme.spacing.radiusXlarge
+                            implicitHeight: 40
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Hidden TextEdit for clipboard copy
+    TextEdit {
+        id: fingerprintHelper
+        visible: false
+    }
+
+    Timer {
+        id: copyTimer
+        interval: 2000
     }
 
     Timer {

@@ -46,6 +46,7 @@ public:
     Q_INVOKABLE QString deleteNote(int id);
 
     Q_INVOKABLE QString lockSession();
+    Q_INVOKABLE QString getAccountFingerprint();
     Q_INVOKABLE QString resetAndWipe();
 
 signals:

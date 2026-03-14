@@ -211,6 +211,19 @@ Item {
             }
 
             Text {
+                Layout.fillWidth: true
+                text: {
+                    if (typeof logos !== "undefined" && logos.callModule)
+                        return logos.callModule("notes", "getAccountFingerprint", [])
+                    return ""
+                }
+                color: root.textPlaceholder
+                font.pixelSize: 11
+                font.family: "Courier New, monospace"
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
                 text: "PIN"
                 color: root.textSecondary
                 font.pixelSize: 12
@@ -294,23 +307,6 @@ Item {
             }
         }
 
-        // DEV/DEMO reset
-        Text {
-            anchors { bottom: parent.bottom; right: parent.right; margins: 12 }
-            text: "Reset"
-            color: root.errorColor
-            font.pixelSize: 12
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (typeof logos !== "undefined" && logos.callModule)
-                        logos.callModule("notes", "resetAndWipe", [])
-                    root.errorMessage = ""
-                    root.currentScreen = "import"
-                }
-            }
-        }
     }
 
     // ── Note screen ─────────────────────────────────────────────────────────
@@ -321,6 +317,7 @@ Item {
 
         property int activeNoteId: -1
         property bool loading: false
+        property bool showSettings: false
 
         onVisibleChanged: {
             if (visible) {
@@ -405,6 +402,7 @@ Item {
         // ── Sidebar ──────────────────────────────────────────────────
         Rectangle {
             id: sidebar
+            visible: !noteScreen.showSettings
             width: 220
             anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
             color: root.bgSecondary
@@ -514,14 +512,13 @@ Item {
                 }
             }
 
-            // ── Sidebar bottom bar: Lock + Reset ─────────────────────
+            // ── Sidebar bottom bar: Settings + Lock ─────────────────
             Rectangle {
                 id: sidebarBottomBar
                 anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
                 height: 44
                 color: root.bgSecondary
 
-                // Fade gradient
                 Rectangle {
                     anchors { bottom: parent.top; left: parent.left; right: parent.right }
                     height: 24
@@ -534,6 +531,17 @@ Item {
                 Row {
                     anchors.centerIn: parent
                     spacing: 16
+
+                    Text {
+                        text: "Settings"
+                        color: root.textSecondary
+                        font.pixelSize: 12
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: noteScreen.showSettings = true
+                        }
+                    }
 
                     Text {
                         text: "Lock"
@@ -550,22 +558,6 @@ Item {
                             }
                         }
                     }
-
-                    Text {
-                        text: "Reset"
-                        color: root.errorColor
-                        font.pixelSize: 12
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (typeof logos !== "undefined" && logos.callModule)
-                                    logos.callModule("notes", "resetAndWipe", [])
-                                root.errorMessage = ""
-                                root.currentScreen = "import"
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -573,6 +565,7 @@ Item {
         // ── Editor area ──────────────────────────────────────────────
         Flickable {
             id: editorFlick
+            visible: !noteScreen.showSettings
             anchors {
                 top: parent.top; topMargin: 20
                 left: sidebar.right; leftMargin: 20
@@ -655,5 +648,184 @@ Item {
             var d = new Date(epoch * 1000)
             return d.toLocaleDateString()
         }
+
+        // ── Settings panel (full width, overlays sidebar) ─────────────
+        Item {
+            visible: noteScreen.showSettings
+            anchors {
+                top: parent.top; topMargin: 20
+                left: parent.left; leftMargin: 40
+                right: parent.right; rightMargin: 40
+                bottom: parent.bottom; bottomMargin: 20
+            }
+
+            Column {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                spacing: 16
+                width: Math.min(parent.width, 480)
+
+                Text {
+                    text: "< Back"
+                    color: root.primary
+                    font.pixelSize: 12
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: noteScreen.showSettings = false
+                    }
+                }
+
+                Text {
+                    text: "Settings"
+                    font.pixelSize: 30
+                    font.weight: Font.Bold
+                    color: root.textColor
+                }
+
+                // ── Account section ──────────────────────────────
+                Rectangle {
+                    width: parent.width
+                    height: accountCol2.height + 32
+                    color: root.bgSecondary
+                    radius: 8
+
+                    Column {
+                        id: accountCol2
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                        spacing: 8
+
+                        Text {
+                            text: "Account"
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                            color: root.textColor
+                        }
+
+                        Row {
+                            spacing: 12
+
+                            Text {
+                                text: "Fingerprint:"
+                                color: root.textSecondary
+                                font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                id: fpText
+                                text: {
+                                    if (typeof logos !== "undefined" && logos.callModule)
+                                        return logos.callModule("notes", "getAccountFingerprint", [])
+                                    return ""
+                                }
+                                font.family: "Courier New, monospace"
+                                font.pixelSize: 12
+                                color: root.textColor
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: pluginCopyTimer.running ? "Copied!" : "Copy"
+                                color: root.primary
+                                font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        fpHelper.text = fpText.text
+                                        fpHelper.selectAll()
+                                        fpHelper.copy()
+                                        pluginCopyTimer.start()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Danger Zone ──────────────────────────────────
+                Rectangle {
+                    width: parent.width
+                    height: dangerCol2.height + 32
+                    color: root.bgSecondary
+                    radius: 8
+                    border.width: 1
+                    border.color: root.errorColor
+
+                    Column {
+                        id: dangerCol2
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                        spacing: 12
+
+                        Text {
+                            text: "Danger Zone"
+                            color: root.errorColor
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                        }
+
+                        Text {
+                            text: "Removing your account will permanently delete all notes\nfrom this device. This cannot be undone."
+                            color: root.textSecondary
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            width: parent.width
+                        }
+
+                        Row {
+                            spacing: 8
+
+                            CheckBox {
+                                id: pluginConfirmCheck
+                                width: 20; height: 20
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: "I understand all notes will be permanently deleted"
+                                color: root.textSecondary
+                                font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: pluginConfirmCheck.checked = !pluginConfirmCheck.checked
+                                }
+                            }
+                        }
+
+                        Button {
+                            text: "Remove Account"
+                            enabled: pluginConfirmCheck.checked
+                            opacity: pluginConfirmCheck.checked ? 1.0 : 0.35
+                            contentItem: Text {
+                                text: parent.text
+                                font.pixelSize: 14
+                                font.weight: Font.Medium
+                                color: root.textColor
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                color: parent.pressed ? "#d9272e" : root.errorColor
+                                radius: 16
+                                implicitHeight: 40
+                            }
+                            onClicked: {
+                                if (typeof logos !== "undefined" && logos.callModule)
+                                    logos.callModule("notes", "resetAndWipe", [])
+                                noteScreen.showSettings = false
+                                root.errorMessage = ""
+                                root.currentScreen = "import"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        TextEdit { id: fpHelper; visible: false }
+        Timer { id: pluginCopyTimer; interval: 2000 }
     }
 }

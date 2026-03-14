@@ -46,10 +46,13 @@ public:
     // Lock session: wipe in-memory key, go back to unlock screen.
     Q_INVOKABLE void lock();
 
+    // Short hex fingerprint derived from master key (for display in Settings).
+    Q_INVOKABLE QString getAccountFingerprint() const;
+
     // Returns true if the database has a stored account (wrapped key).
     bool hasAccount() const;
 
-    // DEV/DEMO: wipe the database and return to the import screen.
+    // Wipe the database and return to the import screen.
     Q_INVOKABLE void resetAndWipe();
 
 signals:
