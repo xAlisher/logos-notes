@@ -697,6 +697,45 @@ DB contents (schema, plaintext leaks, etc.), always check `logos_host`.
 
 ---
 
+## Development Routines
+
+### After every feature branch
+1. Manual UI/UX test checklist before merging
+2. Run: `cmake --build build && cmake --install build`
+3. Test in Logos App (not just standalone)
+4. Run: `ctest` (all tests must pass)
+5. Merge to master
+6. Update README.md — features, roadmap, screenshots
+7. Create GitHub release with version tag
+8. Post to X
+
+### Security fix routine
+1. Create branch: `security/pX-fixes`
+2. Coder implements fixes
+3. Run review loop: `./scripts/security-review-loop.sh HEAD~N "src/core/"`
+4. Reviewer (Codex) reviews diff
+5. Paste findings to Coder
+6. Repeat until clean
+7. Manual UI/UX test
+8. Merge to master
+9. Update SECURITY_REVIEW.md with review round history
+
+### UI/UX test checklist (run before every merge)
+- Fresh reset → import mnemonic → PIN accepted
+- Write note → lock → unlock → note intact
+- Multiple notes → create, switch, delete
+- Close tab in Logos App → reopen → unlock → notes intact
+- Wrong PIN 5x → lockout → wait → correct PIN works
+- Check SQLite: `sqlite3 ~/.local/share/logos_host/notes.db "SELECT hex(title_ciphertext) FROM notes LIMIT 1;"`
+  (should show hex blob, not readable text)
+
+### Branch naming
+- `feature/description` — new features
+- `security/pX-fixes` — security fixes by priority
+- Always delete merged branches locally and remotely
+
+---
+
 ## Notes for Claude Code Sessions
 
 When starting a new Claude Code session:
