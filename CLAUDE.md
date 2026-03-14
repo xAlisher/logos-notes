@@ -520,6 +520,14 @@ Three unblock options:
 Option 3 is cleanest — matches how the Logos App itself packages.
 Revisit after Settings screen and alpha prep are done.
 
+### Logos App module loading
+Status: blocked on Package Manager crashes + local vs portable build mismatch.
+Root cause: `nix build '.#app'` (local build) expects local `.lgx` packages,
+not raw `.so` files. Our `cmake --install` copies raw files which only work
+with portable/AppImage builds.
+Unblock: build AppImage (`nix build '.#bin-appimage'`) or package as `.lgx`.
+Upstream issue: https://github.com/logos-co/logos-app/issues/60
+
 ---
 
 ## Storage Module Research
@@ -738,6 +746,24 @@ instead of relying on QML state surviving screen transitions.
 `m_db.setInitialized()` must be called after backup restore (if any)
 succeeds, not before. Otherwise a failed restore leaves an empty
 initialized account that shows the unlock screen on next launch.
+
+**Logos App local vs portable builds — module loading differs.**
+`nix build '.#app'` produces a local build that expects **local `.lgx`
+packages**, not raw `.so` + manifest files. Copying `notes_plugin.so`
+to `~/.local/share/Logos/LogosApp/modules/notes/` works with the
+**portable/AppImage build** (`nix build '.#bin-appimage'`), which uses
+portable `.lgx` packages (same format as Package Manager downloads).
+To test our module inside Logos App:
+- Either build the AppImage: `nix build '.#bin-appimage'`
+- Or package our module as local `.lgx`:
+  `nix bundle --bundler github:logos-co/nix-bundle-lgx github:xAlisher/logos-notes#lib`
+The AppImage approach is simpler — use it for testing.
+
+**Kill ALL logos processes before relaunching.**
+Logos App spawns `logos_host` child processes per module. These survive
+the parent `LogosApp` process being killed. Old `logos_host` processes
+hold stale `.so` files and block new module loads. Always kill
+everything: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`
 
 ---
 
