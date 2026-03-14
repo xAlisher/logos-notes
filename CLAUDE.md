@@ -767,13 +767,23 @@ initialized account that shows the unlock screen on next launch.
 9. Update SECURITY_REVIEW.md with review round history
 
 ### UI/UX test checklist (run before every merge)
+
+**Standalone app:**
 - Fresh reset → import mnemonic → PIN accepted
 - Write note → lock → unlock → note intact
 - Multiple notes → create, switch, delete
-- Close tab in Logos App → reopen → unlock → notes intact
+- Settings → public key shows, Copy works
+- Settings → Export Backup → file appears
+- Settings → Remove Account → confirm → wipe
+- Restore from backup → select file → Import & Restore → notes back
 - Wrong PIN 5x → lockout → wait → correct PIN works
-- Check SQLite: `sqlite3 ~/.local/share/logos_host/notes.db "SELECT hex(title_ciphertext) FROM notes LIMIT 1;"`
-  (should show hex blob, not readable text)
+
+**Logos App (must test before merge — never skip):**
+- `cmake --install build` → kill Logos App → relaunch
+- Notes module loads in sidebar
+- Full flow: import → notes → lock → unlock → notes intact
+- Backup export/import works via plugin bridge
+- Check DB: no plaintext titles
 
 ### Logos App updates
 - Check for logos-app-poc updates weekly:
