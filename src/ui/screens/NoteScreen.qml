@@ -546,16 +546,20 @@ Item {
             var date = d.getFullYear() + "-"
                 + String(d.getMonth()+1).padStart(2,"0") + "-"
                 + String(d.getDate()).padStart(2,"0")
+            var shortFp = fp.substring(0, 16)
             return "file://" + StandardPaths.writableLocation(StandardPaths.HomeLocation)
-                   + "/" + fp + "_" + date + ".imnotes"
+                   + "/" + shortFp + "_" + date + ".imnotes"
         }
         onAccepted: {
-            var path = selectedFile.toLocalFile()
+            var url = selectedFile.toString()
+            var path = url.startsWith("file://") ? url.substring(7) : url
             if (!path.endsWith(".imnotes")) path += ".imnotes"
+            console.log("export path:", path)
             var result = backend.exportBackup(path)
+            console.log("export result:", result)
             var parsed = JSON.parse(result)
             exportStatus.text = parsed.ok
-                ? "Exported " + parsed.noteCount + " note(s)"
+                ? "Exported " + parsed.noteCount + " note(s) to " + path
                 : "Export failed: " + (parsed.error || "unknown error")
         }
     }

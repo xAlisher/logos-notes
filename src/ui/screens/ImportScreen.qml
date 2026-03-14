@@ -135,8 +135,12 @@ Item {
 
         LogosText {
             Layout.fillWidth: true
-            text: "Restore from backup"
-            color: Theme.palette.textSecondary
+            text: pendingBackupPath.length > 0
+                  ? "Change backup file"
+                  : "Restore from backup"
+            color: pendingBackupPath.length > 0
+                   ? Theme.palette.primary
+                   : Theme.palette.textSecondary
             font.pixelSize: Theme.typography.secondaryText
             horizontalAlignment: Text.AlignHCenter
             MouseArea {
@@ -156,8 +160,11 @@ Item {
         fileMode: FileDialog.OpenFile
         nameFilters: ["Immutable Notes Backup (*.imnotes)", "All files (*)"]
         onAccepted: {
-            pendingBackupPath = selectedFile.toLocalFile()
-            restoreStatus.text = "Backup selected. Import your recovery phrase to restore."
+            var url = selectedFile.toString()
+            pendingBackupPath = url.startsWith("file://") ? url.substring(7) : url
+            var name = pendingBackupPath.split("/").pop()
+            restoreStatus.text = "Backup: " + name
+            console.log("restore: selected backup:", pendingBackupPath)
         }
     }
 

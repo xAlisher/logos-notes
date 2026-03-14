@@ -836,7 +836,8 @@ Item {
                                     var date = d.getFullYear() + "-"
                                         + String(d.getMonth()+1).padStart(2,"0") + "-"
                                         + String(d.getDate()).padStart(2,"0")
-                                    var path = home + "/" + fp + "_" + date + ".imnotes"
+                                    var shortFp = fp.substring(0, 16)
+                                    var path = home + "/" + shortFp + "_" + date + ".imnotes"
                                     if (typeof logos !== "undefined" && logos.callModule) {
                                         var result = logos.callModule("notes", "exportBackup", [path])
                                         var parsed = JSON.parse(result)
