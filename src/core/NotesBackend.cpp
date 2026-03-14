@@ -10,6 +10,16 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+// Canonical BIP39 normalization: NFKD, simplified whitespace, lowercase.
+// Must be used before any crypto operation on the mnemonic to ensure
+// identical phrases always produce identical keys and fingerprints.
+static QString normalizeMnemonic(const QString &mnemonic)
+{
+    return mnemonic.simplified()
+                   .normalized(QString::NormalizationForm_KD)
+                   .toLower();
+}
+
 static QString titleFromPlaintext(const QString &text)
 {
     // First non-empty line, trimmed to 100 chars.
@@ -73,9 +83,12 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         return;
     }
 
+    // Normalize mnemonic before any crypto use (NFKD, whitespace, lowercase).
+    const QString normalized = normalizeMnemonic(mnemonic);
+
     // 1. Derive the master key from the mnemonic with a random salt (never stored).
     const QByteArray mnemonicSalt = CryptoManager::randomSalt();
-    SecureBuffer masterKey(m_crypto.deriveKey(mnemonic, mnemonicSalt));
+    SecureBuffer masterKey(m_crypto.deriveKey(normalized, mnemonicSalt));
     if (masterKey.isEmpty()) {
         setError("Key derivation failed.");
         return;
@@ -106,27 +119,28 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
     // 5. Persist the mnemonic KDF salt and account fingerprint.
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
-    m_db.saveMeta("account_fingerprint", deriveFingerprint(mnemonic));
+    m_db.saveMeta("account_fingerprint", deriveFingerprint(normalized));
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());
 
-    m_db.setInitialized();
-
     // 7. Restore backup if a path was provided (cross-device restore).
     if (!backupPath.isEmpty()) {
-        QString result = importBackup(backupPath, mnemonic);
+        QString result = importBackup(backupPath, normalized);
         QJsonObject parsed = QJsonDocument::fromJson(result.toUtf8()).object();
         if (!parsed.value("ok").toBool()) {
-            QString err = parsed.value("error").toString("Backup restore failed.");
-            setError(err);
-            // Keep account created but show error — don't silently proceed.
-            setScreen("note");
+            // Rollback: wipe the just-created account so user can retry.
+            m_keys.lock();
+            m_db.wipe();
+            m_db.init();
+            setError(parsed.value("error").toString("Backup restore failed."));
+            setScreen("import");
             return;
         }
         qDebug() << "NotesBackend: restored" << parsed.value("imported").toInt() << "note(s)";
     }
 
+    m_db.setInitialized();
     setError({});
     setScreen("note");
 }
@@ -371,10 +385,11 @@ QString NotesBackend::getAccountFingerprint() const
 
 QString NotesBackend::deriveFingerprint(const QString &mnemonic)
 {
-    // Deterministic: Ed25519 public key derived from SHA-256(mnemonic) as seed.
-    // Same mnemonic → same fingerprint, always, on any device.
-    // No salt involved — fingerprint is a property of the phrase, not the account.
-    QByteArray seed = QCryptographicHash::hash(mnemonic.toUtf8(),
+    // Deterministic: Ed25519 public key derived from SHA-256(normalized mnemonic).
+    // Same mnemonic → same public key, always, on any device.
+    // Normalization ensures spacing/casing/unicode differences don't matter.
+    const QString normalized = normalizeMnemonic(mnemonic);
+    QByteArray seed = QCryptographicHash::hash(normalized.toUtf8(),
                                                 QCryptographicHash::Sha256);
     unsigned char pk[crypto_sign_PUBLICKEYBYTES];
     unsigned char sk[crypto_sign_SECRETKEYBYTES];
@@ -477,9 +492,9 @@ QString NotesBackend::importBackup(const QString &filePath,
     // Try decrypting with current master key first (same-device restore).
     QByteArray plaintext = m_crypto.decrypt(ciphertext, m_keys.masterKey(), nonce);
 
-    // If that fails, re-derive using backup's salt + mnemonic.
+    // If that fails, re-derive using backup's salt + normalized mnemonic.
     if (plaintext.isEmpty() && !mnemonic.isEmpty()) {
-        SecureBuffer backupKey(m_crypto.deriveKey(mnemonic, backupSalt));
+        SecureBuffer backupKey(m_crypto.deriveKey(normalizeMnemonic(mnemonic), backupSalt));
         if (!backupKey.isEmpty())
             plaintext = m_crypto.decrypt(ciphertext, backupKey.ref(), nonce);
     }

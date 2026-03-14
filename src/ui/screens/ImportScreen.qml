@@ -160,8 +160,9 @@ Item {
         fileMode: FileDialog.OpenFile
         nameFilters: ["Immutable Notes Backup (*.imnotes)", "All files (*)"]
         onAccepted: {
-            var url = selectedFile.toString()
-            pendingBackupPath = url.startsWith("file://") ? url.substring(7) : url
+            pendingBackupPath = selectedFile.toLocalFile
+                                ? selectedFile.toLocalFile()
+                                : selectedFile.toString().replace(/^file:\/\//, "")
             var name = pendingBackupPath.split("/").pop()
             restoreStatus.text = "Backup: " + name
             console.log("restore: selected backup:", pendingBackupPath)

@@ -551,8 +551,9 @@ Item {
                    + "/" + shortFp + "_" + date + ".imnotes"
         }
         onAccepted: {
-            var url = selectedFile.toString()
-            var path = url.startsWith("file://") ? url.substring(7) : url
+            var path = selectedFile.toLocalFile
+                       ? selectedFile.toLocalFile()
+                       : selectedFile.toString().replace(/^file:\/\//, "")
             if (!path.endsWith(".imnotes")) path += ".imnotes"
             console.log("export path:", path)
             var result = backend.exportBackup(path)
