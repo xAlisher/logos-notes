@@ -220,7 +220,7 @@ void TestSecurity::testFingerprintDeterministic()
 
     QString fp1 = NotesBackend::deriveFingerprint(mnemonic);
     QString fp2 = NotesBackend::deriveFingerprint(mnemonic);
-    QCOMPARE(fp1.length(), 16); // 8 bytes as hex
+    QCOMPARE(fp1.length(), 64); // 32 bytes as hex
     QCOMPARE(fp1, fp2);
 
     // Stable across calls — no salt dependency.
@@ -239,8 +239,8 @@ void TestSecurity::testFingerprintDifferentMnemonic()
         "abandon abandon abandon abandon abandon abandon "
         "abandon abandon abandon abandon abandon art");
 
-    QCOMPARE(fp1.length(), 16);
-    QCOMPARE(fp2.length(), 16);
+    QCOMPARE(fp1.length(), 64);
+    QCOMPARE(fp2.length(), 64);
     QVERIFY(fp1 != fp2);
 }
 

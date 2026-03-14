@@ -382,7 +382,8 @@ QString NotesBackend::deriveFingerprint(const QString &mnemonic)
         reinterpret_cast<const unsigned char *>(seed.constData()));
     sodium_memzero(sk, sizeof(sk));
     sodium_memzero(seed.data(), seed.size());
-    return QByteArray(reinterpret_cast<const char *>(pk), 8).toHex().toUpper();
+    return QByteArray(reinterpret_cast<const char *>(pk),
+                      crypto_sign_PUBLICKEYBYTES).toHex().toUpper();
 }
 
 bool NotesBackend::hasAccount() const
