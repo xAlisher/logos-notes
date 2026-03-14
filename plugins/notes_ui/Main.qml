@@ -793,8 +793,6 @@ Item {
                     }
                 }
 
-                // ── Danger Zone ──────────────────────────────────
-                Rectangle {
                 // ── Backup section ────────────────────────────────
                 Rectangle {
                     width: parent.width
