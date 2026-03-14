@@ -37,6 +37,7 @@ private slots:
     // ── Fingerprint stability ───────────────────────────────────────
     void testFingerprintDeterministic();
     void testFingerprintDifferentMnemonic();
+    void testFingerprintNormalization();
 };
 
 // ── Issue #3 tests ──────────────────────────────────────────────────────
@@ -242,6 +243,34 @@ void TestSecurity::testFingerprintDifferentMnemonic()
     QCOMPARE(fp1.length(), 64);
     QCOMPARE(fp2.length(), 64);
     QVERIFY(fp1 != fp2);
+}
+
+void TestSecurity::testFingerprintNormalization()
+{
+    // All these should produce the same fingerprint:
+    // extra spaces, mixed case, leading/trailing whitespace.
+    QString base = "abandon abandon abandon abandon abandon "
+                   "abandon abandon abandon abandon abandon "
+                   "abandon about";
+    QString extraSpaces = "  abandon   abandon  abandon abandon abandon "
+                          "abandon abandon abandon abandon abandon "
+                          "abandon   about  ";
+    QString upperCase = "ABANDON ABANDON ABANDON ABANDON ABANDON "
+                        "ABANDON ABANDON ABANDON ABANDON ABANDON "
+                        "ABANDON ABOUT";
+    QString mixedCase = "Abandon abandon ABANDON abandon Abandon "
+                        "abandon abandon Abandon abandon abandon "
+                        "abandon About";
+
+    QString fpBase   = NotesBackend::deriveFingerprint(base);
+    QString fpSpaces = NotesBackend::deriveFingerprint(extraSpaces);
+    QString fpUpper  = NotesBackend::deriveFingerprint(upperCase);
+    QString fpMixed  = NotesBackend::deriveFingerprint(mixedCase);
+
+    QCOMPARE(fpBase.length(), 64);
+    QCOMPARE(fpSpaces, fpBase);
+    QCOMPARE(fpUpper, fpBase);
+    QCOMPARE(fpMixed, fpBase);
 }
 
 QTEST_MAIN(TestSecurity)
