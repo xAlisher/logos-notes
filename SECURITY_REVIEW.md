@@ -226,3 +226,27 @@ This document has been updated to reflect current status so unresolved risks are
 **No critical crypto regressions found.**
 
 Both findings addressed: #11 fixed (return value checks + warnings), #10 documented as known limitation (see above).
+
+---
+
+### Round 4 — 2026-03-14 (Codex review of P2 fixes)
+
+**Reviewer:** OpenAI Codex
+**Scope:** `src/core/` diff on `security/p2-fixes` branch
+**Branch:** `security/p2-fixes`
+
+**Findings (2 total):**
+
+| Severity | Finding | Resolution |
+|----------|---------|------------|
+| High | Cipher choice not persisted — AES-GCM data unreadable on XChaCha20 machine | XChaCha20 fallback stripped entirely; fail-fast AES-NI check only. Design decision documented. |
+| Medium | Nonce length not validated before AEAD calls | Added `nonce.size() != NONCE_BYTES` check in `decrypt()`, returns empty on mismatch |
+
+**Design decision:** XChaCha20-Poly1305 fallback rejected in favor of fail-fast AES-NI
+requirement. Dual-cipher complexity created the persistence regression. AES-NI is
+universal on x86_64 since 2010 and ARM since ARMv8.
+
+**Confirmed fixed in this round:** #7 (AES-NI check), #9 (SQLite hardening),
+nonce validation (partial #8).
+
+**All P0, P1, P2 issues now resolved or documented.** Only #8 AAD domain separation remains open (low priority, future hardening).

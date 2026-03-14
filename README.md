@@ -201,7 +201,7 @@ logos-notes/
 |-------|------|--------|
 | **0** | Standalone encrypted notes app + Logos App module | ✅ Complete |
 | **1** | Multiple notes with sidebar UI, CRUD, auto-save | ✅ Complete |
-| **Security** | P0+P1 hardening: BIP39 validation, random salt, PIN lockout, encrypted titles, SecureBuffer | ✅ Complete |
+| **Security** | P0+P1+P2 hardening: BIP39 validation, random salt, PIN lockout, encrypted titles, SecureBuffer, AES-NI check, SQLite hardening | ✅ Complete |
 | **2** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) | Planned |
 | **3** | Logos Storage backup + Logos Messaging sync across devices | Planned |
 
@@ -216,9 +216,9 @@ logos-notes/
 | [#6](../../issues/6) Zeroize key buffers | P1 | ✅ Fixed |
 | [#10](../../issues/10) PIN lockout integrity | P1 | ⚠️ Documented limitation |
 | [#11](../../issues/11) saveMeta() error handling | P2 | ✅ Fixed |
-| [#7](../../issues/7) AES-GCM hardware check | P1 | Open |
-| [#8](../../issues/8) AEAD validation / AAD | P2 | Open |
-| [#9](../../issues/9) SQLite hardening | P2 | Open |
+| [#7](../../issues/7) AES-NI fail-fast check | P1 | ✅ Fixed |
+| [#8](../../issues/8) AEAD nonce validation | P2 | ✅ Partial (nonce check done, AAD open) |
+| [#9](../../issues/9) SQLite hardening | P2 | ✅ Fixed |
 
 See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for full audit details.
 
