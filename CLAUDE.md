@@ -765,6 +765,14 @@ the parent `LogosApp` process being killed. Old `logos_host` processes
 hold stale `.so` files and block new module loads. Always kill
 everything: `kill -9 $(ps aux | grep logos | grep -v grep | awk '{print $2}')`
 
+**Logos App QML sandbox blocks FileDialog.**
+Pure QML plugins (`type: "ui_qml"`) cannot use `FileDialog` — the
+sandbox restricts it. The `storage_ui` module works around this by
+being a compiled `.so` plugin with QML embedded, which can use
+`QFileDialog` from C++ natively. Our plugin uses fixed paths for
+backup (`~/logos-notes-backup.imnotes`) instead. The standalone app
+uses `FileDialog` normally since it's not sandboxed.
+
 **Always run `qmllint` on plugin Main.qml before installing.**
 The Logos App QML sandbox silently fails on syntax errors — no error
 shown to user, just "Load" does nothing. On retry it enters an infinite
