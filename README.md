@@ -21,6 +21,9 @@ Built as a Qt6/QML desktop application targeting the Logos App (Basecamp) module
 - Sidebar shows decrypted note title (first line) and relative timestamp
 - Lock/unlock flow wipes the master key from memory on lock
 - **Secure key zeroization** — temporary key buffers wiped via `sodium_memzero` after use
+- **Settings screen** — account public key (Ed25519, deterministic per mnemonic), Remove Account with confirmation
+- **Encrypted backup/restore** — export all notes as `.imnotes` file, restore on any device with the same mnemonic
+- **Deterministic public key** — same mnemonic = same Ed25519 public key, always, on any device
 - Single encrypted SQLite database — no plaintext on disk
 
 No accounts, no servers, no plaintext on disk.
@@ -38,9 +41,13 @@ Running inside [Logos App](https://github.com/logos-co/logos-app-poc) (Basecamp)
 |--------|--------|
 | ![Import](Assets/Screenshots/import.png) | ![Unlock](Assets/Screenshots/Unlock.png) |
 
-| Multi-note sidebar (Phase 1) |
-|-------------------------------|
-| ![Multi-note sidebar](Assets/Screenshots/Phase2_Multinote.png) |
+| Multi-note sidebar | Settings |
+|-------------------------------|----------|
+| ![Multi-note sidebar](Assets/Screenshots/Phase2_Multinote.png) | ![Settings](Assets/Screenshots/Settings.png) |
+
+| Restore from backup |
+|---------------------|
+| ![Restore](Assets/Screenshots/Recover%20from%20backup.png) |
 
 ---
 
@@ -202,6 +209,7 @@ logos-notes/
 | **0** | Standalone encrypted notes app + Logos App module | ✅ Complete |
 | **1** | Multiple notes with sidebar UI, CRUD, auto-save | ✅ Complete |
 | **Security** | P0+P1+P2 hardening: BIP39 validation, random salt, PIN lockout, encrypted titles, SecureBuffer, AES-NI check, SQLite hardening | ✅ Complete |
+| **Settings** | Settings screen, account public key, encrypted backup export/import, Remove Account | ✅ Complete |
 | **2** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) | Planned |
 | **3** | Logos Storage backup + Logos Messaging sync across devices | Planned |
 

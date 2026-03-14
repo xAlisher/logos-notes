@@ -712,12 +712,32 @@ After merging feature or security branches to master, always update
 README.md (features, roadmap status, security tracker) and commit
 with message `docs: update README for vX.X`.
 
-**Active DB path is `~/.local/share/logos_host/notes.db`.**
-Both the standalone app and the Logos App plugin write to
-`~/.local/share/logos_host/notes.db`. The path
-`~/.local/share/logos-co/logos-notes/notes.db` is a stale DB from
-an earlier run and is **not** used by the current code. When verifying
-DB contents (schema, plaintext leaks, etc.), always check `logos_host`.
+**Active DB path is `~/.local/share/logos-co/logos-notes/notes.db`.**
+The standalone app uses this path (set by `setOrganizationName("logos-co")`
+and `setApplicationName("logos-notes")` in `main.cpp`). The Logos App
+plugin uses `~/.local/share/logos_host/notes.db` (different process).
+When wiping for tests, delete both. When verifying standalone DB
+contents, check `logos-co/logos-notes/`.
+
+**Normalize mnemonic before all crypto operations.**
+Raw mnemonic text from QML may have different spacing, casing, or
+unicode forms. Always pass through `normalizeMnemonic()` (NFKD +
+simplified whitespace + lowercase) before key derivation, fingerprint
+derivation, or backup re-derivation. Without this, the same phrase
+entered differently produces different master keys → data loss.
+
+**Loader destroys QML components on screen switch.**
+`main.qml` uses a `Loader` that destroys the previous screen when
+`backend.currentScreen` changes. Any data in the old screen's QML
+properties (e.g. `mnemonicArea.text`) is gone by the time a
+`Connections.onCurrentScreenChanged` handler fires. Pass data through
+the C++ backend (e.g. `backupPath` parameter on `importMnemonic()`)
+instead of relying on QML state surviving screen transitions.
+
+**Commit account state only after all operations succeed.**
+`m_db.setInitialized()` must be called after backup restore (if any)
+succeeds, not before. Otherwise a failed restore leaves an empty
+initialized account that shows the unlock screen on next launch.
 
 ---
 
