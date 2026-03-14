@@ -811,11 +811,25 @@ everything: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`
 - Backup export/import works via plugin bridge
 - Check DB: no plaintext titles
 
+### Testing in Logos App
+1. Build and install module:
+   `cmake --build build && cmake --install build`
+2. Kill all Logos processes:
+   `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`
+3. Launch AppImage build (**not** local Nix build):
+   `~/logos-app/result/logos-app.AppImage`
+   OR download latest from: https://github.com/logos-co/logos-app/releases
+4. Load `notes_ui` from Modules view if not auto-loaded
+5. Run UI/UX checklist
+
+**Never test with `nix build '.#app'`** — it expects `.lgx` packages,
+not raw `.so` files. Always use the AppImage or a release download.
+
 ### Logos App updates
-- Check for logos-app-poc updates weekly:
+- Check for logos-app updates weekly:
   `cd ~/logos-app && git fetch && git log HEAD..origin/master --oneline`
-- If updates exist, pull and rebuild:
-  `git pull && nix build`
+- If updates exist, pull and rebuild AppImage:
+  `git pull && nix build '.#bin-appimage'`
 - Re-test notes module after every Logos App update:
   run full UI/UX checklist
 - Watch for changes to:
