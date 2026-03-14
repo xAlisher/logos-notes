@@ -106,7 +106,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
     // 5. Persist the mnemonic KDF salt and account fingerprint.
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
-    m_db.saveMeta("account_fingerprint", deriveFingerprint(masterKey.toByteArray()));
+    m_db.saveMeta("account_fingerprint", deriveFingerprint(mnemonic));
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());
@@ -362,27 +362,26 @@ void NotesBackend::lock()
 
 QString NotesBackend::getAccountFingerprint() const
 {
-    // Fall back to stored fingerprint (works on unlock screen).
+    // Stored fingerprint works on unlock screen (no key needed).
     QString stored = m_db.loadMeta("account_fingerprint");
     if (!stored.isEmpty())
         return stored;
-
-    // Live computation (should only happen on first import before persistence).
-    if (m_keys.isUnlocked())
-        return deriveFingerprint(m_keys.masterKey());
-
     return {};
 }
 
-QString NotesBackend::deriveFingerprint(const QByteArray &masterKey)
+QString NotesBackend::deriveFingerprint(const QString &mnemonic)
 {
-    // Deterministic: Ed25519 public key derived from master key as seed.
-    // Same mnemonic + same salt → same master key → same fingerprint, always.
+    // Deterministic: Ed25519 public key derived from SHA-256(mnemonic) as seed.
+    // Same mnemonic → same fingerprint, always, on any device.
+    // No salt involved — fingerprint is a property of the phrase, not the account.
+    QByteArray seed = QCryptographicHash::hash(mnemonic.toUtf8(),
+                                                QCryptographicHash::Sha256);
     unsigned char pk[crypto_sign_PUBLICKEYBYTES];
     unsigned char sk[crypto_sign_SECRETKEYBYTES];
     crypto_sign_seed_keypair(pk, sk,
-        reinterpret_cast<const unsigned char *>(masterKey.constData()));
+        reinterpret_cast<const unsigned char *>(seed.constData()));
     sodium_memzero(sk, sizeof(sk));
+    sodium_memzero(seed.data(), seed.size());
     return QByteArray(reinterpret_cast<const char *>(pk), 8).toHex().toUpper();
 }
 

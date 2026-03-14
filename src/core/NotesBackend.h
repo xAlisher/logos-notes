@@ -62,8 +62,9 @@ public:
     Q_INVOKABLE QString importBackup(const QString &filePath,
                                       const QString &mnemonic = {});
 
-    // Deterministic fingerprint from master key (Ed25519 public key, first 8 bytes hex).
-    static QString deriveFingerprint(const QByteArray &masterKey);
+    // Deterministic fingerprint from mnemonic (Ed25519 public key, first 8 bytes hex).
+    // Same mnemonic → same fingerprint, always, on any device.
+    static QString deriveFingerprint(const QString &mnemonic);
 
     // Wipe the database and return to the import screen.
     Q_INVOKABLE void resetAndWipe();

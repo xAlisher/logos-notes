@@ -213,49 +213,34 @@ void TestSecurity::testBruteForceErrorMessages()
 
 void TestSecurity::testFingerprintDeterministic()
 {
-    // Same mnemonic + same salt → same master key → same fingerprint.
-    CryptoManager crypto;
-    QByteArray salt = CryptoManager::randomSalt();
+    // Same mnemonic → same fingerprint, always.
     QString mnemonic = "abandon abandon abandon abandon abandon "
                        "abandon abandon abandon abandon abandon "
                        "abandon about";
 
-    QByteArray key1 = crypto.deriveKey(mnemonic, salt);
-    QByteArray key2 = crypto.deriveKey(mnemonic, salt);
-    QVERIFY(!key1.isEmpty());
-    QCOMPARE(key1, key2);
-
-    QString fp1 = NotesBackend::deriveFingerprint(key1);
-    QString fp2 = NotesBackend::deriveFingerprint(key2);
+    QString fp1 = NotesBackend::deriveFingerprint(mnemonic);
+    QString fp2 = NotesBackend::deriveFingerprint(mnemonic);
     QCOMPARE(fp1.length(), 16); // 8 bytes as hex
     QCOMPARE(fp1, fp2);
 
-    // Verify it's stable across calls.
-    QCOMPARE(NotesBackend::deriveFingerprint(key1), fp1);
+    // Stable across calls — no salt dependency.
+    QCOMPARE(NotesBackend::deriveFingerprint(mnemonic), fp1);
 }
 
 void TestSecurity::testFingerprintDifferentMnemonic()
 {
-    CryptoManager crypto;
-    QByteArray salt = CryptoManager::randomSalt();
+    QString fp1 = NotesBackend::deriveFingerprint(
+        "abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon "
+        "abandon about");
+    QString fp2 = NotesBackend::deriveFingerprint(
+        "abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon art");
 
-    QByteArray key1 = crypto.deriveKey(
-        "abandon abandon abandon abandon abandon "
-        "abandon abandon abandon abandon abandon "
-        "abandon about", salt);
-    QByteArray key2 = crypto.deriveKey(
-        "abandon abandon abandon abandon abandon "
-        "abandon abandon abandon abandon abandon "
-        "abandon abandon abandon abandon abandon "
-        "abandon abandon abandon abandon abandon "
-        "abandon abandon abandon art", salt);
-
-    QVERIFY(!key1.isEmpty());
-    QVERIFY(!key2.isEmpty());
-    QVERIFY(key1 != key2);
-
-    QString fp1 = NotesBackend::deriveFingerprint(key1);
-    QString fp2 = NotesBackend::deriveFingerprint(key2);
+    QCOMPARE(fp1.length(), 16);
+    QCOMPARE(fp2.length(), 16);
     QVERIFY(fp1 != fp2);
 }
 

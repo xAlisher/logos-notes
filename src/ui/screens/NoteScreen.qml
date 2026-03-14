@@ -350,7 +350,7 @@ Item {
                         spacing: 12
 
                         LogosText {
-                            text: "Fingerprint:"
+                            text: "Public Key:"
                             color: Theme.palette.textSecondary
                             font.pixelSize: Theme.typography.secondaryText
                             anchors.verticalCenter: parent.verticalCenter

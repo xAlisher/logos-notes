@@ -754,7 +754,7 @@ Item {
                             spacing: 12
 
                             Text {
-                                text: "Fingerprint:"
+                                text: "Public Key:"
                                 color: root.textSecondary
                                 font.pixelSize: 12
                                 anchors.verticalCenter: parent.verticalCenter
