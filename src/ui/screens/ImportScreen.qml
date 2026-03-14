@@ -156,8 +156,7 @@ Item {
         fileMode: FileDialog.OpenFile
         nameFilters: ["Immutable Notes Backup (*.imnotes)", "All files (*)"]
         onAccepted: {
-            var path = selectedFile.toString().replace("file://", "")
-            pendingBackupPath = path
+            pendingBackupPath = selectedFile.toLocalFile()
             restoreStatus.text = "Backup selected. Import your recovery phrase to restore."
         }
     }

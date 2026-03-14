@@ -6,6 +6,8 @@
 #include "core/KeyManager.h"
 #include "core/NotesBackend.h"
 
+#include <sodium.h>
+
 // Tests for P0 security fixes: BIP39 validation (#3), random salt (#4),
 // PIN brute-force protection (#2).
 
@@ -31,6 +33,10 @@ private slots:
     // ── Issue #2: PIN brute-force protection ──────────────────────────
     void testPinMinLength6();
     void testBruteForceErrorMessages();
+
+    // ── Fingerprint stability ───────────────────────────────────────
+    void testFingerprintDeterministic();
+    void testFingerprintDifferentMnemonic();
 };
 
 // ── Issue #3 tests ──────────────────────────────────────────────────────
@@ -201,6 +207,56 @@ void TestSecurity::testBruteForceErrorMessages()
     QVERIFY(!correctPinKey.isEmpty());
     QByteArray decryptedOk = crypto.decrypt(wrappedKey, correctPinKey, wrapNonce);
     QCOMPARE(decryptedOk, masterKey);
+}
+
+// ── Fingerprint stability tests ─────────────────────────────────────────
+
+void TestSecurity::testFingerprintDeterministic()
+{
+    // Same mnemonic + same salt → same master key → same fingerprint.
+    CryptoManager crypto;
+    QByteArray salt = CryptoManager::randomSalt();
+    QString mnemonic = "abandon abandon abandon abandon abandon "
+                       "abandon abandon abandon abandon abandon "
+                       "abandon about";
+
+    QByteArray key1 = crypto.deriveKey(mnemonic, salt);
+    QByteArray key2 = crypto.deriveKey(mnemonic, salt);
+    QVERIFY(!key1.isEmpty());
+    QCOMPARE(key1, key2);
+
+    QString fp1 = NotesBackend::deriveFingerprint(key1);
+    QString fp2 = NotesBackend::deriveFingerprint(key2);
+    QCOMPARE(fp1.length(), 16); // 8 bytes as hex
+    QCOMPARE(fp1, fp2);
+
+    // Verify it's stable across calls.
+    QCOMPARE(NotesBackend::deriveFingerprint(key1), fp1);
+}
+
+void TestSecurity::testFingerprintDifferentMnemonic()
+{
+    CryptoManager crypto;
+    QByteArray salt = CryptoManager::randomSalt();
+
+    QByteArray key1 = crypto.deriveKey(
+        "abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon "
+        "abandon about", salt);
+    QByteArray key2 = crypto.deriveKey(
+        "abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon "
+        "abandon abandon abandon abandon abandon "
+        "abandon abandon abandon art", salt);
+
+    QVERIFY(!key1.isEmpty());
+    QVERIFY(!key2.isEmpty());
+    QVERIFY(key1 != key2);
+
+    QString fp1 = NotesBackend::deriveFingerprint(key1);
+    QString fp2 = NotesBackend::deriveFingerprint(key2);
+    QVERIFY(fp1 != fp2);
 }
 
 QTEST_MAIN(TestSecurity)

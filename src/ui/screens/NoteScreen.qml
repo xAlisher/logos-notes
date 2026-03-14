@@ -550,7 +550,7 @@ Item {
                    + "/" + fp + "_" + date + ".imnotes"
         }
         onAccepted: {
-            var path = selectedFile.toString().replace("file://", "")
+            var path = selectedFile.toLocalFile()
             if (!path.endsWith(".imnotes")) path += ".imnotes"
             var result = backend.exportBackup(path)
             var parsed = JSON.parse(result)

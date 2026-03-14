@@ -1,6 +1,7 @@
 #include "NotesBackend.h"
 #include "SecureBuffer.h"
 
+#include <sodium.h>
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDebug>
@@ -105,10 +106,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
 
     // 5. Persist the mnemonic KDF salt and account fingerprint.
     m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
-    m_db.saveMeta("account_fingerprint",
-                  QCryptographicHash::hash(masterKey.toByteArray(),
-                                           QCryptographicHash::Sha256)
-                      .left(8).toHex().toUpper());
+    m_db.saveMeta("account_fingerprint", deriveFingerprint(masterKey.toByteArray()));
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());
@@ -118,7 +116,15 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     // 7. Restore backup if a path was provided (cross-device restore).
     if (!backupPath.isEmpty()) {
         QString result = importBackup(backupPath, mnemonic);
-        qDebug() << "NotesBackend: backup restore result:" << result;
+        QJsonObject parsed = QJsonDocument::fromJson(result.toUtf8()).object();
+        if (!parsed.value("ok").toBool()) {
+            QString err = parsed.value("error").toString("Backup restore failed.");
+            setError(err);
+            // Keep account created but show error — don't silently proceed.
+            setScreen("note");
+            return;
+        }
+        qDebug() << "NotesBackend: restored" << parsed.value("imported").toInt() << "note(s)";
     }
 
     setError({});
@@ -356,14 +362,28 @@ void NotesBackend::lock()
 
 QString NotesBackend::getAccountFingerprint() const
 {
-    // Try live computation first (when unlocked).
-    if (m_keys.isUnlocked()) {
-        QByteArray hash = QCryptographicHash::hash(m_keys.masterKey(),
-                                                    QCryptographicHash::Sha256);
-        return hash.left(8).toHex().toUpper();
-    }
     // Fall back to stored fingerprint (works on unlock screen).
-    return m_db.loadMeta("account_fingerprint");
+    QString stored = m_db.loadMeta("account_fingerprint");
+    if (!stored.isEmpty())
+        return stored;
+
+    // Live computation (should only happen on first import before persistence).
+    if (m_keys.isUnlocked())
+        return deriveFingerprint(m_keys.masterKey());
+
+    return {};
+}
+
+QString NotesBackend::deriveFingerprint(const QByteArray &masterKey)
+{
+    // Deterministic: Ed25519 public key derived from master key as seed.
+    // Same mnemonic + same salt → same master key → same fingerprint, always.
+    unsigned char pk[crypto_sign_PUBLICKEYBYTES];
+    unsigned char sk[crypto_sign_SECRETKEYBYTES];
+    crypto_sign_seed_keypair(pk, sk,
+        reinterpret_cast<const unsigned char *>(masterKey.constData()));
+    sodium_memzero(sk, sizeof(sk));
+    return QByteArray(reinterpret_cast<const char *>(pk), 8).toHex().toUpper();
 }
 
 bool NotesBackend::hasAccount() const
