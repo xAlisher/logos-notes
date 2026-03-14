@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtCore
 
 // Logos dark theme colors (hardcoded — QML sandbox blocks Logos.Theme import)
 
@@ -24,6 +25,8 @@ Item {
     property string currentScreen: "import"
     property string errorMessage:  ""
     property int lockoutRemaining: 0
+    property string pendingBackupPath: ""
+    property string restoreStatus: ""
 
     function parseLockoutSeconds(msg) {
         var match = msg.match(/(\d+)\s*seconds/)
@@ -68,6 +71,20 @@ Item {
                 font.pixelSize: 30
                 font.weight: Font.Bold
                 color: root.textColor
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.pendingBackupPath.length > 0
+                text: {
+                    var name = root.pendingBackupPath.split("/").pop().replace(".imnotes", "")
+                    var fp = name.split("_")[0]
+                    return fp ? fp : ""
+                }
+                color: root.textPlaceholder
+                font.pixelSize: 11
+                font.family: "Courier New, monospace"
                 horizontalAlignment: Text.AlignHCenter
             }
 
@@ -179,12 +196,44 @@ Item {
                     var result = logos.callModule("notes", "importMnemonic",
                                                   [mnemonicArea.text,
                                                    importPinField.text,
-                                                   importPinConfirmField.text])
+                                                   importPinConfirmField.text,
+                                                   root.pendingBackupPath])
+                    root.pendingBackupPath = ""
                     var parsed = JSON.parse(result)
                     if (parsed.success) {
                         root.currentScreen = "note"
                     } else {
                         root.errorMessage = parsed.error || "Import failed"
+                    }
+                }
+            }
+
+            Text {
+                id: pluginRestoreStatus
+                Layout.fillWidth: true
+                text: root.restoreStatus
+                color: root.primary
+                font.pixelSize: 12
+                visible: text.length > 0
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "Restore from backup"
+                color: root.textSecondary
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        // Plugin can't use FileDialog; use fixed path.
+                        var home = StandardPaths.writableLocation(StandardPaths.HomeLocation)
+                        // Look for most recent .imnotes file
+                        root.pendingBackupPath = home + "/logos-notes-backup.imnotes"
+                        root.restoreStatus = "Backup at ~/logos-notes-backup.imnotes will be restored after import."
                     }
                 }
             }
@@ -740,6 +789,76 @@ Item {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+
+                // ── Danger Zone ──────────────────────────────────
+                Rectangle {
+                // ── Backup section ────────────────────────────────
+                Rectangle {
+                    width: parent.width
+                    height: backupCol2.height + 32
+                    color: root.bgSecondary
+                    radius: 8
+
+                    Column {
+                        id: backupCol2
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                        spacing: 8
+
+                        Text {
+                            text: "Backup"
+                            font.pixelSize: 14
+                            font.weight: Font.Bold
+                            color: root.textColor
+                        }
+
+                        Text {
+                            id: pluginExportStatus
+                            text: ""
+                            color: root.primary
+                            font.pixelSize: 12
+                            visible: text.length > 0
+                        }
+
+                        Row {
+                            spacing: 12
+
+                            Button {
+                                text: "Export Backup"
+                                onClicked: {
+                                    var home = StandardPaths.writableLocation(StandardPaths.HomeLocation)
+                                    var fp = ""
+                                    if (typeof logos !== "undefined" && logos.callModule)
+                                        fp = logos.callModule("notes", "getAccountFingerprint", [])
+                                    var d = new Date()
+                                    var date = d.getFullYear() + "-"
+                                        + String(d.getMonth()+1).padStart(2,"0") + "-"
+                                        + String(d.getDate()).padStart(2,"0")
+                                    var path = home + "/" + fp + "_" + date + ".imnotes"
+                                    if (typeof logos !== "undefined" && logos.callModule) {
+                                        var result = logos.callModule("notes", "exportBackup", [path])
+                                        var parsed = JSON.parse(result)
+                                        pluginExportStatus.text = parsed.ok
+                                            ? "Exported " + parsed.noteCount + " note(s) to " + path
+                                            : "Export failed: " + (parsed.error || "unknown")
+                                    }
+                                }
+                                contentItem: Text {
+                                    text: parent.text
+                                    font.pixelSize: 12
+                                    color: "#FFFFFF"
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.pressed ? root.primaryHover : root.primary
+                                    radius: 16
+                                    implicitHeight: 36
+                                }
+                            }
+
                         }
                     }
                 }

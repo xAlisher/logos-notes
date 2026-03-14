@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Dialogs
+import QtCore
 import Logos.Theme
 import Logos.Controls
 
@@ -19,6 +21,21 @@ Item {
             text: "Import Recovery Phrase"
             font.pixelSize: Theme.typography.titleText
             font.weight: Theme.typography.weightBold
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        LogosText {
+            Layout.fillWidth: true
+            visible: pendingBackupPath.length > 0
+            text: {
+                // Parse fingerprint from filename: FINGERPRINT_DATE.imnotes
+                var name = pendingBackupPath.split("/").pop().replace(".imnotes", "")
+                var fp = name.split("_")[0]
+                return fp ? fp : ""
+            }
+            color: Theme.palette.textPlaceholder
+            font.pixelSize: 11
+            font.family: "Courier New, monospace"
             horizontalAlignment: Text.AlignHCenter
         }
 
@@ -94,14 +111,55 @@ Item {
 
         LogosButton {
             Layout.fillWidth: true
-            text: "Import"
+            text: pendingBackupPath.length > 0 ? "Import & Restore" : "Import"
             onClicked: backend.importMnemonic(mnemonicArea.text,
                                               pinField.text,
-                                              pinConfirmField.text)
+                                              pinConfirmField.text,
+                                              pendingBackupPath)
             background: Rectangle {
                 color: parent.isActive ? Theme.palette.primaryHover : Theme.palette.primary
                 radius: Theme.spacing.radiusXlarge
             }
         }
+
+        LogosText {
+            id: restoreStatus
+            Layout.fillWidth: true
+            text: ""
+            color: Theme.palette.primary
+            font.pixelSize: Theme.typography.secondaryText
+            visible: text.length > 0
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+        }
+
+        LogosText {
+            Layout.fillWidth: true
+            text: "Restore from backup"
+            color: Theme.palette.textSecondary
+            font.pixelSize: Theme.typography.secondaryText
+            horizontalAlignment: Text.AlignHCenter
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: restoreDialog.open()
+            }
+        }
     }
+
+    // Store pending backup path — restored after import succeeds.
+    property string pendingBackupPath: ""
+
+    FileDialog {
+        id: restoreDialog
+        title: "Select Backup File"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Immutable Notes Backup (*.imnotes)", "All files (*)"]
+        onAccepted: {
+            var path = selectedFile.toString().replace("file://", "")
+            pendingBackupPath = path
+            restoreStatus.text = "Backup selected. Import your recovery phrase to restore."
+        }
+    }
+
 }

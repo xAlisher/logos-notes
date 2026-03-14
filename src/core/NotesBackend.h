@@ -25,7 +25,8 @@ public:
     // Called from ImportScreen: validate mnemonic + PIN, derive key, save state.
     Q_INVOKABLE void importMnemonic(const QString &mnemonic,
                                     const QString &pin,
-                                    const QString &pinConfirm);
+                                    const QString &pinConfirm,
+                                    const QString &backupPath = {});
 
     // Called from UnlockScreen: re-derive key with PIN.
     Q_INVOKABLE void unlockWithPin(const QString &pin);
@@ -51,6 +52,15 @@ public:
 
     // Returns true if the database has a stored account (wrapped key).
     bool hasAccount() const;
+
+    // Export all notes as an encrypted backup file. Returns the file path or error.
+    Q_INVOKABLE QString exportBackup(const QString &filePath);
+
+    // Import notes from an encrypted backup file.
+    // If mnemonic is provided, re-derives key using backup's salt to decrypt.
+    // If empty, tries current master key (same-device restore).
+    Q_INVOKABLE QString importBackup(const QString &filePath,
+                                      const QString &mnemonic = {});
 
     // Wipe the database and return to the import screen.
     Q_INVOKABLE void resetAndWipe();

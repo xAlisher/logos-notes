@@ -31,7 +31,8 @@ public:
     // Account management
     Q_INVOKABLE QString importMnemonic(const QString& mnemonic,
                                        const QString& pin,
-                                       const QString& confirm);
+                                       const QString& confirm,
+                                       const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithPin(const QString& pin);
 
     // Note persistence (Phase 0 compat)
@@ -47,6 +48,9 @@ public:
 
     Q_INVOKABLE QString lockSession();
     Q_INVOKABLE QString getAccountFingerprint();
+    Q_INVOKABLE QString exportBackup(const QString& filePath);
+    Q_INVOKABLE QString importBackup(const QString& filePath,
+                                      const QString& mnemonic = {});
     Q_INVOKABLE QString resetAndWipe();
 
 signals:

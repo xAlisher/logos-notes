@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Dialogs
+import QtCore
 import Logos.Theme
 import Logos.Controls
 
@@ -383,6 +385,56 @@ Item {
                 }
             }
 
+            // ── Backup section ────────────────────────────────────────
+            Rectangle {
+                Layout.fillWidth: true
+                height: backupCol.height + 32
+                color: Theme.palette.backgroundSecondary
+                radius: 8
+
+                Column {
+                    id: backupCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+                    spacing: 8
+
+                    LogosText {
+                        text: "Backup"
+                        font.pixelSize: Theme.typography.primaryText
+                        font.weight: Theme.typography.weightBold
+                    }
+
+                    LogosText {
+                        id: exportStatus
+                        text: ""
+                        color: Theme.palette.primary
+                        font.pixelSize: Theme.typography.secondaryText
+                        visible: text.length > 0
+                    }
+
+                    Row {
+                        spacing: 12
+
+                        LogosButton {
+                            text: "Export Backup"
+                            onClicked: exportDialog.open()
+                            background: Rectangle {
+                                color: parent.isActive ? Theme.palette.primaryHover : Theme.palette.primary
+                                radius: Theme.spacing.radiusXlarge
+                                implicitHeight: 36
+                            }
+                            contentItem: LogosText {
+                                text: parent.text
+                                color: "#FFFFFF"
+                                font.pixelSize: Theme.typography.secondaryText
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+
+                    }
+                }
+            }
+
             // ── Danger Zone ──────────────────────────────────────────
             Rectangle {
                 Layout.fillWidth: true
@@ -479,6 +531,32 @@ Item {
                 backend.saveNote(root.activeNoteId, editor.text)
                 root.refreshList()
             }
+        }
+    }
+
+    // ── File dialogs ────────────────────────────────────────────────
+    FileDialog {
+        id: exportDialog
+        title: "Export Backup"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Immutable Notes Backup (*.imnotes)"]
+        currentFile: {
+            var fp = backend.getAccountFingerprint()
+            var d = new Date()
+            var date = d.getFullYear() + "-"
+                + String(d.getMonth()+1).padStart(2,"0") + "-"
+                + String(d.getDate()).padStart(2,"0")
+            return "file://" + StandardPaths.writableLocation(StandardPaths.HomeLocation)
+                   + "/" + fp + "_" + date + ".imnotes"
+        }
+        onAccepted: {
+            var path = selectedFile.toString().replace("file://", "")
+            if (!path.endsWith(".imnotes")) path += ".imnotes"
+            var result = backend.exportBackup(path)
+            var parsed = JSON.parse(result)
+            exportStatus.text = parsed.ok
+                ? "Exported " + parsed.noteCount + " note(s)"
+                : "Export failed: " + (parsed.error || "unknown error")
         }
     }
 

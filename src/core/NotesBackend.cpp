@@ -4,6 +4,7 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDebug>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -55,7 +56,8 @@ QString NotesBackend::errorMessage() const
 
 void NotesBackend::importMnemonic(const QString &mnemonic,
                                    const QString &pin,
-                                   const QString &pinConfirm)
+                                   const QString &pinConfirm,
+                                   const QString &backupPath)
 {
     if (pin != pinConfirm) {
         setError("PINs do not match.");
@@ -112,6 +114,13 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     m_keys.setMasterKey(masterKey.toByteArray());
 
     m_db.setInitialized();
+
+    // 7. Restore backup if a path was provided (cross-device restore).
+    if (!backupPath.isEmpty()) {
+        QString result = importBackup(backupPath, mnemonic);
+        qDebug() << "NotesBackend: backup restore result:" << result;
+    }
+
     setError({});
     setScreen("note");
 }
@@ -360,6 +369,132 @@ QString NotesBackend::getAccountFingerprint() const
 bool NotesBackend::hasAccount() const
 {
     return m_db.isInitialized();
+}
+
+QString NotesBackend::exportBackup(const QString &filePath)
+{
+    if (!m_keys.isUnlocked())
+        return QStringLiteral("{\"error\":\"Not unlocked\"}");
+
+    // Collect all notes as plaintext JSON array.
+    const auto headers = m_db.loadNoteHeaders();
+    QJsonArray notesArr;
+    for (const auto &h : headers) {
+        QByteArray ct, nonce;
+        if (!m_db.loadNote(h.id, ct, nonce))
+            continue;
+        QString content;
+        if (!ct.isEmpty())
+            content = QString::fromUtf8(m_crypto.decrypt(ct, m_keys.masterKey(), nonce));
+
+        // Decrypt title.
+        QString title;
+        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty())
+            title = QString::fromUtf8(m_crypto.decrypt(h.titleCiphertext,
+                                                        m_keys.masterKey(), h.titleNonce));
+
+        QJsonObject noteObj;
+        noteObj["title"] = title;
+        noteObj["content"] = content;
+        noteObj["updatedAt"] = h.updatedAt;
+        notesArr.append(noteObj);
+    }
+
+    // Encrypt the JSON blob.
+    QByteArray plaintext = QJsonDocument(notesArr).toJson(QJsonDocument::Compact);
+    QByteArray nonce;
+    QByteArray ciphertext = m_crypto.encrypt(plaintext, m_keys.masterKey(), nonce);
+    if (ciphertext.isEmpty())
+        return QStringLiteral("{\"error\":\"Encryption failed\"}");
+
+    // Build backup file: salt + nonce + ciphertext so any device with the
+    // same mnemonic can re-derive the key and decrypt.
+    QByteArray salt = m_db.loadMetaBlob("mnemonic_kdf_salt");
+    QJsonObject backup;
+    backup["version"] = 1;
+    backup["salt"] = QString::fromLatin1(salt.toBase64());
+    backup["nonce"] = QString::fromLatin1(nonce.toBase64());
+    backup["ciphertext"] = QString::fromLatin1(ciphertext.toBase64());
+    backup["noteCount"] = notesArr.size();
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return QStringLiteral("{\"error\":\"Cannot write file\"}");
+    }
+    file.write(QJsonDocument(backup).toJson(QJsonDocument::Compact));
+    file.close();
+
+    QJsonObject result;
+    result["ok"] = true;
+    result["noteCount"] = notesArr.size();
+    result["path"] = filePath;
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::importBackup(const QString &filePath,
+                                    const QString &mnemonic)
+{
+    if (!m_keys.isUnlocked())
+        return QStringLiteral("{\"error\":\"Not unlocked\"}");
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly))
+        return QStringLiteral("{\"error\":\"Cannot read file\"}");
+
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    file.close();
+    if (!doc.isObject())
+        return QStringLiteral("{\"error\":\"Invalid backup format\"}");
+
+    QJsonObject backup = doc.object();
+    if (backup["version"].toInt() != 1)
+        return QStringLiteral("{\"error\":\"Unsupported backup version\"}");
+
+    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
+    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
+    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
+
+    // Try decrypting with current master key first (same-device restore).
+    QByteArray plaintext = m_crypto.decrypt(ciphertext, m_keys.masterKey(), nonce);
+
+    // If that fails, re-derive using backup's salt + mnemonic.
+    if (plaintext.isEmpty() && !mnemonic.isEmpty()) {
+        SecureBuffer backupKey(m_crypto.deriveKey(mnemonic, backupSalt));
+        if (!backupKey.isEmpty())
+            plaintext = m_crypto.decrypt(ciphertext, backupKey.ref(), nonce);
+    }
+
+    if (plaintext.isEmpty())
+        return QStringLiteral("{\"error\":\"Cannot decrypt backup. "
+                              "Wrong recovery phrase or corrupted file.\"}");
+
+    QJsonArray notesArr = QJsonDocument::fromJson(plaintext).array();
+    int imported = 0;
+    for (const auto &val : notesArr) {
+        QJsonObject noteObj = val.toObject();
+        QString content = noteObj["content"].toString();
+        QString title = noteObj["title"].toString();
+
+        int id = m_db.createNote();
+        if (id < 0) continue;
+
+        // Encrypt content.
+        QByteArray contentNonce;
+        QByteArray contentCt = m_crypto.encrypt(content.toUtf8(),
+                                                 m_keys.masterKey(), contentNonce);
+        // Encrypt title.
+        QByteArray titleNonce;
+        QByteArray titleCt = m_crypto.encrypt(title.toUtf8(),
+                                               m_keys.masterKey(), titleNonce);
+
+        m_db.saveNote(id, contentCt, contentNonce, titleCt, titleNonce);
+        ++imported;
+    }
+
+    QJsonObject result;
+    result["ok"] = true;
+    result["imported"] = imported;
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
 void NotesBackend::resetAndWipe()

@@ -34,9 +34,10 @@ QString NotesPlugin::isInitialized()
 
 QString NotesPlugin::importMnemonic(const QString& mnemonic,
                                     const QString& pin,
-                                    const QString& confirm)
+                                    const QString& confirm,
+                                    const QString& backupPath)
 {
-    m_backend.importMnemonic(mnemonic, pin, confirm);
+    m_backend.importMnemonic(mnemonic, pin, confirm, backupPath);
 
     if (m_backend.currentScreen() == QStringLiteral("note"))
         return successJson();
@@ -105,6 +106,17 @@ QString NotesPlugin::lockSession()
 QString NotesPlugin::getAccountFingerprint()
 {
     return m_backend.getAccountFingerprint();
+}
+
+QString NotesPlugin::exportBackup(const QString& filePath)
+{
+    return m_backend.exportBackup(filePath);
+}
+
+QString NotesPlugin::importBackup(const QString& filePath,
+                                   const QString& mnemonic)
+{
+    return m_backend.importBackup(filePath, mnemonic);
 }
 
 QString NotesPlugin::resetAndWipe()
