@@ -505,6 +505,23 @@ Also: `storageResponse(StorageSignal, int, QString)` — internal signal bridgin
 
 ---
 
+## Parked Tasks
+
+### AppImage packaging
+Status: blocked on QML type resolution at runtime.
+Root cause: Qt 6.9 AOT-compiled QML bakes type registrations
+via QRC `prefer` directives that override external plugin paths.
+
+Three unblock options:
+1. Rebuild with `QT_QML_NO_CACHEGEN=1` (interpreted mode)
+2. Use `qt_deploy_qml_imports()` CMake function
+3. Nix-based approach matching logos-app-poc (`nix-bundle-appimage`)
+
+Option 3 is cleanest — matches how the Logos App itself packages.
+Revisit after Settings screen and alpha prep are done.
+
+---
+
 ## Storage Module Research
 
 > Researched 2026-03-12 by reverse-engineering installed binaries and GitHub sources.
