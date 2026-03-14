@@ -371,6 +371,13 @@ QML_IMPORT_PATH=/nix/store/w9ra12n0yabd275v33m8x7lqnnrcgb9f-logos-design-system-
 - [ ] Register as Logos App module (metadata.json + plugin interface)
 - [ ] Update https://github.com/logos-co/ideas/issues/13 with Phase 0 definition
 
+### Distribution targets (parallel, not sequential)
+
+| Target | Version | Description | Status |
+|--------|---------|-------------|--------|
+| **AppImage** | v0.4.0 | Standalone desktop app, runs without Logos App | Planned |
+| **LGX package** | v0.5.0 | Installs inside Logos App via Package Manager | Planned |
+
 ---
 
 ## Installed Modules in Running Logos App

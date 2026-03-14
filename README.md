@@ -205,6 +205,15 @@ logos-notes/
 | **2** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) | Planned |
 | **3** | Logos Storage backup + Logos Messaging sync across devices | Planned |
 
+### Distribution targets
+
+Same core app, different packaging — parallel tracks, not sequential.
+
+| Target | Version | Description | Status |
+|--------|---------|-------------|--------|
+| **AppImage** | v0.4.0 | Standalone desktop app, runs without Logos App | Planned |
+| **LGX package** | v0.5.0 | Installs inside Logos App via Package Manager | Planned |
+
 ### Security issues tracker
 
 | Issue | Severity | Status |
