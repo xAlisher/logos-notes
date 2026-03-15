@@ -6,6 +6,7 @@
 
 #include "core/NotesBackend.h"
 #include "core/KeyManager.h"
+#include "core/DatabaseManager.h"
 
 // Tests for account lifecycle (Issue #29).
 // Drives NotesBackend directly: import, unlock, lock, reset, PIN lockout.
@@ -57,6 +58,7 @@ private slots:
     void testLockoutAfterMaxAttempts();
     void testSuccessfulUnlockResetsCounter();
     void testLockoutPersistsAcrossInstances();
+    void testLockoutBackoffProgression();
 
     // ── Reset ─────────────────────────────────────────────────────────
     void testResetAndWipeClearsAccount();
@@ -360,6 +362,45 @@ void TestAccount::testLockoutPersistsAcrossInstances()
         NotesBackend backend;
         backend.unlockWithPin(TEST_PIN); // Even correct PIN rejected during lockout.
         QVERIFY(backend.errorMessage().contains("Too many failed attempts"));
+    }
+}
+
+void TestAccount::testLockoutBackoffProgression()
+{
+    // Verifies the exponential backoff schedule: 30, 60, 120, 300, 600s.
+    // After each lockout, we expire the timer via DB manipulation to
+    // reach the next tier without waiting real seconds.
+    wipeTestData();
+    {
+        NotesBackend backend;
+        backend.importMnemonic(TEST_MNEMONIC, TEST_PIN, TEST_PIN);
+    }
+
+    // Expected backoff schedule from the backend.
+    const int expectedBackoffs[] = {30, 60, 120, 300, 600};
+
+    for (int tier = 0; tier < 5; ++tier) {
+        // Open a DB connection to expire the lockout timer.
+        {
+            QString dbPath = QStandardPaths::writableLocation(
+                QStandardPaths::AppDataLocation) + "/notes.db";
+            DatabaseManager db(dbPath);
+            db.init();
+            // Clear the lockout timer so the backend accepts the next attempt.
+            db.saveMeta("pin_lockout_until", "0");
+            // Set failed attempts to 4 + tier (so next wrong PIN = 5+tier, triggers tier).
+            db.saveMeta("pin_failed_attempts", QString::number(4 + tier));
+        }
+
+        // New backend reads the manipulated state from DB.
+        NotesBackend backend;
+        backend.unlockWithPin("999999"); // Wrong PIN — triggers lockout at this tier.
+
+        // Verify the correct backoff duration in the error message.
+        QString expected = QString("Locked out for %1 seconds").arg(expectedBackoffs[tier]);
+        QVERIFY2(backend.errorMessage().contains(expected),
+                 qPrintable(QString("Tier %1: expected '%2', got '%3'")
+                     .arg(tier).arg(expected).arg(backend.errorMessage())));
     }
 }
 
