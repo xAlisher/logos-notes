@@ -4,7 +4,7 @@
 > **This file is the project's shared memory.**
 > Both Claude Code and Codex read it at the start of every session.
 > Both agents must write back to it before ending any session.
-> It lives outside the repo — in the Claude project context.
+> It lives in the repo root at `PROJECT_KNOWLEDGE.md` and is committed like any other file.
 > GitHub issues are ephemeral. This file is not.
 
 ---
@@ -141,9 +141,10 @@ Q_INVOKABLE QString deleteNote(int id);
 ## Open Questions
 
 1. **New Logos App repo**: `logos-co/logos-app` vs `logos-co/logos-app-poc` — is the new repo the successor? Need to check PluginInterface compatibility before v0.6.0 LGX work.
-2. **Social backup CID discovery**: Storage team confirmed web-of-trust approach is intended. Open question: how do peers discover latest CID? Via Logos Messaging? Signed latest-CID record? Awaiting response from bkomuves in Discord.
-3. **Logos Storage built-in encryption**: bkomuves mentioned automatic encryption may be built-in. Not yet implemented. Worth watching before Phase 2 design.
-4. **AppImage unblock**: three options identified — `QT_QML_NO_CACHEGEN=1`, `qt_deploy_qml_imports()`, or Nix bundle. Option 3 recommended. Not yet attempted.
+2. **initLogos signature**: current code passes `LogosAPI*` but SDK headers may expect `QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
+3. **Social backup CID discovery**: Storage team confirmed web-of-trust approach is intended. Open question: how do peers discover latest CID? Via Logos Messaging? Signed latest-CID record? Awaiting response from bkomuves in Discord.
+4. **Logos Storage built-in encryption**: bkomuves mentioned automatic encryption may be built-in. Not yet implemented. Worth watching before Phase 2 design.
+5. **AppImage unblock**: three options identified — `QT_QML_NO_CACHEGEN=1`, `qt_deploy_qml_imports()`, or Nix bundle. Option 3 recommended. Not yet attempted.
 
 ---
 
@@ -312,6 +313,104 @@ Backup CID:        zDvZ...  [Copy]
 
 ---
 
+## Local Clone Paths
+
+| Repo | Local path |
+|------|-----------|
+| logos-app-poc (built, AppImage runs) | `~/logos-app/` |
+| status-desktop (QML/Nim reference) | `~/status-desktop/` |
+
+---
+
+## PluginInterface — Base Class Definition
+
+From `/nix/store/092zxk8qbm9zxqigq1z0a5l901a068cz-logos-liblogos-headers-0.1.0/include/interface.h`:
+
+```cpp
+class PluginInterface {
+public:
+    virtual ~PluginInterface() {}
+    virtual QString name() const = 0;
+    virtual QString version() const = 0;
+    LogosAPI* logosAPI = nullptr;
+};
+#define PluginInterface_iid "com.example.PluginInterface"
+Q_DECLARE_INTERFACE(PluginInterface, PluginInterface_iid)
+```
+
+Current IID in use: `"org.logos.NotesModuleInterface"` (verified in plugin_metadata.json).
+
+**Open question**: `initLogos` signature — old code used `LogosAPI*`, SDK headers may expect
+`QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
+
+---
+
+## Logos Core C API (how the shell loads modules)
+
+```c
+logos_core_set_plugins_dir(dir);        // tell core where .so files live
+logos_core_start();                     // start core process
+logos_core_load_plugin("notes");        // load our plugin
+logos_core_call_plugin_method_async(    // call a method with JSON params
+    "notes", "initialize", "[]", callback, userData);
+logos_core_register_event_listener(    // subscribe to eventResponse signal
+    "notes", "eventResponse", callback, userData);
+```
+
+---
+
+## manifest.json — Real LGX Format
+
+For v0.6.0 LGX packaging, the manifest uses a platform map for the binary path:
+
+```json
+{
+  "name": "notes",
+  "version": "1.0.0",
+  "type": "core",
+  "category": "notes",
+  "main": {
+    "linux-amd64": "notes_plugin.so",
+    "darwin-amd64": "notes_plugin.dylib"
+  },
+  "dependencies": []
+}
+```
+
+Current cmake --install copies raw `.so` files with a flat manifest — this only works
+with AppImage builds. Real LGX format needed for Package Manager installation.
+Upstream issue: https://github.com/logos-co/logos-app/issues/60
+
+---
+
+## Installed Modules in Running Logos App
+
+Verified by inspecting `~/.local/share/Logos/LogosApp/` after Downloads AppImage installs them.
+
+| Module | Type | Description |
+|--------|------|-------------|
+| `chat` | core | Classic Waku relay chat |
+| `chat-mix` | core | Chat via mixnet (AnonComms) |
+| `chatsdk_module` | core | LogosChat SDK (nim-chat-poc C FFI wrapper) |
+| `storage_module` | core | Logos Storage node (Codex/libp2p) |
+| `chat_ui` | ui_qml | Chat UI plugin |
+| `storage_ui` | ui | Storage UI (compiled .so with embedded QML) |
+| `notes` | core | Our module |
+| `notes_ui` | ui_qml | Our UI plugin |
+
+### ChatSDK Q_INVOKABLE methods (reference for IPC patterns)
+```
+connect(url)
+disconnect()
+sendMessage(roomId, text)
+joinRoom(roomId)
+leaveRoom(roomId)
+getMessages(roomId)
+getRooms()
+```
+
+---
+
 ## Key Links
 
 | Resource | URL |
@@ -321,6 +420,10 @@ Backup CID:        zDvZ...  [Copy]
 | Logos App | https://github.com/logos-co/logos-app |
 | Logos App PoC | https://github.com/logos-co/logos-app-poc |
 | Chat UI reference | https://github.com/logos-co/logos-chat-ui |
+| Chat module reference | https://github.com/logos-co/logos-chat-module |
+| Template module | https://github.com/logos-co/logos-template-module |
+| C++ SDK | https://github.com/logos-co/logos-cpp-sdk |
+| Logos docs | https://github.com/logos-co/logos-docs |
 | Logos Storage | https://github.com/logos-storage/logos-storage-nim |
 | Logos Messaging | https://github.com/logos-messaging/nim-chat-poc |
 | Waku docs | https://docs.waku.org |

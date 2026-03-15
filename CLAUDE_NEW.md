@@ -240,12 +240,37 @@ Before ending any session:
 
 ---
 
+## Logos App Updates Routine
+
+Check weekly:
+```bash
+cd ~/logos-app && git fetch && git log HEAD..origin/master --oneline
+```
+
+If updates exist:
+```bash
+git pull && nix build '.#bin-appimage'
+```
+
+Re-run full UI/UX checklist after every Logos App update. Watch specifically for:
+- `PluginInterface` changes — update `NotesPlugin` immediately if broken
+- `LogosQmlBridge` new methods or behavior changes
+- `logos-design-system` token changes affecting hardcoded colors
+
+---
+
+## Guiding Principle
+
+Prefer simple and correct over clever and broken.
+
+---
+
 ## Reference Locations
 
 | What | Where |
 |------|-------|
 | Shell integration patterns | `~/logos-app/src/` |
-| QML reference app | `~/status-desktop/ui/imports/shared/` |
+| Seed phrase UX patterns | `~/status-desktop/ui/imports/shared/popups/addaccount/` |
 | Logos design system | `~/Qt/6.9.3/gcc_64/` (installed) |
 | Plugin QML | `plugins/notes_ui/Main.qml` |
 | Backend core | `src/core/NotesBackend.cpp` |
