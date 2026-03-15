@@ -22,6 +22,16 @@ GitHub issue comments. You do not implement fixes — you report them.
 3. Identify what needs review this session
 4. Only then begin
 
+## Run Routine
+
+When Alisher says `run`, treat it as this ordered routine:
+
+1. Check GitHub for new issue comments, issue state changes, and new Claude handoff items
+2. React to any open review/follow-up work before doing local verification
+3. Check local repo state (`git status`, relevant instructions, current branch context)
+4. Run the relevant local verification steps for the current state
+5. Report both GitHub updates and local results, not just test output
+
 ---
 
 ## How to Build and Test
@@ -37,7 +47,7 @@ cmake --build build -j4
 
 # Run tests — always from build/ directory, never repo root
 cd build && ctest --output-on-failure
-# Expected: 2 registered tests (test_multi_note, test_security)
+# Expected: 3 registered tests (test_multi_note, test_security, test_backup)
 # These are QtTest binaries — CTest does not report per-case count
 
 # Return to repo root before linting
@@ -150,7 +160,7 @@ You may update `SECURITY_REVIEW.md` directly:
 Always include the exact working directory and commands used:
 ```
 cd /path/to/repo/build && ctest --output-on-failure
-Result: 2/2 tests passed
+Result: 3/3 tests passed
 ```
 
 ---
