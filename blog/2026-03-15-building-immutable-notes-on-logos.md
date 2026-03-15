@@ -189,6 +189,8 @@ Four review rounds, ten findings, all resolved or documented as known limitation
 
 **Trust Network.** Automatic encrypted backup with redundancy through trusted peers. Export your encrypted blob to Logos Storage, broadcast the CID via Logos Messaging to peers who opted in. Reciprocal by design — both sides must add each other. No central server, no managed storage. [Design spec here.](https://github.com/xAlisher/logos-notes/issues/15)
 
+**LGX package.** Package as a proper `.lgx` module for installation via the Logos App Package Manager — so anyone can install it with one click.
+
 **AppImage packaging.** Currently blocked on a Qt QML AOT compilation issue. The Nix-based approach matching Logos App's own packaging is the likely path.
 
 ---
@@ -205,7 +207,7 @@ cmake --build build
 ./build/logos-notes
 ```
 
-Twenty-six tests. Four releases. Five blog posts. Zero plaintext on disk.
+Twenty-five tests. Five versions shipped. Six blog posts. Zero plaintext on disk.
 
 Clone it, break it, build on top of it. Find me on [Status](https://status.app/u/CwmAChEKD0FsaXNoZXIgU2hlcmFsaQM=#zQ3shWBWbQjMhpevjRT3KifqunFR8F81hbwzRMs7193PgWrhf) or in the Logos Discord.
 
