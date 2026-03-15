@@ -4,6 +4,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 
 #include "core/NotesBackend.h"
 
@@ -53,6 +55,9 @@ private slots:
 
     // ── Ordering ─────────────────────────────────────────────────────
     void testMultipleNotesOrdering();
+
+    // ── Legacy migration ─────────────────────────────────────────────
+    void testLegacyPlaintextTitleMigration();
 
 private:
     void wipeTestData();
@@ -309,6 +314,75 @@ void TestNoteApi::testMultipleNotesOrdering()
 
     // Most recent note should be "Note C".
     QCOMPARE(notes[0].toObject()["title"].toString(), "Note C");
+}
+
+// ── Legacy migration ─────────────────────────────────────────────────────
+
+void TestNoteApi::testLegacyPlaintextTitleMigration()
+{
+    // Seed a legacy note with plaintext title column populated but
+    // encrypted title columns empty. On unlock, migratePlaintextTitles()
+    // should encrypt the title and keep it readable via loadNotes().
+    wipeTestData();
+
+    // Step 1: Create an account and a note with content (to have a valid row).
+    {
+        NotesBackend backend;
+        importAndUnlock(backend);
+
+        QJsonObject n = parseJson(backend.createNote());
+        backend.saveNote(n["id"].toInt(), "Legacy note body");
+    }
+
+    // Step 2: Directly manipulate the DB to simulate a legacy row:
+    // set the plaintext title column and clear encrypted title columns.
+    {
+        QString dbPath = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation) + "/notes.db";
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "legacy-test");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+
+        QSqlQuery q(db);
+        QVERIFY(q.exec("UPDATE notes SET title = 'Legacy Title', "
+                        "title_ciphertext = '', title_nonce = ''"));
+        db.close();
+        QSqlDatabase::removeDatabase("legacy-test");
+    }
+
+    // Step 3: Create a new backend — it reads persisted state, shows unlock screen.
+    // Unlock triggers migratePlaintextTitles().
+    {
+        NotesBackend backend;
+        QCOMPARE(backend.currentScreen(), "unlock");
+
+        backend.unlockWithPin(TEST_PIN);
+        QCOMPARE(backend.currentScreen(), "note");
+
+        // loadNotes should still return the title — now encrypted.
+        QJsonArray notes = parseJsonArray(backend.loadNotes());
+        QCOMPARE(notes.size(), 1);
+        QCOMPARE(notes[0].toObject()["title"].toString(), "Legacy Title");
+    }
+
+    // Step 4: Verify the DB no longer has plaintext title.
+    {
+        QString dbPath = QStandardPaths::writableLocation(
+            QStandardPaths::AppDataLocation) + "/notes.db";
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "legacy-verify");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+
+        QSqlQuery q(db);
+        QVERIFY(q.exec("SELECT title, title_ciphertext FROM notes LIMIT 1"));
+        QVERIFY(q.next());
+
+        // Encrypted title columns should now be populated.
+        QVERIFY(!q.value(1).toByteArray().isEmpty());
+
+        db.close();
+        QSqlDatabase::removeDatabase("legacy-verify");
+    }
 }
 
 QTEST_MAIN(TestNoteApi)
