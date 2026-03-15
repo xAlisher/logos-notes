@@ -113,6 +113,16 @@ QString NotesPlugin::exportBackup(const QString& filePath)
     return m_backend.exportBackup(filePath);
 }
 
+QString NotesPlugin::exportBackupAuto()
+{
+    return m_backend.exportBackupAuto();
+}
+
+QString NotesPlugin::listBackups()
+{
+    return m_backend.listBackups();
+}
+
 QString NotesPlugin::importBackup(const QString& filePath,
                                    const QString& mnemonic)
 {

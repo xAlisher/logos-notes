@@ -49,6 +49,8 @@ public:
     Q_INVOKABLE QString lockSession();
     Q_INVOKABLE QString getAccountFingerprint();
     Q_INVOKABLE QString exportBackup(const QString& filePath);
+    Q_INVOKABLE QString exportBackupAuto();
+    Q_INVOKABLE QString listBackups();
     Q_INVOKABLE QString importBackup(const QString& filePath,
                                       const QString& mnemonic = {});
     Q_INVOKABLE QString resetAndWipe();

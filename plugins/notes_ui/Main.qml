@@ -221,19 +221,32 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: "Restore from backup"
-                color: root.textSecondary
+                text: root.pendingBackupPath.length > 0
+                      ? "Change backup"
+                      : "Restore from backup"
+                color: root.pendingBackupPath.length > 0
+                       ? root.primary
+                       : root.textSecondary
                 font.pixelSize: 12
                 horizontalAlignment: Text.AlignHCenter
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        // Plugin can't use FileDialog; use fixed path.
-                        var home = StandardPaths.writableLocation(StandardPaths.HomeLocation)
-                        // Look for most recent .imnotes file
-                        root.pendingBackupPath = home + "/logos-notes-backup.imnotes"
-                        root.restoreStatus = "Backup at ~/logos-notes-backup.imnotes will be restored after import."
+                        // List available backups from well-known directory.
+                        if (typeof logos === "undefined" || !logos.callModule) return
+                        var json = logos.callModule("notes", "listBackups", [])
+                        var files = JSON.parse(json)
+                        if (files.length === 0) {
+                            root.restoreStatus = "No backups found in ~/.local/share/logos-notes/backups/"
+                            return
+                        }
+                        // Auto-select the most recent backup.
+                        var dir = StandardPaths.writableLocation(StandardPaths.HomeLocation)
+                              + "/.local/share/logos-notes/backups/"
+                        root.pendingBackupPath = dir + files[0]
+                        var name = files[0]
+                        root.restoreStatus = "Backup: " + name
                     }
                 }
             }
@@ -762,15 +775,23 @@ Item {
 
                             Text {
                                 id: fpText
-                                text: {
-                                    if (typeof logos !== "undefined" && logos.callModule)
-                                        return logos.callModule("notes", "getAccountFingerprint", [])
-                                    return ""
-                                }
+                                property string fingerprint: ""
+                                text: fingerprint
                                 font.family: "Courier New, monospace"
                                 font.pixelSize: 12
                                 color: root.textColor
                                 anchors.verticalCenter: parent.verticalCenter
+                                Component.onCompleted: refreshFp()
+                                function refreshFp() {
+                                    if (typeof logos !== "undefined" && logos.callModule)
+                                        fingerprint = logos.callModule("notes", "getAccountFingerprint", [])
+                                }
+                                Connections {
+                                    target: noteScreen
+                                    function onShowSettingsChanged() {
+                                        if (noteScreen.showSettings) fpText.refreshFp()
+                                    }
+                                }
                             }
 
                             Text {
@@ -818,46 +839,32 @@ Item {
                             color: root.primary
                             font.pixelSize: 12
                             visible: text.length > 0
+                            width: parent.width
+                            wrapMode: Text.WrapAnywhere
                         }
 
-                        Row {
-                            spacing: 12
-
-                            Button {
-                                text: "Export Backup"
-                                onClicked: {
-                                    var home = StandardPaths.writableLocation(StandardPaths.HomeLocation)
-                                    var fp = ""
-                                    if (typeof logos !== "undefined" && logos.callModule)
-                                        fp = logos.callModule("notes", "getAccountFingerprint", [])
-                                    var d = new Date()
-                                    var date = d.getFullYear() + "-"
-                                        + String(d.getMonth()+1).padStart(2,"0") + "-"
-                                        + String(d.getDate()).padStart(2,"0")
-                                    var shortFp = fp.substring(0, 16)
-                                    var path = home + "/" + shortFp + "_" + date + ".imnotes"
-                                    if (typeof logos !== "undefined" && logos.callModule) {
-                                        var result = logos.callModule("notes", "exportBackup", [path])
-                                        var parsed = JSON.parse(result)
-                                        pluginExportStatus.text = parsed.ok
-                                            ? "Exported " + parsed.noteCount + " note(s) to " + path
-                                            : "Export failed: " + (parsed.error || "unknown")
-                                    }
-                                }
-                                contentItem: Text {
-                                    text: parent.text
-                                    font.pixelSize: 12
-                                    color: "#FFFFFF"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    color: parent.pressed ? root.primaryHover : root.primary
-                                    radius: 16
-                                    implicitHeight: 36
-                                }
+                        Button {
+                            text: "Export Backup"
+                            onClicked: {
+                                if (typeof logos === "undefined" || !logos.callModule) return
+                                var result = logos.callModule("notes", "exportBackupAuto", [])
+                                var parsed = JSON.parse(result)
+                                pluginExportStatus.text = parsed.ok
+                                    ? "Saved to: " + parsed.path
+                                    : "Export failed: " + (parsed.error || "unknown")
                             }
-
+                            contentItem: Text {
+                                text: parent.text
+                                font.pixelSize: 12
+                                color: "#FFFFFF"
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                color: parent.pressed ? root.primaryHover : root.primary
+                                radius: 16
+                                implicitHeight: 36
+                            }
                         }
                     }
                 }
@@ -894,10 +901,27 @@ Item {
                         Row {
                             spacing: 8
 
-                            CheckBox {
+                            Rectangle {
                                 id: pluginConfirmCheck
+                                property bool checked: false
                                 width: 20; height: 20
+                                radius: 4
+                                color: checked ? root.overlayOrange : "transparent"
+                                border.width: 2
+                                border.color: checked ? root.overlayOrange : "#3a3a3a"
                                 anchors.verticalCenter: parent.verticalCenter
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: parent.checked ? "✓" : ""
+                                    color: "#FFFFFF"
+                                    font.pixelSize: 14
+                                    font.weight: Font.Bold
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: parent.checked = !parent.checked
+                                }
                             }
 
                             Text {

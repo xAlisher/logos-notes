@@ -5,7 +5,9 @@
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
 #include <QFile>
+#include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -464,6 +466,38 @@ QString NotesBackend::exportBackup(const QString &filePath)
     result["noteCount"] = notesArr.size();
     result["path"] = filePath;
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::backupsDir()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
+           + "/.local/share/logos-notes/backups";
+}
+
+QString NotesBackend::exportBackupAuto()
+{
+    if (!m_keys.isUnlocked())
+        return QStringLiteral("{\"error\":\"Not unlocked\"}");
+
+    QString dir = backupsDir();
+    QDir().mkpath(dir);
+
+    QString fp = getAccountFingerprint().left(16);
+    QDate today = QDate::currentDate();
+    QString filename = fp + "_" + today.toString("yyyy-MM-dd") + ".imnotes";
+    QString path = dir + "/" + filename;
+
+    return exportBackup(path);
+}
+
+QString NotesBackend::listBackups() const
+{
+    QDir dir(backupsDir());
+    QStringList files = dir.entryList({"*.imnotes"}, QDir::Files, QDir::Time);
+    QJsonArray arr;
+    for (const QString &f : files)
+        arr.append(f);
+    return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }
 
 QString NotesBackend::importBackup(const QString &filePath,

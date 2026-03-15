@@ -56,11 +56,18 @@ public:
     // Export all notes as an encrypted backup file. Returns the file path or error.
     Q_INVOKABLE QString exportBackup(const QString &filePath);
 
+    // Export to well-known backups directory (no path argument needed).
+    Q_INVOKABLE QString exportBackupAuto();
+
+    // List .imnotes files in the backups directory.
+    Q_INVOKABLE QString listBackups() const;
+
     // Import notes from an encrypted backup file.
-    // If mnemonic is provided, re-derives key using backup's salt to decrypt.
-    // If empty, tries current master key (same-device restore).
     Q_INVOKABLE QString importBackup(const QString &filePath,
                                       const QString &mnemonic = {});
+
+    // Well-known backups directory.
+    static QString backupsDir();
 
     // Deterministic fingerprint from mnemonic (Ed25519 public key, first 8 bytes hex).
     // Same mnemonic → same fingerprint, always, on any device.

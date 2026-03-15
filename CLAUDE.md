@@ -858,6 +858,21 @@ not raw `.so` files. Always use the AppImage or a release download.
   - `logos-design-system` (token changes affecting hardcoded colors)
 - If `PluginInterface` changes — update `NotesPlugin` immediately
 
+### GitHub issues routine
+
+**Labels** — every issue gets one type + one env label:
+- Type: `bug`, `feature`, `security`
+- Env: `env:logos-app`, `env:standalone`, `env:both`
+
+**Bug title**: short plain description of what is broken.
+**Bug body**: Symptom, Steps to reproduce, Expected, Actual, Suspected cause.
+
+**Closing**: only when fix is merged to master. Leave comment with
+what was fixed and where. Use `Closes #N` in commit/PR to auto-close.
+
+**Hygiene**: one issue per bug. If a new bug is found during a fix
+branch, open a new issue — do not fold it in silently.
+
 ### Branch naming
 - `feature/description` — new features
 - `security/pX-fixes` — security fixes by priority
