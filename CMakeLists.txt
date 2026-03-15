@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # ── Qt ──────────────────────────────────────────────────────────────────────
-find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml QuickControls2 Sql)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml QuickControls2 Sql RemoteObjects)
 qt_standard_project_setup()
 qt_policy(SET QTP0001 NEW) 
 qt_policy(SET QTP0004 NEW)
@@ -241,6 +241,36 @@ target_link_libraries(test_note_api PRIVATE
     PkgConfig::sodium
 )
 add_test(NAME test_note_api COMMAND test_note_api)
+
+add_executable(test_plugin
+    tests/test_plugin.cpp
+    tests/logos_api_stub.cpp
+    "${LOGOS_CPP_SDK}/include/cpp/logos_api.h"
+    src/plugin/NotesPlugin.h
+    src/plugin/NotesPlugin.cpp
+    src/core/DatabaseManager.h
+    src/core/DatabaseManager.cpp
+    src/core/CryptoManager.h
+    src/core/CryptoManager.cpp
+    src/core/KeyManager.h
+    src/core/KeyManager.cpp
+    src/core/NotesBackend.h
+    src/core/NotesBackend.cpp
+)
+target_include_directories(test_plugin PRIVATE
+    src
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+)
+target_link_libraries(test_plugin PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Sql
+    PkgConfig::sodium
+)
+add_test(NAME test_plugin COMMAND test_plugin)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 
