@@ -471,7 +471,17 @@ Item {
             }
         }
 
+        function saveCurrentNote() {
+            saveTimer.stop()
+            if (activeNoteId > 0 && !loading && typeof logos !== "undefined" && logos.callModule) {
+                var result = logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
+                if (result !== "ok")
+                    root.restoreWarning = "Failed to save note. Your changes may be lost."
+            }
+        }
+
         function selectNote(id) {
+            saveCurrentNote()
             activeNoteId = id
             loading = true
             if (typeof logos !== "undefined" && logos.callModule) {
@@ -509,6 +519,7 @@ Item {
 
         function createNewNote() {
             if (typeof logos === "undefined" || !logos.callModule) return
+            saveCurrentNote()
             var json = logos.callModule("notes", "createNote", [])
             var obj = JSON.parse(json)
             activeNoteId = obj.id
