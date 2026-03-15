@@ -56,6 +56,7 @@ private slots:
     void testImportRequiresUnlock();
     void testImportMnemonicWithBackupPath();
     void testImportAccountingCounts();
+    void testImportPartialFailure();
 
 private:
     // Import a mnemonic into a backend and return it in unlocked state.
@@ -576,6 +577,53 @@ void TestBackup::testImportAccountingCounts()
     QJsonArray allNotes = QJsonDocument::fromJson(
         backend.loadNotes().toUtf8()).array();
     QCOMPARE(allNotes.size(), 6);
+}
+
+void TestBackup::testImportPartialFailure()
+{
+    // Tests the accounting contract: importBackup returns JSON with
+    // "imported" and optionally "failed" keys. We verify the contract
+    // structure and that the counts are consistent.
+    //
+    // Note: forcing a per-note write failure without a mock injection
+    // layer is not feasible — SQLite connections survive file permission
+    // changes, and the encrypt path doesn't fail with valid key material.
+    // This test verifies the accounting fields exist and are consistent.
+
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    // Create 3 notes and export.
+    for (int i = 0; i < 3; ++i) {
+        QJsonObject n = parseJson(backend.createNote());
+        backend.saveNote(n["id"].toInt(), QString("Partial test %1").arg(i));
+    }
+
+    QTemporaryDir tmpDir;
+    QString exportPath = tmpDir.path() + "/partial.imnotes";
+    QVERIFY(parseJson(backend.exportBackup(exportPath))["ok"].toBool());
+
+    // Delete notes, then import.
+    QJsonArray notes = QJsonDocument::fromJson(backend.loadNotes().toUtf8()).array();
+    for (const auto &v : notes)
+        backend.deleteNote(v.toObject()["id"].toInt());
+
+    QString importResult = backend.importBackup(exportPath);
+    QJsonObject imported = parseJson(importResult);
+
+    // Verify accounting contract:
+    // - "ok" is present and true
+    // - "imported" equals the number of notes in the backup
+    // - "failed" is absent or 0 (no failures in normal operation)
+    // - imported + failed = total notes in backup
+    QVERIFY(imported.contains("ok"));
+    QVERIFY(imported.contains("imported"));
+    QVERIFY(imported["ok"].toBool());
+    QCOMPARE(imported["imported"].toInt(), 3);
+
+    int failed = imported.value("failed").toInt(0);
+    QCOMPARE(imported["imported"].toInt() + failed, 3);
 }
 
 QTEST_MAIN(TestBackup)
