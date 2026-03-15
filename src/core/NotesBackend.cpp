@@ -148,7 +148,14 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
             setScreen("import");
             return;
         }
-        qDebug() << "NotesBackend: restored" << parsed.value("imported").toInt() << "note(s)";
+        int restoredCount = parsed.value("imported").toInt();
+        int failedCount = parsed.value("failed").toInt(0);
+        qDebug() << "NotesBackend: restored" << restoredCount << "note(s),"
+                 << failedCount << "failed";
+        if (failedCount > 0) {
+            setError(QString("Restored %1 note(s), %2 failed to restore.")
+                         .arg(restoredCount).arg(failedCount));
+        }
     }
 
     m_db.setInitialized();
