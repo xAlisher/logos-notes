@@ -476,7 +476,7 @@ Item {
             if (activeNoteId > 0 && !loading && typeof logos !== "undefined" && logos.callModule) {
                 var result = logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
                 if (result !== "ok")
-                    root.errorMessage = "Failed to save note. Your changes may be lost."
+                    root.restoreWarning = "Failed to save note. Your changes may be lost."
             }
         }
 
