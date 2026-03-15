@@ -31,13 +31,7 @@ public:
     // Called from UnlockScreen: re-derive key with PIN.
     Q_INVOKABLE void unlockWithPin(const QString &pin);
 
-    // Called from NoteScreen: encrypt and persist the note (Phase 0 compat, id=1).
-    Q_INVOKABLE void saveNote(const QString &plaintext);
-
-    // Called from NoteScreen on load: decrypt and return the note (Phase 0 compat, id=1).
-    Q_INVOKABLE QString loadNote();
-
-    // ── Phase 1: multi-note API ─────────────────────────────────────────
+    // ── Note CRUD ──────────────────────────────────────────────────────
     Q_INVOKABLE QString createNote();
     Q_INVOKABLE QString loadNotes();
     Q_INVOKABLE QString loadNote(int id);

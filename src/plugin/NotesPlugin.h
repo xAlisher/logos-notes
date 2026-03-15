@@ -35,11 +35,7 @@ public:
                                        const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithPin(const QString& pin);
 
-    // Note persistence (Phase 0 compat)
-    Q_INVOKABLE QString loadNote();
-    Q_INVOKABLE QString saveNote(const QString& text);
-
-    // Phase 1: multi-note CRUD
+    // Note CRUD
     Q_INVOKABLE QString createNote();
     Q_INVOKABLE QString loadNotes();
     Q_INVOKABLE QString loadNote(int id);

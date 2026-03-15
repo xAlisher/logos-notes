@@ -120,8 +120,17 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     }
 
     // 5. Persist the mnemonic KDF salt and account fingerprint.
-    m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
-    m_db.saveMeta("account_fingerprint", deriveFingerprint(normalized));
+    //    Both are critical for cross-device backup restore.
+    if (!m_db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt) ||
+        !m_db.saveMeta("account_fingerprint", deriveFingerprint(normalized))) {
+        // Rollback: metadata persistence failed — account is unusable for backup.
+        m_keys.lock();
+        m_db.wipe();
+        m_db.init();
+        setError("Failed to save account metadata. Please try again.");
+        setScreen("import");
+        return;
+    }
 
     // 6. Hold the master key in memory for this session.
     m_keys.setMasterKey(masterKey.toByteArray());
@@ -227,49 +236,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
     setScreen("note");
 }
 
-void NotesBackend::saveNote(const QString &plaintext)
-{
-    if (!m_keys.isUnlocked()) {
-        setError("Not unlocked.");
-        return;
-    }
-
-    QByteArray nonce;
-    const QByteArray ciphertext =
-        m_crypto.encrypt(plaintext.toUtf8(), m_keys.masterKey(), nonce);
-
-    if (ciphertext.isEmpty()) {
-        setError("Encryption failed.");
-        return;
-    }
-
-    // Encrypt the title.
-    const QString title = titleFromPlaintext(plaintext);
-    QByteArray titleNonce;
-    const QByteArray titleCt =
-        m_crypto.encrypt(title.toUtf8(), m_keys.masterKey(), titleNonce);
-
-    // Phase 0 compat: always targets id=1.
-    m_db.saveNote(ciphertext, nonce);
-    m_db.saveNote(1, ciphertext, nonce, titleCt, titleNonce);
-}
-
-QString NotesBackend::loadNote()
-{
-    if (!m_keys.isUnlocked())
-        return {};
-
-    QByteArray ciphertext, nonce;
-    if (!m_db.loadNote(ciphertext, nonce))
-        return {};
-
-    const QByteArray plaintext =
-        m_crypto.decrypt(ciphertext, m_keys.masterKey(), nonce);
-
-    return QString::fromUtf8(plaintext);
-}
-
-// ── Phase 1: multi-note API ──────────────────────────────────────────────
+// ── Note CRUD ────────────────────────────────────────────────────────────
 
 QString NotesBackend::createNote()
 {
@@ -544,30 +511,43 @@ QString NotesBackend::importBackup(const QString &filePath,
 
     QJsonArray notesArr = QJsonDocument::fromJson(plaintext).array();
     int imported = 0;
+    int failed = 0;
     for (const auto &val : notesArr) {
         QJsonObject noteObj = val.toObject();
         QString content = noteObj["content"].toString();
         QString title = noteObj["title"].toString();
 
         int id = m_db.createNote();
-        if (id < 0) continue;
+        if (id < 0) { ++failed; continue; }
 
         // Encrypt content.
         QByteArray contentNonce;
         QByteArray contentCt = m_crypto.encrypt(content.toUtf8(),
                                                  m_keys.masterKey(), contentNonce);
+        if (contentCt.isEmpty()) { ++failed; m_db.deleteNote(id); continue; }
+
         // Encrypt title.
         QByteArray titleNonce;
         QByteArray titleCt = m_crypto.encrypt(title.toUtf8(),
                                                m_keys.masterKey(), titleNonce);
+        if (titleCt.isEmpty()) { ++failed; m_db.deleteNote(id); continue; }
 
-        m_db.saveNote(id, contentCt, contentNonce, titleCt, titleNonce);
+        if (!m_db.saveNote(id, contentCt, contentNonce, titleCt, titleNonce)) {
+            ++failed;
+            m_db.deleteNote(id);
+            continue;
+        }
+
         ++imported;
     }
 
     QJsonObject result;
-    result["ok"] = true;
+    result["ok"] = (imported > 0 || failed == 0);
     result["imported"] = imported;
+    if (failed > 0)
+        result["failed"] = failed;
+    if (imported == 0 && failed > 0)
+        result["error"] = QStringLiteral("All notes failed to restore.");
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 

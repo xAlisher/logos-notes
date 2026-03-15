@@ -55,20 +55,7 @@ QString NotesPlugin::unlockWithPin(const QString& pin)
     return errorJson(m_backend.errorMessage());
 }
 
-// ── Note persistence ─────────────────────────────────────────────────────────
-
-QString NotesPlugin::loadNote()
-{
-    return m_backend.loadNote();
-}
-
-QString NotesPlugin::saveNote(const QString& text)
-{
-    m_backend.saveNote(text);
-    return ok();
-}
-
-// ── Phase 1: multi-note CRUD ────────────────────────────────────────────────
+// ── Note CRUD ───────────────────────────────────────────────────────────────
 
 QString NotesPlugin::createNote()
 {

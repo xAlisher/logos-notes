@@ -22,7 +22,6 @@ private slots:
     void testSaveAndLoadNote();
     void testLoadNoteHeaders();
     void testDeleteNote();
-    void testPhase0Compat();
     void testTitleFromFirstLine();
 
 private:
@@ -175,35 +174,7 @@ void TestMultiNote::testDeleteNote()
     QVERIFY(!m_db->deleteNote(id));
 }
 
-void TestMultiNote::testPhase0Compat()
-{
-    // Phase 0 saveNote(ciphertext, nonce) always targets id=1
-    QByteArray nonce;
-    QByteArray ct = m_crypto.encrypt("Phase 0 note", m_key, nonce);
-    QVERIFY(m_db->saveNote(ct, nonce));
 
-    // Should be loadable via Phase 0 API
-    QByteArray loadedCt, loadedNonce;
-    QVERIFY(m_db->loadNote(loadedCt, loadedNonce));
-    QCOMPARE(loadedCt, ct);
-
-    // Also loadable via Phase 1 API with id=1
-    QByteArray loadedCt2, loadedNonce2;
-    QVERIFY(m_db->loadNote(1, loadedCt2, loadedNonce2));
-    QCOMPARE(loadedCt2, ct);
-
-    // Update via Phase 1 API
-    QByteArray nonce2;
-    QByteArray ct2 = m_crypto.encrypt("Updated phase 0", m_key, nonce2);
-    QByteArray tn;
-    QByteArray tct = m_crypto.encrypt(QByteArray("Updated phase 0"), m_key, tn);
-    QVERIFY(m_db->saveNote(1, ct2, nonce2, tct, tn));
-
-    // Phase 0 load should see the update
-    QByteArray loadedCt3, loadedNonce3;
-    QVERIFY(m_db->loadNote(loadedCt3, loadedNonce3));
-    QCOMPARE(loadedCt3, ct2);
-}
 
 void TestMultiNote::testTitleFromFirstLine()
 {
