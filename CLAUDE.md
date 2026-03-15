@@ -162,7 +162,7 @@ logos.callModule("notes", "methodName", [arg1, arg2])
 5. `cd build && ctest --output-on-failure` — all tests must pass
 6. Merge to master (see autonomous merge criteria)
 7. Update README.md + screenshots
-8. Create GitHub release with version tag
+8. Create GitHub release with version tag + attach LGX artifacts (`nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib` and `.#ui`)
 9. Write blog post in `blog/` — update `blog/README.md`
 10. Post to X
 
