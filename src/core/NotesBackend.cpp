@@ -483,8 +483,8 @@ QString NotesBackend::exportBackupAuto()
     QDir().mkpath(dir);
 
     QString fp = getAccountFingerprint().left(16);
-    QDate today = QDate::currentDate();
-    QString filename = fp + "_" + today.toString("yyyy-MM-dd") + ".imnotes";
+    QDateTime now = QDateTime::currentDateTime();
+    QString filename = fp + "_" + now.toString("yyyy-MM-dd_HHmm") + ".imnotes";
     QString path = dir + "/" + filename;
 
     return exportBackup(path);
@@ -492,11 +492,16 @@ QString NotesBackend::exportBackupAuto()
 
 QString NotesBackend::listBackups() const
 {
-    QDir dir(backupsDir());
+    QString dirPath = backupsDir();
+    QDir dir(dirPath);
     QStringList files = dir.entryList({"*.imnotes"}, QDir::Files, QDir::Time);
     QJsonArray arr;
-    for (const QString &f : files)
-        arr.append(f);
+    for (const QString &f : files) {
+        QJsonObject obj;
+        obj["name"] = f;
+        obj["path"] = dirPath + "/" + f;
+        arr.append(obj);
+    }
     return QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
 }
 

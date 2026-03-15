@@ -60,6 +60,17 @@ Item {
         anchors.fill: parent
         visible: root.currentScreen === "import"
 
+        onVisibleChanged: {
+            if (visible) {
+                mnemonicArea.text = ""
+                importPinField.text = ""
+                importPinConfirmField.text = ""
+                root.pendingBackupPath = ""
+                root.restoreStatus = ""
+                root.errorMessage = ""
+            }
+        }
+
         ColumnLayout {
             anchors.centerIn: parent
             spacing: 16
@@ -233,20 +244,29 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        // List available backups from well-known directory.
                         if (typeof logos === "undefined" || !logos.callModule) return
                         var json = logos.callModule("notes", "listBackups", [])
-                        var files = JSON.parse(json)
-                        if (files.length === 0) {
+                        var backups = JSON.parse(json)
+                        if (backups.length === 0) {
                             root.restoreStatus = "No backups found in ~/.local/share/logos-notes/backups/"
                             return
                         }
-                        // Auto-select the most recent backup.
-                        var dir = StandardPaths.writableLocation(StandardPaths.HomeLocation)
-                              + "/.local/share/logos-notes/backups/"
-                        root.pendingBackupPath = dir + files[0]
-                        var name = files[0]
-                        root.restoreStatus = "Backup: " + name
+                        if (backups.length === 1) {
+                            root.pendingBackupPath = backups[0].path
+                            root.restoreStatus = "Backup: " + backups[0].name
+                            return
+                        }
+                        // Multiple backups — cycle to next one.
+                        var currentIdx = -1
+                        for (var i = 0; i < backups.length; i++) {
+                            if (backups[i].path === root.pendingBackupPath) {
+                                currentIdx = i
+                                break
+                            }
+                        }
+                        var nextIdx = (currentIdx + 1) % backups.length
+                        root.pendingBackupPath = backups[nextIdx].path
+                        root.restoreStatus = "Backup " + (nextIdx+1) + "/" + backups.length + ": " + backups[nextIdx].name
                     }
                 }
             }

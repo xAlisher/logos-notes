@@ -152,7 +152,9 @@ Item {
     }
 
     // Store pending backup path — restored after import succeeds.
+    // Reset on every load (Loader recreates, but explicit is safer).
     property string pendingBackupPath: ""
+    Component.onCompleted: { pendingBackupPath = ""; restoreStatus.text = "" }
 
     FileDialog {
         id: restoreDialog
