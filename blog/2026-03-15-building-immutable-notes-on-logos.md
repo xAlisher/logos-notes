@@ -50,7 +50,7 @@ For building and research I used Claude Code. The collaboration felt like a hack
 
 <!-- IMAGE: Unlock screen showing lockout countdown timer ("Locked (25s)") -->
 
-**Your identity is your phrase.** The app derives an Ed25519 public key from your mnemonic — deterministic, same key on any device, with any PIN. This is your identity in the Logos network. Visible in Settings, shown on the unlock screen.
+**Your identity is your phrase.** The app derives an Ed25519 public key from your mnemonic — deterministic, same key on any device, with any PIN. This is your identity in Logos Notes. Visible in Settings, shown on the unlock screen.
 
 <!-- IMAGE: Settings screen showing full public key, Export Backup button, Danger Zone -->
 
