@@ -21,7 +21,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 
 ---
 
-## Current Phase: v0.5.0 complete — next is v0.6.0 / v1.0.0
+## Current Phase: v0.6.0 complete — next is v1.0.0
 
 ### Completed phases
 
@@ -32,12 +32,13 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 | v0.3.0 | Security hardening (P0+P1) |
 | v0.4.0 | P2 security fixes, AES-NI fail-fast |
 | v0.5.0 | Settings, backup export/import, stable identity |
+| v0.6.0 | LGX packaging, 95-case test suite (backup, account, note API, plugin) |
 
 ### Roadmap
 
 | Version | Description | Status |
 |---------|-------------|--------|
-| v0.6.0 | LGX package for Logos App Package Manager | Planned |
+| v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
 | v1.0.0 | Keycard hardware key derivation | Planned — USB reader arriving |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
@@ -209,6 +210,12 @@ Attempted to force per-note restore failures by making the DB read-only mid-impo
 
 ### 16. Screen name is "note" not "notes"
 `NotesBackend::importMnemonic()` and `unlockWithPin()` call `setScreen("note")`. Tests must compare against `"note"`, not `"notes"`.
+
+### 17. nix-bundle-lgx reads metadata.json from drv.src, not lib/ output
+The bundler reads `metadata.json` from `drv.src + "/metadata.json"` at Nix eval time, not from the built `lib/` directory. For a mono-repo with multiple packages, put core `metadata.json` at repo root and point UI package `src` to `./plugins/notes_ui/` which has its own `metadata.json`.
+
+### 18. Follow nixpkgs from logos-cpp-sdk for Qt compatibility
+The Logos ecosystem pins Qt via `nixpkgs.follows = "logos-cpp-sdk/nixpkgs"`. Our flake must follow the same chain. Mixing nixpkgs versions causes Qt ABI mismatches at runtime.
 
 ---
 
