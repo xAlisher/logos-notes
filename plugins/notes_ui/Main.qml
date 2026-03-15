@@ -471,7 +471,14 @@ Item {
             }
         }
 
+        function saveCurrentNote() {
+            saveTimer.stop()
+            if (activeNoteId > 0 && !loading && typeof logos !== "undefined" && logos.callModule)
+                logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
+        }
+
         function selectNote(id) {
+            saveCurrentNote()
             activeNoteId = id
             loading = true
             if (typeof logos !== "undefined" && logos.callModule) {
@@ -509,6 +516,7 @@ Item {
 
         function createNewNote() {
             if (typeof logos === "undefined" || !logos.callModule) return
+            saveCurrentNote()
             var json = logos.callModule("notes", "createNote", [])
             var obj = JSON.parse(json)
             activeNoteId = obj.id

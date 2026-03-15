@@ -38,7 +38,14 @@ Item {
         }
     }
 
+    function saveCurrentNote() {
+        saveTimer.stop()
+        if (activeNoteId > 0 && !loading)
+            backend.saveNote(activeNoteId, editor.text)
+    }
+
     function selectNote(id) {
+        saveCurrentNote()
         activeNoteId = id
         loading = true
         editor.text = backend.loadNote(id)
@@ -47,6 +54,7 @@ Item {
     }
 
     function createNewNote() {
+        saveCurrentNote()
         var json = backend.createNote()
         var obj = JSON.parse(json)
         activeNoteId = obj.id

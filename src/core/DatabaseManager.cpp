@@ -317,7 +317,7 @@ QList<NoteHeader> DatabaseManager::loadNoteHeaders() const
     QSqlDatabase db = QSqlDatabase::database(CONNECTION);
     QSqlQuery q(db);
     q.prepare("SELECT id, title_ciphertext, title_nonce, title, updated_at"
-              " FROM notes ORDER BY updated_at DESC");
+              " FROM notes ORDER BY updated_at DESC, id DESC");
     if (!q.exec())
         return result;
     while (q.next()) {
