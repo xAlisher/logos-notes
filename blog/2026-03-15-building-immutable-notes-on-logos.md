@@ -18,7 +18,7 @@ I started building this four days ago. It now has multi-note support, a full sec
 
 ## Getting Started
 
-After the Logos ideas repo opened for community contributions, I looked for something lean enough to actually build but meaningful enough to matter. Encrypted notes with Keycard + Logos sync felt right — personal sovereignty, hardware security, decentralized infrastructure, all in one small app.
+After the [Logos ideas repo](https://github.com/logos-co/ideas) opened for community contributions, I looked for something lean enough to actually build but meaningful enough to matter. Encrypted notes with Keycard + Logos sync felt right — personal sovereignty, hardware security, decentralized infrastructure, all in one small app.
 
 I started by cloning everything relevant:
 
