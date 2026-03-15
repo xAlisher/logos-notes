@@ -12,7 +12,7 @@ More about the idea and all development phases is [here](https://github.com/logo
 
 I started building this four days ago. It now has multi-note support, a full security audit, encrypted backups, and runs both as a standalone desktop app and inside Logos App. This post covers how it all fits together and what I learned building for the Logos platform.
 
-<!-- IMAGE: Side-by-side screenshot — standalone app on left, same module inside Logos App on right. Shows the multi-note sidebar with a few notes. -->
+![Inside Logos App](../Assets/Screenshots/0.5.1/insidelogosapp.png)
 
 ---
 
@@ -36,27 +36,26 @@ For building and research I used Claude Code. The collaboration felt like a hack
 
 ## What It Does Today
 
-<!-- IMAGE: Import screen with recovery phrase field (showing "••• 12 words entered •••" masked state) and PIN fields -->
+![Import screen](../Assets/Screenshots/0.5.1/import.png)
 
 **Import once.** Enter your BIP39 recovery phrase and set a PIN. The app validates your phrase against the full 2048-word BIP39 wordlist with checksum verification. It derives your encryption key, wraps it with your PIN, and forgets the phrase forever. It never touches disk.
 
 **Write freely.** Create as many notes as you want. Each one is AES-256-GCM encrypted before hitting the database. Titles are encrypted too — not just the body. A sidebar shows your notes with relative timestamps. Auto-save every 1.5 seconds.
 
-<!-- IMAGE: Note screen showing sidebar with multiple notes and editor area -->
+![Multi-note sidebar](../Assets/Screenshots/0.5.1/notes.png)
 
 **Lock and unlock.** When you lock, `sodium_memzero` wipes the master key from memory. When you unlock, your PIN re-derives the wrapping key and decrypts. Wrong PIN? AES-GCM authentication tag fails. No partial results, no hints.
 
 **PIN protection.** Five wrong attempts and you're locked out with an exponential backoff timer — 30 seconds, then 60, 120, 5 minutes, 10 minutes. The countdown ticks live in the UI. The counter persists across app restarts.
 
-<!-- IMAGE: Unlock screen showing lockout countdown timer ("Locked (25s)") -->
+![Unlock screen](../Assets/Screenshots/0.5.1/unlock.png)
 
 **Your identity is your phrase.** The app derives an Ed25519 public key from your mnemonic — deterministic, same key on any device, with any PIN. This is your identity in Logos Notes. Visible in Settings, shown on the unlock screen.
 
-<!-- IMAGE: Settings screen showing full public key, Export Backup button, Danger Zone -->
+![Settings](../Assets/Screenshots/0.5.1/settings.png)
 
 **Encrypted backups.** Export all your notes as a single `.imnotes` file — encrypted with your master key, portable to any device. Import on a new machine by entering the same recovery phrase. Different PIN is fine. The backup includes the KDF salt so the key can be re-derived.
 
-<!-- VIDEO (optional, 30s): Quick demo — export backup → remove account → import phrase → restore from backup → notes are back -->
 
 ---
 

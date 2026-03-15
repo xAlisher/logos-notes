@@ -35,19 +35,19 @@ https://github.com/user-attachments/assets/59ef5b7b-d02e-4a77-97e0-a629ba17ec28
 ---
 ## Screenshots
 
-Running inside [Logos App](https://github.com/logos-co/logos-app-poc) (Basecamp):
-
 | Import | Unlock |
 |--------|--------|
-| ![Import](Assets/Screenshots/import.png) | ![Unlock](Assets/Screenshots/Unlock.png) |
+| ![Import](Assets/Screenshots/0.5.1/import.png) | ![Unlock](Assets/Screenshots/0.5.1/unlock.png) |
 
 | Multi-note sidebar | Settings |
-|-------------------------------|----------|
-| ![Multi-note sidebar](Assets/Screenshots/Phase2_Multinote.png) | ![Settings](Assets/Screenshots/Settings.png) |
+|---------------------|----------|
+| ![Notes](Assets/Screenshots/0.5.1/notes.png) | ![Settings](Assets/Screenshots/0.5.1/settings.png) |
 
-| Restore from backup |
-|---------------------|
-| ![Restore](Assets/Screenshots/Recover%20from%20backup.png) |
+Running inside [Logos App](https://github.com/logos-co/logos-app) (Basecamp):
+
+| Inside Logos App |
+|------------------|
+| ![Inside Logos App](Assets/Screenshots/0.5.1/insidelogosapp.png) |
 
 ---
 
