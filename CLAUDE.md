@@ -802,15 +802,27 @@ results. Always use `qmllint` as the authoritative syntax checker.
 9. Post to X
 
 ### Security fix routine
-1. Create branch: `security/pX-fixes`
-2. Coder implements fixes
-3. Run review loop: `./scripts/security-review-loop.sh HEAD~N "src/core/"`
-4. Reviewer (Codex) reviews diff
-5. Paste findings to Coder
-6. Repeat until clean
-7. Manual UI/UX test
-8. Merge to master
-9. Update SECURITY_REVIEW.md with review round history
+1. Create branch: `security/roundN-fixes` or `security/pX-fixes`
+2. Claude (Coder) researches issues, shares analysis before implementing
+3. Claude implements fixes, runs tests locally (`ctest`)
+4. Commit and push branch — do NOT merge yet
+5. Comment on GitHub issues with fix details, tag as `[Claude Code]`
+6. Ask Codex (Reviewer) to review the branch and run tests
+7. Codex posts findings as GitHub issue comments
+8. Claude reads Codex comments, fixes follow-ups, pushes, re-comments
+9. Repeat 6-8 until Codex confirms all issues fixed
+10. Manual UI/UX test (standalone + Logos App)
+11. User confirms → Claude merges to master
+12. Close issues (auto-close via `Closes #N` in commit)
+13. Update SECURITY_REVIEW.md with review round history
+
+### Claude ↔ Codex communication
+- GitHub issues are the shared communication channel
+- Claude tags comments with `[Claude Code]`, Codex tags with `Reviewed by: Codex`
+- Each agent runs its own tests independently
+- Codex may create new issues or update SECURITY_REVIEW.md directly
+- Claude checks for new Codex comments/issues at start of each session
+- When Codex raises a follow-up, Claude fixes and re-comments — not silent
 
 ### UI/UX test checklist (run before every merge)
 
@@ -869,6 +881,9 @@ not raw `.so` files. Always use the AppImage or a release download.
 
 **Closing**: only when fix is merged to master. Leave comment with
 what was fixed and where. Use `Closes #N` in commit/PR to auto-close.
+
+**Comments**: Claude tags as `[Claude Code]`, Codex tags as `Reviewed by: Codex`.
+Issues are the shared communication channel between agents.
 
 **Hygiene**: one issue per bug. If a new bug is found during a fix
 branch, open a new issue — do not fold it in silently.
