@@ -159,7 +159,6 @@ Unblock options (in priority order):
 
 ## Lessons Learned
 
-
 ### 1. NotesPlugin is the only surface QML can see
 Every method added to NotesBackend that QML needs must also be explicitly added to NotesPlugin as Q_INVOKABLE. QML callModule calls silently fail (no error, empty response) when the method doesn't exist on the plugin.
 
@@ -345,7 +344,7 @@ For v0.6.0 LGX packaging, the manifest uses a platform map for the binary path:
   "category": "notes",
   "main": {
     "linux-amd64": "notes_plugin.so",
-    "darwin-amd64": "notes_plugin.dylib"
+    "darwin-arm64": "notes_plugin.dylib"
   },
   "dependencies": []
 }
