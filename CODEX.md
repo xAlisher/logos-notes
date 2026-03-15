@@ -41,7 +41,7 @@ cd ..
 
 Run `ctest` from `build/`, not repo root. Running it from repo root reports `No tests were found!!!`.
 
-Test count should be **21** (6 multi-note + 15 security) as of the current branch state.
+Test count should be **25** (8 multi-note + 17 security) as of v0.5.1+. If you see fewer, rebuild from clean: `cmake --build build --clean-first -j4`.
 
 ---
 
