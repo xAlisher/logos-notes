@@ -204,23 +204,18 @@ logos-notes/
 
 ## Roadmap
 
-| Phase | Goal | Status |
-|-------|------|--------|
-| **0** | Standalone encrypted notes app + Logos App module | ✅ Complete |
-| **1** | Multiple notes with sidebar UI, CRUD, auto-save | ✅ Complete |
-| **Security** | P0+P1+P2 hardening: BIP39 validation, random salt, PIN lockout, encrypted titles, SecureBuffer, AES-NI check, SQLite hardening | ✅ Complete |
-| **Settings** | Settings screen, account public key, encrypted backup export/import, Remove Account | ✅ Complete |
-| **2** | Swap Argon2 key derivation → Keycard hardware key (same PIN UX, same DB schema) | Planned |
-| **3** | Logos Storage backup + Logos Messaging sync across devices | Planned |
-
-### Distribution targets
-
-Same core app, different packaging — parallel tracks, not sequential.
-
-| Target | Version | Description | Status |
-|--------|---------|-------------|--------|
-| **AppImage** | v0.4.0 | Standalone desktop app, runs without Logos App | Planned |
-| **LGX package** | v0.5.0 | Installs inside Logos App via Package Manager | Planned |
+| Version | Goal | Status |
+|---------|------|--------|
+| **v0.1.0** | Standalone encrypted notes app + Logos App module | ✅ Complete |
+| **v0.2.0** | Multiple notes with sidebar UI, CRUD, auto-save | ✅ Complete |
+| **v0.3.0** | P0+P1 security hardening: BIP39 validation, random salt, PIN lockout, encrypted titles, SecureBuffer | ✅ Complete |
+| **v0.4.0** | P2 security fixes, AES-NI fail-fast, SQLite hardening | ✅ Complete |
+| **v0.5.0** | Settings screen, account public key, encrypted backup export/import, Remove Account | ✅ Complete |
+| **v0.6.0** | LGX package for Logos App Package Manager | Planned |
+| **v0.6.0** | AppImage standalone installer | Parked — blocked on Qt QML AOT |
+| **v1.0.0** | Keycard hardware key derivation (same PIN UX, same DB schema) | Planned |
+| **v2.0** | Logos Storage auto-backup + CID tracking | Research |
+| **v3.0** | Trust Network — social backup via web of trust | Proposal |
 
 ### Security issues tracker
 

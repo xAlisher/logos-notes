@@ -283,6 +283,8 @@ Backup CID:        zDvZ...  [Copy]
 | `blog/2026-03-12-phase-0.md` | Phase 0 — module, crypto architecture | Submitted to Logos press, pending publication |
 | `blog/2026-03-14-security-hardening.md` | Security hardening, two-AI review loop | Published |
 | `blog/2026-03-14-settings-backup-identity.md` | Settings, backup, identity/fingerprint | Published |
+| `blog/2026-03-15-hotfixes-and-sandbox-lessons.md` | Hotfixes, QML sandbox lessons | Published |
+| `blog/2026-03-15-shared-memory.md` | Shared memory, knowledge/instructions split, agent collaboration | Draft |
 
 ---
 
