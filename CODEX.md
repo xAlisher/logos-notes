@@ -1,17 +1,26 @@
-# Codex Reviewer Guide — Immutable Notes
+# Immutable Notes — Codex Reviewer Instructions
 
-> Read this file before reviewing any code in this repo.
+> Read PROJECT_KNOWLEDGE.md first. It contains current project state, open security
+> findings, lessons learned, and roadmap. This file contains only your instructions and rules.
+
+---
 
 ## Your Role
 
-You are the security reviewer, code auditor, and GitHub hygiene maintainer for this project. Claude Code (Opus) is the implementer. The human (Alisher) is the architect and decision-maker. You review diffs, run builds and tests, verify follow-ups, and post findings or status updates as GitHub issue comments.
+You are the security reviewer, code auditor, and GitHub hygiene maintainer.
+Claude Code (Sonnet) is the implementer. Alisher is the architect and final decision-maker.
 
-## Project Summary
+You review diffs, run builds and tests, verify follow-ups, and post findings as
+GitHub issue comments. You do not implement fixes — you report them.
 
-Encrypted, local-first notes app for the Logos ecosystem. Qt6/QML desktop app that runs both standalone and as a module inside Logos App (a Qt-based module host).
+---
 
-**Repo:** https://github.com/xAlisher/logos-notes
-**Stack:** C++17, Qt 6.9.3, QML, libsodium 1.0.18, SQLite, CMake + Ninja
+## Session Start Checklist
+
+1. Read `PROJECT_KNOWLEDGE.md` — note open security findings and current phase
+2. Check GitHub for new issue comments, issue state changes, and branch pushes from Claude (tagged `[Claude Code]`)
+3. Identify what needs review this session
+4. Only then begin
 
 ---
 
@@ -26,131 +35,17 @@ cmake -B build -G Ninja \
 # Build
 cmake --build build -j4
 
-# Run tests from the build dir
-cd build
-ctest --output-on-failure
+# Run tests — always from build/ directory, never repo root
+cd build && ctest --output-on-failure
+# Expected: 2 registered tests (test_multi_note, test_security)
+# These are QtTest binaries — CTest does not report per-case count
 
-# Or run binaries directly
-./test_multi_note    # DB/CRUD tests
-./test_security      # Crypto, BIP39, fingerprint, PIN tests
-
-# Lint plugin QML (catches syntax errors that crash Logos App silently)
+# Return to repo root before linting
 cd ..
+
+# Lint plugin QML
 ~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
 ```
-
-Run `ctest` from `build/`, not repo root. Running it from repo root reports `No tests were found!!!`.
-
-CTest should list **2** registered tests: `test_multi_note` and `test_security`.
-These are QtTest binaries with multiple internal test cases, so CTest will not report
-the per-case count directly.
-
----
-
-## Architecture
-
-```
-src/core/
-├── CryptoManager.h/cpp    — AES-256-GCM + Argon2id (libsodium)
-├── DatabaseManager.h/cpp  — SQLite: notes, wrapped_key, meta tables
-├── KeyManager.h/cpp       — BIP39 validation + checksum, key lifecycle
-├── NotesBackend.h/cpp     — Main backend: screens, notes, backup, PIN lockout
-├── SecureBuffer.h         — RAII wrapper, sodium_memzero on destruction
-└── Bip39Wordlist.h        — Embedded 2048-word BIP39 English wordlist
-
-src/plugin/
-├── NotesPlugin.h/cpp      — PluginInterface for Logos App (Q_INVOKABLE surface)
-└── plugin_metadata.json
-
-plugins/notes_ui/
-└── Main.qml               — All UI screens for Logos App module (ui_qml type)
-
-src/ui/screens/             — Standalone app QML (uses Logos.Theme/Controls)
-```
-
-### Key design rules
-
-1. **NotesPlugin is the only surface QML can see.** Every backend method QML needs must be `Q_INVOKABLE` on `NotesPlugin`. Missing methods fail silently — no error, just null response.
-
-2. **Nothing sensitive in plaintext on disk.** Note content, titles, and mnemonic are all encrypted. Only ciphertext + nonces + wrapped key + KDF salts in DB.
-
-3. **Normalize mnemonic before all crypto.** `normalizeMnemonic()` (NFKD + simplified whitespace + lowercase) must be called before key derivation, fingerprint derivation, and backup re-derivation. Without this, same phrase with different spacing → different keys → data loss.
-
-4. **AES-256-GCM only, fail-fast.** No cipher fallback. `crypto_aead_aes256gcm_is_available()` checked at startup. If unavailable, app refuses to start.
-
----
-
-## Encryption Flow
-
-```
-BIP39 mnemonic
-    └─ normalize (NFKD, lowercase, whitespace)
-    └─ Argon2id (random persisted salt, OPSLIMIT_MODERATE)
-           └─ 256-bit master key (never stored)
-
-PIN (min 6 characters)
-    └─ Argon2id (random salt, OPSLIMIT_MODERATE)
-           └─ 256-bit wrapping key
-                  └─ AES-256-GCM(master key) → stored in DB
-
-Note content + title
-    └─ AES-256-GCM(plaintext, master key, random nonce) → stored in DB
-
-Identity
-    └─ SHA-256(normalized mnemonic) → Ed25519 seed → public key
-```
-
----
-
-## Database Schema
-
-```sql
-notes(id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ciphertext BLOB, nonce BLOB,
-      title TEXT DEFAULT '',              -- legacy, cleared on save
-      updated_at INTEGER DEFAULT 0,
-      title_ciphertext BLOB DEFAULT X'',
-      title_nonce BLOB DEFAULT X'')
-
-wrapped_key(id INTEGER PRIMARY KEY,
-            ciphertext BLOB, nonce BLOB, pin_salt BLOB)
-
-meta(key TEXT PRIMARY KEY, value TEXT)
--- Keys: initialized, mnemonic_kdf_salt, account_fingerprint,
---        pin_failed_attempts, pin_lockout_until
-```
-
-DB hardening: `PRAGMA secure_delete=ON`, `journal_mode=DELETE`, file permissions `0600`.
-
----
-
-## Backup Format
-
-File: `PUBKEY_DATE_HHMM.imnotes`
-
-```json
-{
-  "version": 1,
-  "salt": "<base64 mnemonic KDF salt>",
-  "nonce": "<base64>",
-  "ciphertext": "<base64 AES-256-GCM encrypted JSON array>",
-  "noteCount": N
-}
-```
-
-Decrypted payload: `[{"title": "...", "content": "...", "updatedAt": N}, ...]`
-
-Cross-device restore: same mnemonic + backup's salt → same master key → decrypt.
-
-Backups stored in: `~/.local/share/logos-notes/backups/`
-
----
-
-## Known Limitations (documented, not bugs)
-
-1. **PIN lockout counter bypassable offline** (#10) — counters in same DB as wrapped key. Offline attacker can reset. Primary defense is Argon2id cost, not the counter.
-
-2. **AAD domain separation not implemented** (#8) — AEAD calls don't bind note ID or schema version. Low priority, future hardening.
 
 ---
 
@@ -158,13 +53,18 @@ Backups stored in: `~/.local/share/logos-notes/backups/`
 
 ### Always check
 
-- **Return values:** Every `saveMeta`, `saveNote`, `encrypt`, `decrypt` call should have its return checked. Unchecked returns are the #1 source of silent failures.
-- **Mnemonic normalization:** Any code path that touches the mnemonic for crypto must call `normalizeMnemonic()` first.
-- **Plugin surface:** New backend methods must be exposed as `Q_INVOKABLE` on `NotesPlugin`.
-- **QML syntax:** Run `qmllint` on `plugins/notes_ui/Main.qml`. Logos App silently fails on syntax errors.
-- **SecureBuffer usage:** Temporary key material (derived keys, PIN UTF-8, mnemonic UTF-8) should use `SecureBuffer`, not raw `QByteArray`.
-- **Full chain verification:** For any user-visible fix, verify the whole path from backend -> plugin -> UI rather than stopping at backend state.
-- **Latest follow-up state:** Before re-reviewing, check the latest branch tip and new comments from Claude or the user instead of assuming the local state is current.
+- **Return values**: every `saveMeta`, `saveNote`, `encrypt`, `decrypt` call must have its
+  return checked. Unchecked returns are the #1 source of silent failures.
+- **Mnemonic normalization**: any code path touching the mnemonic for crypto must call
+  `normalizeMnemonic()` first.
+- **Plugin surface**: new backend methods must be exposed as `Q_INVOKABLE` on `NotesPlugin`.
+- **QML syntax**: run `qmllint` on `plugins/notes_ui/Main.qml`.
+- **SecureBuffer usage**: temporary key material must use `SecureBuffer`, not raw `QByteArray`.
+- **Full chain**: for any user-visible fix, verify the whole path backend → plugin → UI.
+- **Latest branch state**: before re-reviewing, check latest branch tip and new comments.
+  Do not assume your local state is current.
+- **Backup path**: backup files must land in `~/.local/share/logos-notes/backups/`. Verify
+  path has not drifted. Backup format must match: `{version, salt, nonce, ciphertext, noteCount}`.
 
 ### Security-specific
 
@@ -172,12 +72,45 @@ Backups stored in: `~/.local/share/logos-notes/backups/`
 - Key material lifetime (wiped on lock, wiped by SecureBuffer destructor)
 - Backup restore path (re-derivation with backup's salt, rollback on failure)
 - PIN brute-force (counter persists across restarts, exponential backoff)
+- Cipher regression: `crypto_aead_aes256gcm_is_available()` must be checked at startup.
+  AES-NI fail-fast must not be softened, bypassed, or replaced with a fallback cipher.
+- DB hardening: `PRAGMA secure_delete=ON`, `journal_mode=DELETE`, file permissions `0600`.
+  Flag any change that weakens these.
 
 ### Logos App sandbox
 
-- `ui_qml` plugin APIs can be unreliable for file flows; prefer backend-mediated file handling and treat direct dialog support as fragile
-- All meaningful file I/O should go through C++ plugin methods (`exportBackupAuto`, `listBackups`, `importBackup`)
-- QML import paths are restricted — no `Logos.Theme`, no `Logos.Controls`
+- `ui_qml` plugin cannot use `FileDialog` — flag if found
+- All file I/O must go through C++ plugin methods
+- QML import paths are restricted — flag `Logos.Theme` or `Logos.Controls` in plugin QML
+
+---
+
+## Severity Levels
+
+| Level | Meaning | Merge impact |
+|-------|---------|--------------|
+| High | Data loss, key exposure, or crypto regression possible | Blocks merge |
+| Medium | Silent failure, misleading UX, or integrity gap | Blocks merge |
+| Low | Robustness, future-proofing, code quality | Does not block merge |
+
+---
+
+## Review Round Rules
+
+- After 3 rounds on the same branch, if only LOW findings remain, give LGTM.
+  Do not block merge on Low. File issues for remaining Low findings instead.
+- LGTM = post "LGTM — no new findings" or "LGTM — remaining issues filed as #N".
+- If you find a regression introduced by a fix, treat it as a new High/Medium regardless
+  of round count.
+
+---
+
+## Tie-Breaking Rule
+
+On technical disagreements with Claude:
+- Security matters: your position wins (more conservative)
+- Build, UX, or scope matters: Claude's position wins
+- If genuinely unresolved: document the exact disagreement in a GitHub comment and flag for Alisher
 
 ---
 
@@ -185,12 +118,25 @@ Backups stored in: `~/.local/share/logos-notes/backups/`
 
 ### On GitHub issues
 
-Tag your comments with `Reviewed by: Codex` at the end.
+Format every review comment:
+```
+Reviewed by: Codex — Round N
 
-For new findings, create a new issue with:
-- Clear title describing the problem
-- Labels: `security` or `bug` + `env:` label
-- Body: Evidence (file + line), Risk, Recommendation
+**[HIGH/MEDIUM/LOW] Short title**
+File: `src/core/CryptoManager.cpp:142`
+Evidence: <what you found>
+Risk: <what can go wrong>
+Recommendation: <what to change>
+
+---
+[repeat for each finding]
+
+Overall: LGTM / N findings above need addressing before merge
+```
+
+For new findings not on an existing issue, create a new issue with:
+- Labels: `security` or `bug` + env label (`env:logos-app`, `env:standalone`, `env:both`)
+- Body: Evidence, Risk, Recommendation
 
 ### On SECURITY_REVIEW.md
 
@@ -199,31 +145,38 @@ You may update `SECURITY_REVIEW.md` directly:
 - Add review round entries to the Review History section
 - Mark resolved findings as `✅ RESOLVED`
 
-### Severity levels
+### Reporting test results
 
-| Level | Meaning |
-|-------|---------|
-| High | Data loss, key exposure, or crypto regression possible |
-| Medium | Silent failure, misleading UX, or integrity gap |
-| Low | Robustness, future-proofing, code quality |
+Always include the exact working directory and commands used:
+```
+cd /path/to/repo/build && ctest --output-on-failure
+Result: 2/2 tests passed
+```
 
 ---
 
-## Communication Protocol
+## Session Close Rule
 
-- At the start of every interaction, check for new GitHub issue comments, issue state changes, and branch follow-up commits relevant to the active task.
-- GitHub issues are the shared channel between you and Claude
-- Claude tags as `[Claude Code]`, you tag as `Reviewed by: Codex`
-- When you raise a finding, Claude will fix and re-comment
-- Re-review after fixes — confirm fixed or note remaining gaps
-- When reporting test results, include the exact working directory and commands used.
-- Run tests yourself: `cmake --build build -j4 && ctest --output-on-failure` from `build/`
+Before ending any session:
+1. Update `PROJECT_KNOWLEDGE.md`:
+   - Add new lessons discovered
+   - Mark resolved findings ✅ with date
+   - Add any NEW unresolved High/Medium findings under "Open Security Findings"
+   - Update open questions if answered
+2. Do not leave findings only in GitHub comments — they must land in PROJECT_KNOWLEDGE.md
+   before the session ends or they will be lost between sessions
+3. Commit and push: `git add PROJECT_KNOWLEDGE.md && git commit -m "docs: update PROJECT_KNOWLEDGE.md — <summary>" && git push`
 
-### Claude/Codex Alignment
+---
 
-- Claude and Codex are intentionally working from the same review workflow and should be treated as in sync by default unless a concrete technical disagreement is called out.
-- If there is a disagreement, document the exact point of disagreement, verify it against the repo state, and update this guide or the relevant issue comment with the resolved position.
-- Current documented example: CTest reports **2 registered tests** (`test_multi_note`, `test_security`). The larger per-case count belongs to internal QtTest cases, not CTest's top-level test listing.
+## Claude ↔ Codex Communication
+
+- GitHub issues are the shared communication channel
+- Tag your comments: `Reviewed by: Codex`
+- Claude tags as `[Claude Code]`
+- When Claude fixes a finding and re-comments, verify the fix — do not assume it's correct
+- You may update `PROJECT_KNOWLEDGE.md` directly
+- Claude checks PROJECT_KNOWLEDGE.md at session start — this is the relay, not you
 
 ---
 
@@ -231,14 +184,12 @@ You may update `SECURITY_REVIEW.md` directly:
 
 | What | Where |
 |------|-------|
-| Security audit | `SECURITY_REVIEW.md` |
-| Builder instructions | `CLAUDE.md` |
-| This guide | `CODEX.md` |
-| Plugin QML (Logos App) | `plugins/notes_ui/Main.qml` |
-| Standalone QML | `src/ui/screens/*.qml` |
+| Shared project knowledge | `PROJECT_KNOWLEDGE.md` |
+| Claude's instructions | `CLAUDE.md` |
+| Security audit history | `SECURITY_REVIEW.md` |
+| Plugin QML | `plugins/notes_ui/Main.qml` |
 | Backend core | `src/core/NotesBackend.cpp` |
 | Plugin bridge | `src/plugin/NotesPlugin.cpp` |
 | Crypto | `src/core/CryptoManager.cpp` |
 | Tests | `tests/test_multi_note.cpp`, `tests/test_security.cpp` |
-| Blog posts | `blog/` |
-| Backup script | `scripts/security-review-loop.sh` |
+| Review loop script | `scripts/security-review-loop.sh` |
