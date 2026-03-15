@@ -219,6 +219,12 @@ You may update `SECURITY_REVIEW.md` directly:
 - When reporting test results, include the exact working directory and commands used.
 - Run tests yourself: `cmake --build build -j4 && ctest --output-on-failure` from `build/`
 
+### Claude/Codex Alignment
+
+- Claude and Codex are intentionally working from the same review workflow and should be treated as in sync by default unless a concrete technical disagreement is called out.
+- If there is a disagreement, document the exact point of disagreement, verify it against the repo state, and update this guide or the relevant issue comment with the resolved position.
+- Current documented example: CTest reports **2 registered tests** (`test_multi_note`, `test_security`). The larger per-case count belongs to internal QtTest cases, not CTest's top-level test listing.
+
 ---
 
 ## File Quick Reference
