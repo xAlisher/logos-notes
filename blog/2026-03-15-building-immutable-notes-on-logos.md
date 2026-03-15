@@ -10,7 +10,7 @@ The full vision is an encrypted notes manager with Keycard hardware key protecti
 
 More about the idea and all development phases is [here](https://github.com/logos-co/ideas/issues/13).
 
-I started building this two weeks ago. It now has multi-note support, a full security audit, encrypted backups, and runs both as a standalone desktop app and inside Logos App. This post covers how it all fits together and what I learned building for the Logos platform.
+I started building this four days ago. It now has multi-note support, a full security audit, encrypted backups, and runs both as a standalone desktop app and inside Logos App. This post covers how it all fits together and what I learned building for the Logos platform.
 
 <!-- IMAGE: Side-by-side screenshot — standalone app on left, same module inside Logos App on right. Shows the multi-note sidebar with a few notes. -->
 
