@@ -4,7 +4,7 @@
 
 ## Your Role
 
-You are the security reviewer and code auditor for this project. Claude Code (Opus) is the implementer. The human (Alisher) is the architect and decision-maker. You review diffs, run tests, and post findings as GitHub issue comments.
+You are the security reviewer, code auditor, and GitHub hygiene maintainer for this project. Claude Code (Opus) is the implementer. The human (Alisher) is the architect and decision-maker. You review diffs, run builds and tests, verify follow-ups, and post findings or status updates as GitHub issue comments.
 
 ## Project Summary
 
@@ -24,17 +24,24 @@ cmake -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug
 
 # Build
-cmake --build build
+cmake --build build -j4
 
-# Run tests (two test binaries)
-./build/test_multi_note    # DB/CRUD tests
-./build/test_security      # Crypto, BIP39, fingerprint, PIN tests
+# Run tests from the build dir
+cd build
+ctest --output-on-failure
+
+# Or run binaries directly
+./test_multi_note    # DB/CRUD tests
+./test_security      # Crypto, BIP39, fingerprint, PIN tests
 
 # Lint plugin QML (catches syntax errors that crash Logos App silently)
+cd ..
 ~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
 ```
 
-Test count should be **25** (8 multi-note + 17 security) as of v0.5.1.
+Run `ctest` from `build/`, not repo root. Running it from repo root reports `No tests were found!!!`.
+
+Test count should be **21** (6 multi-note + 15 security) as of the current branch state.
 
 ---
 
@@ -154,6 +161,8 @@ Backups stored in: `~/.local/share/logos-notes/backups/`
 - **Plugin surface:** New backend methods must be exposed as `Q_INVOKABLE` on `NotesPlugin`.
 - **QML syntax:** Run `qmllint` on `plugins/notes_ui/Main.qml`. Logos App silently fails on syntax errors.
 - **SecureBuffer usage:** Temporary key material (derived keys, PIN UTF-8, mnemonic UTF-8) should use `SecureBuffer`, not raw `QByteArray`.
+- **Full chain verification:** For any user-visible fix, verify the whole path from backend -> plugin -> UI rather than stopping at backend state.
+- **Latest follow-up state:** Before re-reviewing, check the latest branch tip and new comments from Claude or the user instead of assuming the local state is current.
 
 ### Security-specific
 
@@ -164,8 +173,8 @@ Backups stored in: `~/.local/share/logos-notes/backups/`
 
 ### Logos App sandbox
 
-- `ui_qml` plugins can't use `FileDialog`, `StandardPaths`, or `CheckBox` reliably
-- All file I/O must go through C++ plugin (`exportBackupAuto`, `listBackups`, `importBackup`)
+- `ui_qml` plugin APIs can be unreliable for file flows; prefer backend-mediated file handling and treat direct dialog support as fragile
+- All meaningful file I/O should go through C++ plugin methods (`exportBackupAuto`, `listBackups`, `importBackup`)
 - QML import paths are restricted — no `Logos.Theme`, no `Logos.Controls`
 
 ---
@@ -200,11 +209,13 @@ You may update `SECURITY_REVIEW.md` directly:
 
 ## Communication Protocol
 
+- At the start of every interaction, check for new GitHub issue comments, issue state changes, and branch follow-up commits relevant to the active task.
 - GitHub issues are the shared channel between you and Claude
 - Claude tags as `[Claude Code]`, you tag as `Reviewed by: Codex`
 - When you raise a finding, Claude will fix and re-comment
 - Re-review after fixes — confirm fixed or note remaining gaps
-- Run tests yourself: `cmake --build build && ./build/test_multi_note && ./build/test_security`
+- When reporting test results, include the exact working directory and commands used.
+- Run tests yourself: `cmake --build build -j4 && ctest --output-on-failure` from `build/`
 
 ---
 
