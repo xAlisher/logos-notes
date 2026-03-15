@@ -259,13 +259,35 @@ GET  /api/storage/v1/debug/info    — node status
 
 ---
 
-## Phase 2 — Keycard (upcoming)
+## Import Path Vision (v1.0.0+)
 
-Same PIN UX. Same SQLite schema. No data migration needed.
-Replace: `Argon2id(PIN) → wrapping key`
-With: `Keycard(PIN) → wrapping key`
+Three ways to derive the same 256-bit AES-256-GCM master key:
 
-The mnemonic-derived Ed25519 identity maps directly to Keycard's identity model.
+```
+Import Screen:
+  ┌─ 1. Enter Recovery Phrase ──→ Argon2id → master key (current, always available)
+  ├─ 2. Connect Keycard ────────→ card derives m/43'/60'/1581' → master key (#33)
+  └─ 3. Connect Logos Wallet ───→ accounts_module derives key → master key (#32)
+```
+
+Same DB, same encryption, same notes. User picks their preferred key management.
+Switching between methods: re-encrypt via backup/restore flow.
+Keycard (#33) and wallet (#32) are independent features — neither blocks the other.
+
+### Keycard integration (v1.0.0)
+
+- Hardware: Status Keycard (ISO 7816) + USB PC/SC reader
+- Library: `status-keycard-go` compiled as `libkeycard.so`, thin C++ wrapper
+- Key derivation: BIP44 path `m/43'/60'/1581'` (EIP-1581 encryption root)
+- Note: Keycard uses secp256k1, current fingerprint uses Ed25519 — need domain separation
+- Phase 1: link into notes_plugin directly. Phase 2: extract shared keycard-module for ecosystem.
+- Reference: `~/status-desktop/vendor/status-keycard-go/` and `vendor/status-keycard-qt/`
+
+### Wallet integration (v0.7.0+)
+
+- `accounts_module` wraps `go-wallet-sdk` — provides `createRandomMnemonic()`, HD keystore, PIN management
+- Lightweight option: "Generate with Wallet" button on import screen (~10 lines QML)
+- Full option: wallet holds the key, notes requests it via LogosAPI
 
 ---
 
