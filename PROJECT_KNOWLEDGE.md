@@ -179,16 +179,16 @@ Fingerprint derived from master key + random salt = unstable (changes per device
 BIP39 validation normalizes (NFKD, lowercase, trim) but key derivation was using raw string. Same phrase typed slightly differently = different key. Single shared `normalizeMnemonic()` function, called before every crypto operation.
 
 ### 7. Logos App testing requires AppImage build
-`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. `cmake --install` copies raw files which only work with portable/AppImage builds. Local Nix build is not a valid test target.
+`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. `cmake --install` copies raw files which only work with portable/AppImage builds.
 
 ### 8. Kill ALL Logos processes before relaunching
-logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads. Command: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`.
+logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`.
 
 ### 9. QML sandbox restrictions in ui_qml plugins
 - No access to Logos.Theme or Logos.Controls imports
 - No native file dialogs (FileDialog blocked)
 - No file I/O from QML
-Hardcode hex palette values, move all file I/O to C++ plugin, use fixed well-known paths.
+Workaround: hardcode hex palette values, file I/O via C++ plugin, fixed well-known paths.
 
 ### 10. plugin_metadata.json must be fully populated
 Empty `{}` metadata means the shell never registers the plugin. Must match manifest.json content with correct IID.
