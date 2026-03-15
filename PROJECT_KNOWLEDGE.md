@@ -1,0 +1,328 @@
+# Immutable Notes — Project Knowledge
+*Last updated: 2026-03-15*
+
+> **This file is the project's shared memory.**
+> Both Claude Code and Codex read it at the start of every session.
+> Both agents must write back to it before ending any session.
+> It lives outside the repo — in the Claude project context.
+> GitHub issues are ephemeral. This file is not.
+
+---
+
+## What We're Building
+
+Encrypted, local-first Markdown notes app for the Logos ecosystem.
+
+- **Approved idea**: https://github.com/logos-co/ideas/issues/13
+- **Repo**: https://github.com/xAlisher/logos-notes
+- **Stack**: C++17, Qt 6.9.3, QML, libsodium 1.0.18, SQLite, CMake + Nix
+- **OS**: Ubuntu 24.04
+
+### Vision
+Encrypted notes with Keycard hardware key protection, synced across devices via Logos Messaging and Logos Storage. No accounts. No servers. Your recovery phrase is your identity.
+
+---
+
+## Current Phase: v0.5.0 complete — next is v0.6.0 / v1.0.0
+
+### Completed phases
+
+| Version | What shipped |
+|---------|-------------|
+| v0.1.0 | Phase 0 — single note, module registration |
+| v0.2.0 | Phase 1 — multiple notes, sidebar |
+| v0.3.0 | Security hardening (P0+P1) |
+| v0.4.0 | P2 security fixes, AES-NI fail-fast |
+| v0.5.0 | Settings, backup export/import, stable identity |
+
+### Roadmap
+
+| Version | Description | Status |
+|---------|-------------|--------|
+| v0.6.0 | LGX package for Logos App Package Manager | Planned |
+| v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
+| v1.0.0 | Keycard hardware key derivation | Planned — USB reader arriving |
+| v2.0 | Logos Storage auto-backup + CID tracking | Research |
+| v3.0 | Trust Network — social backup via web of trust | Proposal stage |
+
+---
+
+## Architecture
+
+### Encryption
+```
+BIP39 mnemonic
+  → NFKD normalize
+  → Argon2id (random persisted salt, OPSLIMIT_MODERATE)
+  → 256-bit master key (never stored)
+
+PIN
+  → Argon2id (random salt, OPSLIMIT_MODERATE)
+  → PIN wrapping key
+  → AES-256-GCM(master key) → wrapped key blob stored in SQLite
+
+Note content + title
+  → AES-256-GCM(plaintext, master key, random nonce)
+  → ciphertext + nonce stored in SQLite
+  → plaintext never touches disk
+
+Account identity
+  → SHA-256(normalized_mnemonic) → Ed25519 seed
+  → crypto_sign_seed_keypair() → public key
+  → first 16 bytes hex = account fingerprint
+  → deterministic, stable across devices and re-imports
+```
+
+### SQLite schema
+```sql
+notes(id, ciphertext, nonce, title_ciphertext, title_nonce, updated_at)
+wrapped_key(id, ciphertext, nonce, pin_salt)
+meta(key, value)
+-- meta keys: initialized, mnemonic_kdf_salt, cipher, backup_cid,
+--            pin_failed_attempts, pin_lockout_until
+```
+
+### DB paths
+| Context | Path |
+|---------|------|
+| Logos App plugin | `~/.local/share/logos_host/notes.db` |
+| Standalone app | `~/.local/share/logos-co/logos-notes/notes.db` |
+
+When wiping for tests, delete both. When verifying DB contents, check which context you're in.
+
+### Logos App module structure
+```
+~/.local/share/Logos/LogosApp/modules/notes/
+├── manifest.json          (type: "core")
+└── notes_plugin.so
+
+~/.local/share/Logos/LogosApp/plugins/notes_ui/
+├── manifest.json          (type: "ui_qml")
+├── metadata.json
+└── Main.qml
+```
+
+### Plugin contract (Q_INVOKABLE surface)
+```cpp
+Q_INVOKABLE void initLogos(LogosAPI* api);
+Q_INVOKABLE bool initialize();
+Q_INVOKABLE QString isInitialized();
+Q_INVOKABLE QString importMnemonic(QString mnemonic, QString pin, QString confirm, QString backupPath);
+Q_INVOKABLE QString unlockWithPin(QString pin);
+Q_INVOKABLE QString lockSession();
+Q_INVOKABLE QString resetAndWipe();
+Q_INVOKABLE QString getAccountFingerprint();
+Q_INVOKABLE QString exportBackup();
+Q_INVOKABLE QString listBackups();
+Q_INVOKABLE QString importBackup(QString path);
+Q_INVOKABLE QString createNote();
+Q_INVOKABLE QString loadNotes();
+Q_INVOKABLE QString loadNote(int id);
+Q_INVOKABLE QString saveNote(int id, QString text);
+Q_INVOKABLE QString deleteNote(int id);
+```
+
+### QML bridge
+`logos.callModule(module, method, args)` — synchronous, returns JSON string.
+
+---
+
+## Open Security Findings
+
+*Agents: add new findings here immediately. Mark resolved with ✅ and date.*
+
+| # | Severity | Finding | Status |
+|---|----------|---------|--------|
+| #10 | Low | PIN lockout counter in same DB as wrapped key. Offline attacker can reset counter between guesses. Primary defense is Argon2id cost (~0.7s/guess). Keycard (v1.0.0) eliminates this. | Open — accepted, documented |
+| #8 | Low | AAD domain separation not implemented. AEAD calls don't bind note ID or schema version. | Open — future hardening |
+
+---
+
+## Open Questions
+
+1. **New Logos App repo**: `logos-co/logos-app` vs `logos-co/logos-app-poc` — is the new repo the successor? Need to check PluginInterface compatibility before v0.6.0 LGX work.
+2. **Social backup CID discovery**: Storage team confirmed web-of-trust approach is intended. Open question: how do peers discover latest CID? Via Logos Messaging? Signed latest-CID record? Awaiting response from bkomuves in Discord.
+3. **Logos Storage built-in encryption**: bkomuves mentioned automatic encryption may be built-in. Not yet implemented. Worth watching before Phase 2 design.
+4. **AppImage unblock**: three options identified — `QT_QML_NO_CACHEGEN=1`, `qt_deploy_qml_imports()`, or Nix bundle. Option 3 recommended. Not yet attempted.
+
+---
+
+## Parked Tasks
+
+### AppImage packaging
+Blocked on Qt 6.9 AOT-compiled QML type registration conflict with external plugin paths.
+Upstream issue: https://github.com/logos-co/logos-app/issues/60
+
+Unblock options (in priority order):
+1. `nix bundle --bundler github:logos-co/nix-bundle-lgx` (recommended — matches logos-app-poc)
+2. `qt_deploy_qml_imports()` CMake function
+3. `QT_QML_NO_CACHEGEN=1` (interpreted mode, simplest)
+
+---
+
+## Lessons Learned
+
+*Agents: add new lessons here as they're discovered. Never delete — amend if understanding improves.*
+
+### 1. NotesPlugin is the only surface QML can see
+Every method added to NotesBackend that QML needs must also be explicitly added to NotesPlugin as Q_INVOKABLE. QML callModule calls silently fail (no error, empty response) when the method doesn't exist on the plugin.
+
+**Rule**: before writing any new method on NotesBackend, immediately add the Q_INVOKABLE wrapper to NotesPlugin.
+
+### 2. logos.callModule returns JSON, not raw text
+`loadNote(id)` returns note text wrapped in JSON. QML must parse the response before assigning to `editor.text`. On error returns `{"error":"..."}` — guard against this.
+
+**Rule**: always `JSON.parse()` callModule results before using them in the UI.
+
+### 3. Screen state must survive Qt Loader destruction
+Qt's Loader destroys the previous screen when switching. Data that needs to survive a screen transition must be passed as arguments to C++ backend methods, not held in QML state.
+
+**Rule**: pass backup path (and any cross-screen data) to `importMnemonic()` on the C++ side before any screen switch.
+
+### 4. Restore rollback
+`setInitialized()` must be called after successful restore, not before. Failed restore must roll back completely — wipe DB, return to import screen.
+
+**Rule**: on any import/restore failure, call `resetAndWipe()` and return to import screen.
+
+### 5. Account fingerprint must be deterministic
+Fingerprint derived from master key + random salt = unstable (changes per device/import). Derive from mnemonic directly with no salt: SHA-256(normalized_mnemonic) → Ed25519 seed → public key.
+
+**Rule**: fingerprint = Ed25519 public key derived from normalized mnemonic, no salt.
+
+### 6. Mnemonic normalization must be shared
+BIP39 validation normalizes (NFKD, lowercase, trim) but key derivation was using raw string. Same phrase typed slightly differently = different key.
+
+**Rule**: single shared `normalizeMnemonic()` function, called before every crypto operation.
+
+### 7. Logos App testing requires AppImage build
+`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. Our cmake --install copies raw files which only work with portable/AppImage builds.
+
+**Rule**: always test with the AppImage build, never with local Nix build.
+
+### 8. Kill ALL Logos processes before relaunching
+logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads.
+
+**Rule**: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core` before every test launch.
+
+### 9. QML sandbox restrictions in ui_qml plugins
+- No access to Logos.Theme or Logos.Controls imports
+- No native file dialogs (FileDialog blocked)
+- No file I/O from QML
+
+**Rule**: hardcode hex palette values, move all file I/O to C++ plugin, use fixed well-known paths.
+
+### 10. plugin_metadata.json must be fully populated
+Empty `{}` metadata means the shell never registers the plugin. Must match manifest.json content with correct IID.
+
+### 11. Cipher regression from XChaCha20 fallback
+Adding a "simple" AES fallback opened cipher persistence, migration, and portability bugs more complex than the problem they solved. Decision: fail-fast on AES-NI unavailability. Net -65 lines.
+
+**Rule**: prefer fail-fast over complex fallback logic for edge cases affecting <0.1% of hardware.
+
+### 12. Python brace counting is unreliable for QML validation
+QML uses `{}` in JavaScript blocks differently from QML object declarations. Python counting gives wrong results.
+
+**Rule**: always use `qmllint` as the authoritative QML syntax checker.
+
+### 13. CTest must be run from build/, not repo root
+Running `ctest` from repo root reports `No tests were found!!!`. CTest registers 2 tests: `test_multi_note` and `test_security`. These are QtTest binaries with multiple internal cases — CTest will not report the per-case count.
+
+---
+
+## Logos Storage Research Notes
+
+### Architecture
+```
+libstorage.so (Nim, ~14MB) — Logos Storage node (formerly Codex)
+storage_module_plugin.so — Qt C++ wrapper
+storage_ui.so — QML UI plugin
+```
+
+### Network ports
+| Port | Protocol | Service |
+|------|----------|---------|
+| 8500 | TCP | libp2p transport |
+| 8090 | UDP | DiscoveryV5 peer discovery |
+| 8080 | TCP | REST API |
+
+### REST API
+```
+POST /api/storage/v1/data          — upload file → CID
+GET  /api/storage/v1/data/{cid}    — download
+POST /api/storage/v1/data/{cid}/network — fetch from network
+GET  /api/storage/v1/debug/info    — node status
+```
+
+### Key findings (tested 2026-03-12)
+- Upload → CID ✅, fetch while online ✅
+- Blobs stored locally only — no auto-replication to peers
+- Delete = gone permanently if no other node has fetched it
+- Single device limitation: full sync requires minimum 2 nodes
+- Works on cellular with `nat: "none"` in config
+- **Storage team confirmed**: web-of-trust peer storage is intended usage
+
+### Integration path for Phase 2
+- Notes module calls storage_module via `LogosAPIClient::invokeRemoteMethod()`
+- Upload: `uploadInit(filepath, chunkSize)` → `uploadChunk()` → `uploadFinalize()` → CID
+- Download: `downloadToUrl(cid, destUrl, local, chunkSize)` → file at destination
+- All operations async via `eventResponse` signal
+
+---
+
+## Phase 2 — Keycard (upcoming)
+
+Same PIN UX. Same SQLite schema. No data migration needed.
+Replace: `Argon2id(PIN) → wrapping key`
+With: `Keycard(PIN) → wrapping key`
+
+The mnemonic-derived Ed25519 identity maps directly to Keycard's identity model.
+
+---
+
+## Phase 3 — Trust Network (proposal)
+
+**Concept**: small group of trusted friends store each other's encrypted backups. No central server.
+
+**Flow**:
+1. App auto-uploads encrypted backup to local Logos Storage node → CID
+2. Settings → Trust Network: paste list of trusted public keys
+3. App sends CID to trusted peers via Logos Messaging
+4. Peer apps fetch + pin the blob if sender is in their trust list
+5. Mutual by design — both sides must add each other
+
+**Dashboard**:
+```
+Storing for me:    3 / 5 nodes online
+I'm storing for:   4 identities
+Last backup:       2 min ago
+Backup CID:        zDvZ...  [Copy]
+```
+
+**Abuse prevention**: per-peer storage limit, revoke trust instantly, block key.
+
+---
+
+## Blog Posts
+
+| File | Topic | Status |
+|------|-------|--------|
+| `blog/2026-03-12-phase-0.md` | Phase 0 — module, crypto architecture | Submitted to Logos press, pending publication |
+| `blog/2026-03-14-security-hardening.md` | Security hardening, two-AI review loop | Published |
+| `blog/2026-03-14-settings-backup-identity.md` | Settings, backup, identity/fingerprint | Published |
+
+---
+
+## Key Links
+
+| Resource | URL |
+|----------|-----|
+| Ideas issue | https://github.com/logos-co/ideas/issues/13 |
+| Project repo | https://github.com/xAlisher/logos-notes |
+| Logos App | https://github.com/logos-co/logos-app |
+| Logos App PoC | https://github.com/logos-co/logos-app-poc |
+| Chat UI reference | https://github.com/logos-co/logos-chat-ui |
+| Logos Storage | https://github.com/logos-storage/logos-storage-nim |
+| Logos Messaging | https://github.com/logos-messaging/nim-chat-poc |
+| Waku docs | https://docs.waku.org |
+| Design system | https://github.com/logos-co/logos-design-system |
+| Status contact | https://status.app/u/CwmAChEKD0FsaXNoZXIgU2hlcmFsaQM= |
