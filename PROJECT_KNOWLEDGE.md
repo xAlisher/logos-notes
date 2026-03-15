@@ -2,9 +2,8 @@
 *Last updated: 2026-03-15*
 
 > **This file is the project's shared memory.**
-> Both Claude Code and Codex read it at the start of every session.
-> Both agents must write back to it before ending any session.
-> It lives in the repo root at `PROJECT_KNOWLEDGE.md` and is committed like any other file.
+> It lives in the repo root and is committed like any other file.
+> Both agents read it at session start and write back before session end.
 > GitHub issues are ephemeral. This file is not.
 
 ---
@@ -78,8 +77,8 @@ Account identity
 notes(id, ciphertext, nonce, title_ciphertext, title_nonce, updated_at)
 wrapped_key(id, ciphertext, nonce, pin_salt)
 meta(key, value)
--- meta keys: initialized, mnemonic_kdf_salt, cipher, backup_cid,
---            pin_failed_attempts, pin_lockout_until
+-- meta keys: initialized, mnemonic_kdf_salt, account_fingerprint,
+--            pin_failed_attempts, pin_lockout_until, backup_cid
 ```
 
 ### DB paths
@@ -129,7 +128,7 @@ Q_INVOKABLE QString deleteNote(int id);
 
 ## Open Security Findings
 
-*Agents: add new findings here immediately. Mark resolved with ✅ and date.*
+*New findings go here immediately. Resolved findings marked ✅ with date.*
 
 | # | Severity | Finding | Status |
 |---|----------|---------|--------|
@@ -163,67 +162,46 @@ Unblock options (in priority order):
 
 ## Lessons Learned
 
-*Agents: add new lessons here as they're discovered. Never delete — amend if understanding improves.*
+*Add new lessons as they're discovered. Never delete — amend if understanding improves.*
 
 ### 1. NotesPlugin is the only surface QML can see
 Every method added to NotesBackend that QML needs must also be explicitly added to NotesPlugin as Q_INVOKABLE. QML callModule calls silently fail (no error, empty response) when the method doesn't exist on the plugin.
 
-**Rule**: before writing any new method on NotesBackend, immediately add the Q_INVOKABLE wrapper to NotesPlugin.
-
 ### 2. logos.callModule returns JSON, not raw text
 `loadNote(id)` returns note text wrapped in JSON. QML must parse the response before assigning to `editor.text`. On error returns `{"error":"..."}` — guard against this.
 
-**Rule**: always `JSON.parse()` callModule results before using them in the UI.
-
 ### 3. Screen state must survive Qt Loader destruction
-Qt's Loader destroys the previous screen when switching. Data that needs to survive a screen transition must be passed as arguments to C++ backend methods, not held in QML state.
-
-**Rule**: pass backup path (and any cross-screen data) to `importMnemonic()` on the C++ side before any screen switch.
+Qt's Loader destroys the previous screen when switching. Data that needs to survive a screen transition must be passed as arguments to C++ backend methods, not held in QML state. Pass backup path to `importMnemonic()` on the C++ side before any screen switch.
 
 ### 4. Restore rollback
-`setInitialized()` must be called after successful restore, not before. Failed restore must roll back completely — wipe DB, return to import screen.
-
-**Rule**: on any import/restore failure, call `resetAndWipe()` and return to import screen.
+`setInitialized()` must be called after successful restore, not before. Failed restore must roll back completely — wipe DB, return to import screen. On any failure, call `resetAndWipe()`.
 
 ### 5. Account fingerprint must be deterministic
-Fingerprint derived from master key + random salt = unstable (changes per device/import). Derive from mnemonic directly with no salt: SHA-256(normalized_mnemonic) → Ed25519 seed → public key.
-
-**Rule**: fingerprint = Ed25519 public key derived from normalized mnemonic, no salt.
+Fingerprint derived from master key + random salt = unstable (changes per device/import). Derive from mnemonic directly with no salt: SHA-256(normalized_mnemonic) → Ed25519 seed → public key. No salt involved.
 
 ### 6. Mnemonic normalization must be shared
-BIP39 validation normalizes (NFKD, lowercase, trim) but key derivation was using raw string. Same phrase typed slightly differently = different key.
-
-**Rule**: single shared `normalizeMnemonic()` function, called before every crypto operation.
+BIP39 validation normalizes (NFKD, lowercase, trim) but key derivation was using raw string. Same phrase typed slightly differently = different key. Single shared `normalizeMnemonic()` function, called before every crypto operation.
 
 ### 7. Logos App testing requires AppImage build
-`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. Our cmake --install copies raw files which only work with portable/AppImage builds.
-
-**Rule**: always test with the AppImage build, never with local Nix build.
+`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. `cmake --install` copies raw files which only work with portable/AppImage builds.
 
 ### 8. Kill ALL Logos processes before relaunching
-logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads.
-
-**Rule**: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core` before every test launch.
+logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads. Always kill: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`.
 
 ### 9. QML sandbox restrictions in ui_qml plugins
 - No access to Logos.Theme or Logos.Controls imports
 - No native file dialogs (FileDialog blocked)
 - No file I/O from QML
-
-**Rule**: hardcode hex palette values, move all file I/O to C++ plugin, use fixed well-known paths.
+Hardcode hex palette values, move all file I/O to C++ plugin, use fixed well-known paths.
 
 ### 10. plugin_metadata.json must be fully populated
 Empty `{}` metadata means the shell never registers the plugin. Must match manifest.json content with correct IID.
 
 ### 11. Cipher regression from XChaCha20 fallback
-Adding a "simple" AES fallback opened cipher persistence, migration, and portability bugs more complex than the problem they solved. Decision: fail-fast on AES-NI unavailability. Net -65 lines.
-
-**Rule**: prefer fail-fast over complex fallback logic for edge cases affecting <0.1% of hardware.
+Adding a "simple" AES fallback opened cipher persistence, migration, and portability bugs more complex than the problem they solved. Decision: fail-fast on AES-NI unavailability. Net -65 lines. Prefer fail-fast over complex fallback logic for edge cases affecting <0.1% of hardware.
 
 ### 12. Python brace counting is unreliable for QML validation
-QML uses `{}` in JavaScript blocks differently from QML object declarations. Python counting gives wrong results.
-
-**Rule**: always use `qmllint` as the authoritative QML syntax checker.
+QML uses `{}` in JavaScript blocks differently from QML object declarations. Python counting gives wrong results. Always use `qmllint` as the authoritative QML syntax checker.
 
 ### 13. CTest must be run from build/, not repo root
 Running `ctest` from repo root reports `No tests were found!!!`. CTest registers 2 tests: `test_multi_note` and `test_security`. These are QtTest binaries with multiple internal cases — CTest will not report the per-case count.

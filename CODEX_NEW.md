@@ -18,7 +18,7 @@ GitHub issue comments. You do not implement fixes — you report them.
 ## Session Start Checklist
 
 1. Read `PROJECT_KNOWLEDGE.md` — note open security findings and current phase
-2. Check GitHub for new issue comments or branch pushes from Claude (tagged `[Claude Code]`)
+2. Check GitHub for new issue comments, issue state changes, and branch pushes from Claude (tagged `[Claude Code]`)
 3. Identify what needs review this session
 4. Only then begin
 
@@ -37,9 +37,11 @@ cmake --build build -j4
 
 # Run tests — always from build/ directory, never repo root
 cd build && ctest --output-on-failure
-
 # Expected: 2 registered tests (test_multi_note, test_security)
 # These are QtTest binaries — CTest does not report per-case count
+
+# Return to repo root before linting
+cd ..
 
 # Lint plugin QML
 ~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
@@ -61,6 +63,8 @@ cd build && ctest --output-on-failure
 - **Full chain**: for any user-visible fix, verify the whole path backend → plugin → UI.
 - **Latest branch state**: before re-reviewing, check latest branch tip and new comments.
   Do not assume your local state is current.
+- **Backup path**: backup files must land in `~/.local/share/logos-notes/backups/`. Verify
+  path has not drifted. Backup format must match: `{version, salt, nonce, ciphertext, noteCount}`.
 
 ### Security-specific
 
@@ -68,7 +72,10 @@ cd build && ctest --output-on-failure
 - Key material lifetime (wiped on lock, wiped by SecureBuffer destructor)
 - Backup restore path (re-derivation with backup's salt, rollback on failure)
 - PIN brute-force (counter persists across restarts, exponential backoff)
-- Cipher regression (AES-NI fail-fast must not be softened or bypassed)
+- Cipher regression: `crypto_aead_aes256gcm_is_available()` must be checked at startup.
+  AES-NI fail-fast must not be softened, bypassed, or replaced with a fallback cipher.
+- DB hardening: `PRAGMA secure_delete=ON`, `journal_mode=DELETE`, file permissions `0600`.
+  Flag any change that weakens these.
 
 ### Logos App sandbox
 
@@ -131,6 +138,13 @@ For new findings not on an existing issue, create a new issue with:
 - Labels: `security` or `bug` + env label (`env:logos-app`, `env:standalone`, `env:both`)
 - Body: Evidence, Risk, Recommendation
 
+### On SECURITY_REVIEW.md
+
+You may update `SECURITY_REVIEW.md` directly:
+- Add new findings with sequential numbering (#12, #13, etc.)
+- Add review round entries to the Review History section
+- Mark resolved findings as `✅ RESOLVED`
+
 ### Reporting test results
 
 Always include the exact working directory and commands used:
@@ -151,6 +165,7 @@ Before ending any session:
    - Update open questions if answered
 2. Do not leave findings only in GitHub comments — they must land in PROJECT_KNOWLEDGE.md
    before the session ends or they will be lost between sessions
+3. Commit and push: `git add PROJECT_KNOWLEDGE.md && git commit -m "docs: update PROJECT_KNOWLEDGE.md — <summary>" && git push`
 
 ---
 
@@ -169,7 +184,7 @@ Before ending any session:
 
 | What | Where |
 |------|-------|
-| Shared project knowledge | `PROJECT_KNOWLEDGE.md` (Claude project context) |
+| Shared project knowledge | `PROJECT_KNOWLEDGE.md` |
 | Claude's instructions | `CLAUDE.md` |
 | Security audit history | `SECURITY_REVIEW.md` |
 | Plugin QML | `plugins/notes_ui/Main.qml` |
