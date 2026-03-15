@@ -179,7 +179,7 @@ The workflow:
 
 This caught real bugs. The most serious: a cipher fallback (AES-GCM → XChaCha20) that wasn't persisted with the encrypted data. If you encrypted on a machine with AES-NI and moved the database to one without it, your data became unreadable. Codex flagged it as High severity. We stripped the fallback entirely — AES-NI has been standard since 2010, dual-cipher complexity wasn't worth the edge case.
 
-Four review rounds, ten findings, all resolved. Full audit in [SECURITY_REVIEW.md](https://github.com/xAlisher/logos-notes/blob/master/SECURITY_REVIEW.md).
+Four review rounds, ten findings, all resolved or documented as known limitations. Full audit in [SECURITY_REVIEW.md](https://github.com/xAlisher/logos-notes/blob/master/SECURITY_REVIEW.md).
 
 ---
 
@@ -205,7 +205,7 @@ cmake --build build
 ./build/logos-notes
 ```
 
-Twenty-six tests. Four releases. Four blog posts. Zero plaintext on disk.
+Twenty-six tests. Four releases. Five blog posts. Zero plaintext on disk.
 
 Clone it, break it, build on top of it. Find me on [Status](https://status.app/u/CwmAChEKD0FsaXNoZXIgU2hlcmFsaQM=#zQ3shWBWbQjMhpevjRT3KifqunFR8F81hbwzRMs7193PgWrhf) or in the Logos Discord.
 
