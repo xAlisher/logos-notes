@@ -222,6 +222,26 @@ target_link_libraries(test_account PRIVATE
 )
 add_test(NAME test_account COMMAND test_account)
 
+add_executable(test_note_api
+    tests/test_note_api.cpp
+    src/core/DatabaseManager.h
+    src/core/DatabaseManager.cpp
+    src/core/CryptoManager.h
+    src/core/CryptoManager.cpp
+    src/core/KeyManager.h
+    src/core/KeyManager.cpp
+    src/core/NotesBackend.h
+    src/core/NotesBackend.cpp
+)
+target_include_directories(test_note_api PRIVATE src)
+target_link_libraries(test_note_api PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Sql
+    PkgConfig::sodium
+)
+add_test(NAME test_note_api COMMAND test_note_api)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 
 set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
