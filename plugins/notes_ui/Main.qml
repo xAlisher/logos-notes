@@ -29,6 +29,11 @@ Item {
     property string restoreStatus: ""
     property string restoreWarning: ""
 
+    // ── Keycard state ────────────────────────────────────────────────────
+    property string keycardState: "unknown"
+    property string keycardStatus: ""
+    property bool keycardDetecting: false
+
     function parseLockoutSeconds(msg) {
         var match = msg.match(/(\d+)\s*seconds/)
         return match ? parseInt(match[1]) : 0
@@ -45,6 +50,23 @@ Item {
                 lockoutTimer.stop()
                 root.errorMessage = ""
             }
+        }
+    }
+
+    // Poll Keycard state while detection is active
+    Timer {
+        id: keycardPollTimer
+        interval: 500
+        repeat: true
+        running: root.keycardDetecting
+        onTriggered: {
+            if (typeof logos === "undefined" || !logos.callModule) return
+            var json = logos.callModule("notes", "getKeycardState", [])
+            try {
+                var obj = JSON.parse(json)
+                root.keycardState = obj.state || "unknown"
+                root.keycardStatus = obj.status || ""
+            } catch(e) {}
         }
     }
 
@@ -235,6 +257,106 @@ Item {
                     }
                 }
             }
+
+            // ── Keycard section ────────────────────────────────────
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: root.borderColor
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: "or"
+                color: root.textPlaceholder
+                font.pixelSize: 12
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            Button {
+                Layout.fillWidth: true
+                text: {
+                    if (!root.keycardDetecting) return "Connect Keycard"
+                    if (root.keycardState === "ready" || root.keycardState === "authorized")
+                        return "Keycard Detected"
+                    if (root.keycardState === "waitingForCard")
+                        return "Insert Keycard..."
+                    if (root.keycardState === "waitingForReader")
+                        return "Connect Reader..."
+                    if (root.keycardState === "connectingCard")
+                        return "Connecting..."
+                    return "Detecting..."
+                }
+                contentItem: Text {
+                    text: parent.text
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
+                    color: root.textColor
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                background: Rectangle {
+                    color: {
+                        if (root.keycardState === "ready" || root.keycardState === "authorized")
+                            return "#22c55e"  // green
+                        return parent.pressed ? "#3a3a3a" : root.bgSecondary
+                    }
+                    radius: 16
+                    implicitHeight: 44
+                    border.width: 1
+                    border.color: {
+                        if (root.keycardState === "ready" || root.keycardState === "authorized")
+                            return "#22c55e"
+                        return root.borderColor
+                    }
+                }
+                onClicked: {
+                    if (typeof logos === "undefined" || !logos.callModule) return
+                    if (!root.keycardDetecting) {
+                        var result = logos.callModule("notes", "startKeycardDetection", [])
+                        try {
+                            var parsed = JSON.parse(result)
+                            if (parsed.error) {
+                                root.errorMessage = parsed.error
+                                return
+                            }
+                        } catch(e) {}
+                        root.keycardDetecting = true
+                        root.errorMessage = ""
+                    }
+                }
+            }
+
+            // Keycard status text
+            Text {
+                Layout.fillWidth: true
+                text: root.keycardStatus
+                color: {
+                    if (root.keycardState === "ready" || root.keycardState === "authorized")
+                        return "#22c55e"
+                    if (root.keycardState === "emptyKeycard" || root.keycardState === "blockedPIN"
+                        || root.keycardState === "blockedPUK" || root.keycardState === "notKeycard"
+                        || root.keycardState === "connectionError" || root.keycardState === "noPCSC")
+                        return root.errorColor
+                    return root.textPlaceholder
+                }
+                font.pixelSize: 11
+                visible: root.keycardDetecting && root.keycardStatus.length > 0
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 1
+                color: root.borderColor
+                visible: root.keycardDetecting
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+            }
+            // ── End Keycard section ───────────────────────────────────
 
             Text {
                 id: pluginRestoreStatus

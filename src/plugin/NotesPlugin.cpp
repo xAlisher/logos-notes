@@ -129,6 +129,27 @@ QString NotesPlugin::resetAndWipe()
     return ok();
 }
 
+// ── Keycard ─────────────────────────────────────────────────────────────────
+
+QString NotesPlugin::startKeycardDetection()
+{
+    QString result = m_backend.startKeycardDetection();
+    if (result == "ok")
+        return successJson();
+    return errorJson(result);
+}
+
+QString NotesPlugin::stopKeycardDetection()
+{
+    m_backend.stopKeycardDetection();
+    return ok();
+}
+
+QString NotesPlugin::getKeycardState()
+{
+    return m_backend.getKeycardState();
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 QString NotesPlugin::ok()

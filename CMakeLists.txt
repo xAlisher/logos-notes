@@ -17,6 +17,14 @@ qt_policy(SET QTP0004 NEW)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(sodium REQUIRED IMPORTED_TARGET libsodium)
 
+# ── libkeycard (status-keycard-go, compiled via CGO) ─────────────────────────
+set(KEYCARD_LIB_DIR "${CMAKE_SOURCE_DIR}/lib/keycard")
+add_library(keycard SHARED IMPORTED)
+set_target_properties(keycard PROPERTIES
+    IMPORTED_LOCATION "${KEYCARD_LIB_DIR}/libkeycard.so"
+    INTERFACE_INCLUDE_DIRECTORIES "${KEYCARD_LIB_DIR}"
+)
+
 # ── Sources ──────────────────────────────────────────────────────────────────
 set(SOURCES
     src/main.cpp
@@ -28,6 +36,8 @@ set(SOURCES
     src/core/DatabaseManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/KeycardBridge.h
+    src/core/KeycardBridge.cpp
 )
 
 qt_add_executable(logos-notes ${SOURCES})
@@ -52,6 +62,7 @@ target_link_libraries(logos-notes PRIVATE
     Qt6::QuickControls2
     Qt6::Sql
     PkgConfig::sodium
+    keycard
 )
 
 target_include_directories(logos-notes PRIVATE src)
@@ -102,6 +113,8 @@ set(PLUGIN_SOURCES
     src/core/DatabaseManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/KeycardBridge.h
+    src/core/KeycardBridge.cpp
 )
 
 add_library(notes_plugin MODULE ${PLUGIN_SOURCES})
@@ -128,6 +141,7 @@ target_link_libraries(notes_plugin PRIVATE
     Qt6::Sql
     PkgConfig::sodium
     "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
+    keycard
 )
 
 # Q_PLUGIN_METADATA(FILE "plugin_metadata.json") resolves relative to the
@@ -142,104 +156,51 @@ configure_file(
 enable_testing()
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
-add_executable(test_multi_note
-    tests/test_multi_note.cpp
+# Common core sources shared by all test targets
+set(TEST_CORE_SOURCES
     src/core/DatabaseManager.h
     src/core/DatabaseManager.cpp
     src/core/CryptoManager.h
     src/core/CryptoManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/KeycardBridge.h
+    src/core/KeycardBridge.cpp
     src/core/NotesBackend.h
     src/core/NotesBackend.cpp
 )
-target_include_directories(test_multi_note PRIVATE src)
-target_link_libraries(test_multi_note PRIVATE
+
+set(TEST_CORE_LIBS
     Qt6::Core
     Qt6::Test
     Qt6::Sql
     PkgConfig::sodium
+    keycard
 )
+
+add_executable(test_multi_note tests/test_multi_note.cpp ${TEST_CORE_SOURCES})
+target_include_directories(test_multi_note PRIVATE src)
+target_link_libraries(test_multi_note PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_multi_note COMMAND test_multi_note)
 
-add_executable(test_security
-    tests/test_security.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_security tests/test_security.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_security PRIVATE src)
-target_link_libraries(test_security PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_security PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_security COMMAND test_security)
 
-add_executable(test_backup
-    tests/test_backup.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_backup tests/test_backup.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_backup PRIVATE src)
-target_link_libraries(test_backup PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_backup PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_backup COMMAND test_backup)
 
-add_executable(test_account
-    tests/test_account.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_account tests/test_account.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_account PRIVATE src)
-target_link_libraries(test_account PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_account PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_account COMMAND test_account)
 
-add_executable(test_note_api
-    tests/test_note_api.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_note_api tests/test_note_api.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_note_api PRIVATE src)
-target_link_libraries(test_note_api PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_note_api PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_note_api COMMAND test_note_api)
 
 add_executable(test_plugin
@@ -248,14 +209,7 @@ add_executable(test_plugin
     "${LOGOS_CPP_SDK}/include/cpp/logos_api.h"
     src/plugin/NotesPlugin.h
     src/plugin/NotesPlugin.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
+    ${TEST_CORE_SOURCES}
 )
 target_include_directories(test_plugin PRIVATE
     src
@@ -264,12 +218,7 @@ target_include_directories(test_plugin PRIVATE
     "${LOGOS_CPP_SDK}/include/cpp"
     "${LOGOS_CPP_SDK}/include/core"
 )
-target_link_libraries(test_plugin PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_plugin PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_plugin COMMAND test_plugin)
 
 # ── Install ───────────────────────────────────────────────────────────────────
@@ -284,6 +233,9 @@ install(TARGETS notes_plugin
     LIBRARY DESTINATION "${NOTES_MODULE_DIR}"
 )
 install(FILES modules/notes/manifest.json
+    DESTINATION "${NOTES_MODULE_DIR}"
+)
+install(FILES lib/keycard/libkeycard.so
     DESTINATION "${NOTES_MODULE_DIR}"
 )
 install(FILES
