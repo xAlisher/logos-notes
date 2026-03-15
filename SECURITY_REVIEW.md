@@ -1,7 +1,7 @@
 # Security, Privacy, and Cryptography Review
 
-Date: 2026-03-13
-Scope: `src/core/*` and security claims in `README.md`.
+Date: 2026-03-15
+Scope: `src/core/*`, `src/plugin/*`, backup import/export flows, and security claims in `README.md`.
 
 ## Executive summary
 
@@ -9,10 +9,10 @@ The project has a strong encrypted-at-rest baseline (libsodium Argon2id + AEAD, 
 
 Current top residual risks:
 1. **PIN lockout is bypassable for offline attackers** because counters are stored in the same editable DB.
-2. **AEAD portability gap**: AES-256-GCM hardware availability is not checked (`crypto_aead_aes256gcm_is_available()`).
-3. **Memory hygiene is improved but not complete**: `SecureBuffer` is used in key paths, but copies can still exist in regular `QByteArray` values.
-4. **AEAD hardening opportunities**: nonce/key length validation and AAD domain separation are still open.
-5. **SQLite privacy hardening** (`secure_delete`, journal policy) remains open.
+2. **Backup portability can silently break** if mnemonic-salt metadata fails to persist during account creation.
+3. **Backup restore can report false success** because per-note re-encryption / DB writes are not checked before incrementing the imported count.
+4. **AEAD hardening opportunities** remain open: no AAD is used to bind record context.
+5. **Legacy phase-0 save API can report success on failed writes**, creating silent data-loss behavior for any remaining callers.
 
 ## What is implemented well
 
@@ -112,6 +112,52 @@ XChaCha20-Poly1305 fallback was considered and rejected because:
 - `PRAGMA journal_mode=DELETE` (no WAL residue).
 - DB file permissions set to `0600` (owner read/write only).
 
+## 12) Mnemonic KDF salt persistence is not checked during account creation (High)
+
+**Evidence:** `NotesBackend::importMnemonic()` saves the wrapped key first, then calls
+`saveMetaBlob("mnemonic_kdf_salt", ...)` and `saveMeta("account_fingerprint", ...)`
+without checking either return value. The account is still marked initialized and the
+session proceeds as successful even if metadata persistence fails.
+
+**Risk:** Cross-device restore depends on the persisted mnemonic KDF salt. If that write
+fails, later backups may serialize an empty salt and still report success, producing
+backup files that cannot be restored on another device.
+
+**Recommendation:**
+- Treat failure to persist `mnemonic_kdf_salt` as fatal during import.
+- Roll back the partially created account if either metadata write fails.
+- Add a regression test that simulates metadata write failure before initialization is committed.
+
+## 13) Backup import can claim success while dropping notes (Medium)
+
+**Evidence:** `NotesBackend::importBackup()` increments `imported` even when per-note
+content encryption, title encryption, or `m_db.saveNote()` may have failed. Those return
+values are currently ignored.
+
+**Risk:** Restore UX can claim data was imported successfully while some notes were never
+persisted. This is integrity loss masked as success, which is especially problematic in a
+recovery path.
+
+**Recommendation:**
+- Check each encrypt/save result before incrementing `imported`.
+- Fail the whole restore or at minimum surface partial-failure status to the caller.
+- Add tests for malformed backup entries and simulated DB write failures.
+
+## 14) Phase-0 save API returns success even when save fails (Medium)
+
+**Evidence:** `NotesPlugin::saveNote(const QString&)` always returns `"ok"`, while the
+backend implementation is `void` and ignores the results of both `m_db.saveNote(...)`
+calls.
+
+**Risk:** Any caller still using the phase-0 API can lose writes silently on locked-session,
+encryption-failure, or DB-failure paths. Silent success responses make operational issues
+hard to detect and debug.
+
+**Recommendation:**
+- Change the backend phase-0 save path to return an explicit status.
+- Propagate backend errors through the plugin instead of unconditionally returning `"ok"`.
+- If phase-0 is dead code, remove the API entirely and keep only the checked phase-1 path.
+
 ## ~~Consistency issue in documentation~~ — ✅ RESOLVED
 
 Titles are now encrypted (Issue #5). README updated to match.
@@ -166,6 +212,28 @@ significantly.
   offline PIN brute-force entirely
 
 ## Review History
+
+### Round 5 — 2026-03-15 (Codex audit of current master)
+
+**Reported by:** Codex
+**Role:** reviewer
+**Scope:** Current `master` snapshot (`src/core/*`, `src/plugin/*`, backup import/export paths, tests)
+**Branch/commit:** local `master` checkout
+
+**Findings (3 total):**
+
+| # | Severity | Issue | Summary |
+|---|----------|-------|---------|
+| #12 | High | Mnemonic salt persistence unchecked | Account import succeeds even if `mnemonic_kdf_salt` metadata write fails, which can later produce unrestorable backups |
+| #13 | Medium | Backup import false-success accounting | Restore increments imported count without checking encrypt/save results for each note |
+| #14 | Medium | Phase-0 save API false success | Plugin `saveNote(text)` always returns `"ok"` even if backend write fails |
+
+**Confirmed still open:**
+- #8 AAD/domain separation remains future hardening work.
+- #10 offline lockout counter reset remains a documented limitation.
+
+**Testing gap noted:**
+- Existing tests do not exercise backup export/import or metadata-persistence failure paths.
 
 ### Round 3 — 2026-03-13 (Codex re-validation)
 
