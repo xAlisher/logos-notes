@@ -3,7 +3,6 @@
 
 > **This file is the project's shared memory.**
 > It lives in the repo root and is committed like any other file.
-> Both agents read it at session start and write back before session end.
 > GitHub issues are ephemeral. This file is not.
 
 ---
@@ -128,8 +127,6 @@ Q_INVOKABLE QString deleteNote(int id);
 
 ## Open Security Findings
 
-*New findings go here immediately. Resolved findings marked ✅ with date.*
-
 | # | Severity | Finding | Status |
 |---|----------|---------|--------|
 | #10 | Low | PIN lockout counter in same DB as wrapped key. Offline attacker can reset counter between guesses. Primary defense is Argon2id cost (~0.7s/guess). Keycard (v1.0.0) eliminates this. | Open — accepted, documented |
@@ -162,7 +159,6 @@ Unblock options (in priority order):
 
 ## Lessons Learned
 
-*Add new lessons as they're discovered. Never delete — amend if understanding improves.*
 
 ### 1. NotesPlugin is the only surface QML can see
 Every method added to NotesBackend that QML needs must also be explicitly added to NotesPlugin as Q_INVOKABLE. QML callModule calls silently fail (no error, empty response) when the method doesn't exist on the plugin.
@@ -183,10 +179,10 @@ Fingerprint derived from master key + random salt = unstable (changes per device
 BIP39 validation normalizes (NFKD, lowercase, trim) but key derivation was using raw string. Same phrase typed slightly differently = different key. Single shared `normalizeMnemonic()` function, called before every crypto operation.
 
 ### 7. Logos App testing requires AppImage build
-`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. `cmake --install` copies raw files which only work with portable/AppImage builds.
+`nix build '.#app'` (local build) expects .lgx packages, not raw .so files. `cmake --install` copies raw files which only work with portable/AppImage builds. Local Nix build is not a valid test target.
 
 ### 8. Kill ALL Logos processes before relaunching
-logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads. Always kill: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`.
+logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads. Command: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`.
 
 ### 9. QML sandbox restrictions in ui_qml plugins
 - No access to Logos.Theme or Logos.Controls imports
