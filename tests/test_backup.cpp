@@ -54,6 +54,8 @@ private slots:
     void testMultiNoteRoundtripViaBackend();
     void testExportRequiresUnlock();
     void testImportRequiresUnlock();
+    void testImportMnemonicWithBackupPath();
+    void testImportAccountingCounts();
 
 private:
     // Import a mnemonic into a backend and return it in unlocked state.
@@ -492,6 +494,88 @@ void TestBackup::testImportRequiresUnlock()
     QJsonObject obj = parseJson(result);
     QVERIFY(obj.contains("error"));
     QVERIFY(obj["error"].toString().contains("Not unlocked"));
+}
+
+void TestBackup::testImportMnemonicWithBackupPath()
+{
+    wipeTestData();
+
+    // Step 1: Create account, notes, export backup.
+    QString backupPath;
+    {
+        NotesBackend backend;
+        importAndUnlock(backend);
+
+        QJsonObject n1 = parseJson(backend.createNote());
+        QJsonObject n2 = parseJson(backend.createNote());
+        backend.saveNote(n1["id"].toInt(), "Restored note one");
+        backend.saveNote(n2["id"].toInt(), "Restored note two");
+
+        backupPath = QDir::tempPath() + "/import_with_backup.imnotes";
+        QVERIFY(parseJson(backend.exportBackup(backupPath))["ok"].toBool());
+    }
+
+    // Step 2: Wipe everything, then import mnemonic with backup path.
+    // This exercises the importMnemonic(..., backupPath) code path.
+    wipeTestData();
+    {
+        NotesBackend backend;
+        QCOMPARE(backend.currentScreen(), "import");
+
+        backend.importMnemonic(TEST_MNEMONIC, TEST_PIN, TEST_PIN, backupPath);
+        QCOMPARE(backend.currentScreen(), "note");
+
+        // Verify notes were restored during import.
+        QJsonArray notes = QJsonDocument::fromJson(
+            backend.loadNotes().toUtf8()).array();
+        QCOMPARE(notes.size(), 2);
+
+        QStringList contents;
+        for (const auto &v : notes) {
+            int id = v.toObject()["id"].toInt();
+            contents << backend.loadNote(id);
+        }
+        QVERIFY(contents.contains("Restored note one"));
+        QVERIFY(contents.contains("Restored note two"));
+    }
+
+    QFile::remove(backupPath);
+}
+
+void TestBackup::testImportAccountingCounts()
+{
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    // Create 3 notes and export.
+    for (int i = 0; i < 3; ++i) {
+        QJsonObject n = parseJson(backend.createNote());
+        backend.saveNote(n["id"].toInt(), QString("Note %1").arg(i + 1));
+    }
+
+    QTemporaryDir tmpDir;
+    QString exportPath = tmpDir.path() + "/accounting.imnotes";
+    QString exportResult = backend.exportBackup(exportPath);
+    QJsonObject exported = parseJson(exportResult);
+    QVERIFY(exported["ok"].toBool());
+    QCOMPARE(exported["noteCount"].toInt(), 3);
+
+    // Import into the same backend (notes already exist, but import creates new ones).
+    QString importResult = backend.importBackup(exportPath);
+    QJsonObject imported = parseJson(importResult);
+
+    // All 3 should be imported successfully.
+    QVERIFY(imported["ok"].toBool());
+    QCOMPARE(imported["imported"].toInt(), 3);
+
+    // No failures expected in normal operation.
+    QVERIFY(!imported.contains("failed") || imported["failed"].toInt() == 0);
+
+    // Total notes should be original 3 + imported 3 = 6.
+    QJsonArray allNotes = QJsonDocument::fromJson(
+        backend.loadNotes().toUtf8()).array();
+    QCOMPARE(allNotes.size(), 6);
 }
 
 QTEST_MAIN(TestBackup)
