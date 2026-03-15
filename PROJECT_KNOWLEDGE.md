@@ -40,7 +40,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 |---------|-------------|--------|
 | v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
-| v1.0.0 | Keycard hardware key derivation | Planned — USB reader arriving |
+| v1.0.0 | Keycard hardware key derivation | In progress — Sub-1 done, awaiting hardware test |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
@@ -277,11 +277,22 @@ Keycard (#33) and wallet (#32) are independent features — neither blocks the o
 ### Keycard integration (v1.0.0)
 
 - Hardware: Status Keycard (ISO 7816) + USB PC/SC reader
-- Library: `status-keycard-go` compiled as `libkeycard.so`, thin C++ wrapper
+- Library: `status-keycard-go` compiled as `libkeycard.so`, thin C++ wrapper (`KeycardBridge`)
 - Key derivation: BIP44 path `m/43'/60'/1581'` (EIP-1581 encryption root)
 - Note: Keycard uses secp256k1, current fingerprint uses Ed25519 — need domain separation
 - Phase 1: link into notes_plugin directly. Phase 2: extract shared keycard-module for ecosystem.
 - Reference: `~/status-desktop/vendor/status-keycard-go/` and `vendor/status-keycard-qt/`
+- Build: `scripts/build-libkeycard.sh` compiles Go → `lib/keycard/libkeycard.so`
+- C API: `KeycardInitializeRPC()`, `KeycardCallRPC()`, `KeycardSetSignalEventCallback()`, `Free()`
+- JSON-RPC methods: `keycard.Start`, `keycard.Stop`, `keycard.GetStatus`, `keycard.Authorize`, `keycard.ExportRecoverKeys`
+
+#### Sub-issue tracker
+| # | Title | Branch | Status |
+|---|-------|--------|--------|
+| #34 | Reader detection + card state UI | `feature/keycard-reader-detection` | ✅ Code done, awaiting hardware test |
+| #35 | PIN authorization + key export | — | Next |
+| #36 | Wire key into NotesBackend encryption | — | Blocked on #35 |
+| #37 | Keycard ↔ mnemonic migration path | — | Blocked on #36 |
 
 ### Wallet integration (v0.7.0+)
 
