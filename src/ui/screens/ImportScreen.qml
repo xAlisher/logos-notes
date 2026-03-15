@@ -64,12 +64,27 @@ Item {
                 font.family: Theme.typography.publicSans
                 font.pixelSize: Theme.typography.secondaryText
                 wrapMode: TextEdit.Wrap
+                opacity: activeFocus ? 1.0 : 0.0
 
                 LogosText {
-                    visible: mnemonicArea.text.length === 0
+                    visible: mnemonicArea.text.length === 0 && mnemonicArea.activeFocus
                     text: "Enter 12 or 24 word recovery phrase"
                     color: Theme.palette.textPlaceholder
                     font.pixelSize: Theme.typography.secondaryText
+                }
+            }
+
+            // Mask overlay — shows word count when not focused
+            LogosText {
+                anchors { fill: parent; margins: Theme.spacing.medium }
+                visible: !mnemonicArea.activeFocus
+                color: mnemonicArea.text.length > 0 ? Theme.palette.text : Theme.palette.textPlaceholder
+                font.pixelSize: Theme.typography.secondaryText
+                text: {
+                    if (mnemonicArea.text.length === 0)
+                        return "Enter 12 or 24 word recovery phrase"
+                    var count = mnemonicArea.text.trim().split(/\s+/).length
+                    return "••• " + count + " words entered •••"
                 }
             }
         }

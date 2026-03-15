@@ -120,12 +120,27 @@ Item {
                     color: root.textColor
                     font.pixelSize: 12
                     wrapMode: TextEdit.Wrap
+                    opacity: activeFocus ? 1.0 : 0.0
 
                     Text {
-                        visible: mnemonicArea.text.length === 0
+                        visible: mnemonicArea.text.length === 0 && mnemonicArea.activeFocus
                         text: "Enter 12 or 24 word recovery phrase"
                         color: root.textPlaceholder
                         font.pixelSize: 12
+                    }
+                }
+
+                // Mask overlay — shows word count when not focused
+                Text {
+                    anchors { fill: parent; margins: 12 }
+                    visible: !mnemonicArea.activeFocus
+                    color: mnemonicArea.text.length > 0 ? root.textColor : root.textPlaceholder
+                    font.pixelSize: 12
+                    text: {
+                        if (mnemonicArea.text.length === 0)
+                            return "Enter 12 or 24 word recovery phrase"
+                        var count = mnemonicArea.text.trim().split(/\s+/).length
+                        return "••• " + count + " words entered •••"
                     }
                 }
             }
@@ -734,6 +749,12 @@ Item {
         // ── Settings panel (full width, overlays sidebar) ─────────────
         Item {
             visible: noteScreen.showSettings
+            onVisibleChanged: {
+                if (visible) {
+                    pluginConfirmCheck.checked = false
+                    pluginExportStatus.text = ""
+                }
+            }
             anchors {
                 top: parent.top; topMargin: 20
                 left: parent.left; leftMargin: 40

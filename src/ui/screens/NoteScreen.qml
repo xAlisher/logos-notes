@@ -298,6 +298,12 @@ Item {
     Item {
         id: settingsPanel
         visible: root.showSettings
+        onVisibleChanged: {
+            if (visible) {
+                confirmCheck.checked = false
+                exportStatus.text = ""
+            }
+        }
         anchors {
             top: parent.top; topMargin: Theme.spacing.xxlarge
             left: parent.left; leftMargin: 40
