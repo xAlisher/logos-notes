@@ -41,7 +41,9 @@ cd ..
 
 Run `ctest` from `build/`, not repo root. Running it from repo root reports `No tests were found!!!`.
 
-Test count should be **25** (8 multi-note + 17 security) as of v0.5.1+. If you see fewer, rebuild from clean: `cmake --build build --clean-first -j4`.
+CTest should list **2** registered tests: `test_multi_note` and `test_security`.
+These are QtTest binaries with multiple internal test cases, so CTest will not report
+the per-case count directly.
 
 ---
 
