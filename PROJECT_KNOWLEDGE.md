@@ -199,7 +199,16 @@ Adding a "simple" AES fallback opened cipher persistence, migration, and portabi
 QML uses `{}` in JavaScript blocks differently from QML object declarations. Python counting gives wrong results. Always use `qmllint` as the authoritative QML syntax checker.
 
 ### 13. CTest must be run from build/, not repo root
-Running `ctest` from repo root reports `No tests were found!!!`. CTest registers 2 tests: `test_multi_note` and `test_security`. These are QtTest binaries with multiple internal cases — CTest will not report the per-case count.
+Running `ctest` from repo root reports `No tests were found!!!`. CTest registers 4 tests: `test_multi_note`, `test_security`, `test_backup`, `test_account`. These are QtTest binaries with multiple internal cases — CTest will not report the per-case count.
+
+### 14. QStandardPaths::setTestModeEnabled for backend tests
+Calling `QStandardPaths::setTestModeEnabled(true)` redirects `AppDataLocation` to a test-specific path. This allows instantiating `NotesBackend` directly in tests without touching the real DB. Combined with `wipeTestData()` between tests for clean state. Established in test_backup.cpp, reused in test_account.cpp.
+
+### 15. SQLite connections survive file permission changes
+Attempted to force per-note restore failures by making the DB read-only mid-import. SQLite's cached connection continued writing. Forcing write failures in import accounting requires mock injection, not filesystem tricks.
+
+### 16. Screen name is "note" not "notes"
+`NotesBackend::importMnemonic()` and `unlockWithPin()` call `setScreen("note")`. Tests must compare against `"note"`, not `"notes"`.
 
 ---
 
@@ -285,6 +294,7 @@ Backup CID:        zDvZ...  [Copy]
 | `blog/2026-03-14-settings-backup-identity.md` | Settings, backup, identity/fingerprint | Published |
 | `blog/2026-03-15-hotfixes-and-sandbox-lessons.md` | Hotfixes, QML sandbox lessons | Published |
 | `blog/2026-03-15-shared-memory.md` | Shared memory, knowledge/instructions split, agent collaboration | Draft |
+| `blog/2026-03-15-building-immutable-notes-on-logos.md` | Comprehensive Logos blog post — app, crypto, module architecture, lessons | Ready for Logos submission |
 
 ---
 
@@ -334,9 +344,11 @@ logos_core_register_event_listener(    // subscribe to eventResponse signal
 
 ---
 
-## manifest.json — Real LGX Format
+## LGX Package Format
 
-For v0.6.0 LGX packaging, the manifest uses a platform map for the binary path:
+LGX files are `tar.gz` archives containing platform-specific module variants. Built with `nix-bundle-lgx`.
+
+### manifest.json schema (full)
 
 ```json
 {
@@ -344,17 +356,37 @@ For v0.6.0 LGX packaging, the manifest uses a platform map for the binary path:
   "version": "1.0.0",
   "type": "core",
   "category": "notes",
+  "author": "xAlisher",
+  "description": "Encrypted local-first notes",
+  "icon": "",
   "main": {
     "linux-amd64": "notes_plugin.so",
     "darwin-arm64": "notes_plugin.dylib"
   },
+  "manifestVersion": "0.1.0",
   "dependencies": []
 }
 ```
 
-Current cmake --install copies raw `.so` files with a flat manifest — this only works
-with AppImage builds. Real LGX format needed for Package Manager installation.
-Upstream issue: https://github.com/logos-co/logos-app/issues/60
+### Build command
+
+```bash
+# Portable (self-contained, no /nix/store dependency at runtime)
+nix bundle --bundler github:logos-co/nix-bundle-lgx#portable github:xAlisher/logos-notes#lib
+```
+
+### What goes in the LGX
+
+| Module | Type | Contents |
+|--------|------|----------|
+| `notes.lgx` | core | `manifest.json` + `variants/linux-amd64/notes_plugin.so` |
+| `notes_ui.lgx` | ui_qml | `manifest.json` + `variants/linux-amd64/Main.qml` + `metadata.json` |
+
+### Current state
+
+`cmake --install` copies raw `.so` files — only works with AppImage builds.
+Real LGX packaging needed for Package Manager installation.
+Issue: #30. Upstream: https://github.com/logos-co/logos-app/issues/60
 
 ---
 
@@ -403,4 +435,6 @@ getRooms()
 | Logos Messaging | https://github.com/logos-messaging/nim-chat-poc |
 | Waku docs | https://docs.waku.org |
 | Design system | https://github.com/logos-co/logos-design-system |
+| nix-bundle-lgx | https://github.com/logos-co/nix-bundle-lgx |
+| Package Manager module | https://github.com/logos-co/logos-package-manager-module |
 | Status contact | https://status.app/u/CwmAChEKD0FsaXNoZXIgU2hlcmFsaQM= |
