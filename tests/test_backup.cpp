@@ -3,6 +3,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStandardPaths>
+#include <QDir>
 
 #include "core/CryptoManager.h"
 #include "core/DatabaseManager.h"
@@ -13,7 +15,8 @@
 #include <sodium.h>
 
 // Tests for backup export/import flows (Issue #25).
-// Exercises the full roundtrip: create notes → export → wipe → re-import → verify.
+// Drives NotesBackend directly using QStandardPaths test mode
+// so the backend writes to a temp location, not the real DB.
 
 static const QString TEST_MNEMONIC =
     "abandon abandon abandon abandon abandon "
@@ -22,93 +25,10 @@ static const QString TEST_MNEMONIC =
 
 static const QString TEST_PIN = "123456";
 
-// Canonical normalization matching NotesBackend's internal normalizeMnemonic().
-static QString normalizeMnemonic(const QString &mnemonic)
+// Helper: parse JSON response from NotesBackend methods.
+static QJsonObject parseJson(const QString &s)
 {
-    return mnemonic.simplified()
-                   .normalized(QString::NormalizationForm_KD)
-                   .toLower();
-}
-
-// Helper: set up a fresh DB with an imported account, return the master key.
-static QByteArray setupAccount(DatabaseManager &db, CryptoManager &crypto,
-                                const QString &mnemonic, const QString &pin,
-                                QByteArray &mnemonicSalt)
-{
-    mnemonicSalt = CryptoManager::randomSalt();
-    QByteArray masterKey = crypto.deriveKey(normalizeMnemonic(mnemonic), mnemonicSalt);
-    if (masterKey.isEmpty()) return {};
-
-    QByteArray pinSalt = CryptoManager::randomSalt();
-    QByteArray pinKey = crypto.deriveKeyFromPin(pin, pinSalt);
-    if (pinKey.isEmpty()) return {};
-
-    QByteArray wrapNonce;
-    QByteArray wrappedKey = crypto.encrypt(masterKey, pinKey, wrapNonce);
-    if (wrappedKey.isEmpty()) return {};
-
-    db.saveWrappedKey(wrappedKey, wrapNonce, pinSalt);
-    db.saveMetaBlob("mnemonic_kdf_salt", mnemonicSalt);
-    db.saveMeta("account_fingerprint", NotesBackend::deriveFingerprint(normalizeMnemonic(mnemonic)));
-    db.setInitialized();
-
-    return masterKey;
-}
-
-// Helper: create and save an encrypted note, return the note id.
-static int createEncryptedNote(DatabaseManager &db, CryptoManager &crypto,
-                                const QByteArray &key,
-                                const QString &content, const QString &title)
-{
-    int id = db.createNote();
-    if (id < 0) return -1;
-
-    QByteArray contentNonce, titleNonce;
-    QByteArray contentCt = crypto.encrypt(content.toUtf8(), key, contentNonce);
-    QByteArray titleCt = crypto.encrypt(title.toUtf8(), key, titleNonce);
-
-    db.saveNote(id, contentCt, contentNonce, titleCt, titleNonce);
-    return id;
-}
-
-// Helper: build an export backup JSON manually (simulates exportBackup output).
-static QByteArray buildBackupFile(DatabaseManager &db, CryptoManager &crypto,
-                                   const QByteArray &key)
-{
-    auto headers = db.loadNoteHeaders();
-    QJsonArray notesArr;
-    for (const auto &h : headers) {
-        QByteArray ct, nonce;
-        if (!db.loadNote(h.id, ct, nonce)) continue;
-
-        QString content;
-        if (!ct.isEmpty())
-            content = QString::fromUtf8(crypto.decrypt(ct, key, nonce));
-
-        QString title;
-        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty())
-            title = QString::fromUtf8(crypto.decrypt(h.titleCiphertext, key, h.titleNonce));
-
-        QJsonObject noteObj;
-        noteObj["title"] = title;
-        noteObj["content"] = content;
-        noteObj["updatedAt"] = h.updatedAt;
-        notesArr.append(noteObj);
-    }
-
-    QByteArray plaintext = QJsonDocument(notesArr).toJson(QJsonDocument::Compact);
-    QByteArray nonce;
-    QByteArray ciphertext = crypto.encrypt(plaintext, key, nonce);
-
-    QByteArray salt = db.loadMetaBlob("mnemonic_kdf_salt");
-    QJsonObject backup;
-    backup["version"] = 1;
-    backup["salt"] = QString::fromLatin1(salt.toBase64());
-    backup["nonce"] = QString::fromLatin1(nonce.toBase64());
-    backup["ciphertext"] = QString::fromLatin1(ciphertext.toBase64());
-    backup["noteCount"] = notesArr.size();
-
-    return QJsonDocument(backup).toJson(QJsonDocument::Compact);
+    return QJsonDocument::fromJson(s.toUtf8()).object();
 }
 
 class TestBackup : public QObject
@@ -116,181 +36,214 @@ class TestBackup : public QObject
     Q_OBJECT
 
 private slots:
-    // ── Same-device roundtrip ─────────────────────────────────────────
-    void testExportImportSameKey();
+    void initTestCase();
+    void cleanupTestCase();
 
-    // ── Cross-device restore (different salt, same mnemonic) ──────────
-    void testCrossDeviceRestore();
+    // ── Backend API tests ─────────────────────────────────────────────
+    void testExportBackupReturnsJson();
+    void testExportImportRoundtripViaBackend();
+    void testCrossDeviceRestoreViaBackend();
+    void testImportBackupInvalidJson();
+    void testImportBackupUnsupportedVersion();
+    void testImportBackupWrongMnemonic();
+    void testImportBackupNonexistentFile();
+    void testImportBackupCorruptCiphertext();
+    void testImportBackupEmptyExport();
+    void testExportBackupAutoPathGeneration();
+    void testListBackups();
+    void testMultiNoteRoundtripViaBackend();
+    void testExportRequiresUnlock();
+    void testImportRequiresUnlock();
 
-    // ── Error handling ────────────────────────────────────────────────
-    void testImportInvalidJson();
-    void testImportUnsupportedVersion();
-    void testImportWrongMnemonic();
-    void testImportNonexistentFile();
-    void testImportCorruptCiphertext();
+private:
+    // Import a mnemonic into a backend and return it in unlocked state.
+    void importAndUnlock(NotesBackend &backend);
 
-    // ── Backup format validation ──────────────────────────────────────
-    void testBackupFormatFields();
-
-    // ── Partial import accounting ─────────────────────────────────────
-    void testEmptyBackupImport();
-
-    // ── Multiple notes roundtrip ──────────────────────────────────────
-    void testMultiNoteRoundtrip();
+    // Wipe the test data directory between tests.
+    void wipeTestData();
 };
 
-// ── Same-device roundtrip ────────────────────────────────────────────────
-
-void TestBackup::testExportImportSameKey()
+void TestBackup::initTestCase()
 {
+    QStandardPaths::setTestModeEnabled(true);
+}
+
+void TestBackup::cleanupTestCase()
+{
+    wipeTestData();
+    QStandardPaths::setTestModeEnabled(false);
+}
+
+void TestBackup::wipeTestData()
+{
+    QString dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir(dataDir).removeRecursively();
+
+    QString backupsDir = NotesBackend::backupsDir();
+    QDir(backupsDir).removeRecursively();
+}
+
+void TestBackup::importAndUnlock(NotesBackend &backend)
+{
+    backend.importMnemonic(TEST_MNEMONIC, TEST_PIN, TEST_PIN);
+    QCOMPARE(backend.currentScreen(), "note");
+}
+
+// ── Backend API tests ────────────────────────────────────────────────────
+
+void TestBackup::testExportBackupReturnsJson()
+{
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    // Create a note via backend.
+    QString createResult = backend.createNote();
+    QJsonObject created = parseJson(createResult);
+    int noteId = created["id"].toInt();
+    QVERIFY(noteId > 0);
+
+    backend.saveNote(noteId, "Test content for export");
+
+    // Export via backend API.
     QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
+    QString path = tmpDir.path() + "/test.imnotes";
+    QString result = backend.exportBackup(path);
+    QJsonObject obj = parseJson(result);
 
-    DatabaseManager db(tmpDir.path() + "/source.db");
-    QVERIFY(db.init());
-    CryptoManager crypto;
+    QVERIFY(obj["ok"].toBool());
+    QCOMPARE(obj["noteCount"].toInt(), 1);
+    QCOMPARE(obj["path"].toString(), path);
 
-    QByteArray salt;
-    QByteArray key = setupAccount(db, crypto, TEST_MNEMONIC, TEST_PIN, salt);
-    QVERIFY(!key.isEmpty());
+    // Verify the file was written and contains valid backup format.
+    QFile f(path);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QJsonObject backup = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+
+    QCOMPARE(backup["version"].toInt(), 1);
+    QCOMPARE(backup["noteCount"].toInt(), 1);
+    QVERIFY(backup.contains("salt"));
+    QVERIFY(backup.contains("nonce"));
+    QVERIFY(backup.contains("ciphertext"));
+}
+
+void TestBackup::testExportImportRoundtripViaBackend()
+{
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
 
     // Create two notes.
-    createEncryptedNote(db, crypto, key, "Note one content", "Note One");
-    createEncryptedNote(db, crypto, key, "Note two content", "Note Two");
+    QJsonObject n1 = parseJson(backend.createNote());
+    QJsonObject n2 = parseJson(backend.createNote());
+    backend.saveNote(n1["id"].toInt(), "First note body");
+    backend.saveNote(n2["id"].toInt(), "Second note body");
 
     // Export.
-    QByteArray backupData = buildBackupFile(db, crypto, key);
-    QString backupPath = tmpDir.path() + "/backup.imnotes";
-    QFile f(backupPath);
-    QVERIFY(f.open(QIODevice::WriteOnly));
-    f.write(backupData);
-    f.close();
+    QTemporaryDir tmpDir;
+    QString exportPath = tmpDir.path() + "/roundtrip.imnotes";
+    QString exportResult = backend.exportBackup(exportPath);
+    QVERIFY(parseJson(exportResult)["ok"].toBool());
 
-    // Set up a fresh DB (same device = same key).
-    DatabaseManager db2(tmpDir.path() + "/dest.db");
-    QVERIFY(db2.init());
-    QByteArray salt2;
-    QByteArray key2 = setupAccount(db2, crypto, TEST_MNEMONIC, TEST_PIN, salt2);
-    QVERIFY(!key2.isEmpty());
+    // Delete both notes to simulate fresh state.
+    backend.deleteNote(n1["id"].toInt());
+    backend.deleteNote(n2["id"].toInt());
 
-    // Read and parse backup.
-    QFile bf(backupPath);
-    QVERIFY(bf.open(QIODevice::ReadOnly));
-    QJsonObject backup = QJsonDocument::fromJson(bf.readAll()).object();
-    bf.close();
+    // Verify notes are gone.
+    QJsonArray beforeImport = QJsonDocument::fromJson(
+        backend.loadNotes().toUtf8()).array();
+    QCOMPARE(beforeImport.size(), 0);
 
-    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
-    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
-    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
+    // Import backup (same device, no mnemonic needed).
+    QString importResult = backend.importBackup(exportPath);
+    QJsonObject imported = parseJson(importResult);
+    QVERIFY(imported["ok"].toBool());
+    QCOMPARE(imported["imported"].toInt(), 2);
 
-    // Decrypt with re-derived key using backup's salt.
-    QByteArray restoreKey = crypto.deriveKey(normalizeMnemonic(TEST_MNEMONIC), backupSalt);
-    QVERIFY(!restoreKey.isEmpty());
+    // Verify notes are restored.
+    QJsonArray afterImport = QJsonDocument::fromJson(
+        backend.loadNotes().toUtf8()).array();
+    QCOMPARE(afterImport.size(), 2);
 
-    QByteArray plaintext = crypto.decrypt(ciphertext, restoreKey, nonce);
-    QVERIFY(!plaintext.isEmpty());
-
-    QJsonArray notes = QJsonDocument::fromJson(plaintext).array();
-    QCOMPARE(notes.size(), 2);
-
-    // Verify content survived.
+    // Verify content is correct.
     QStringList contents;
-    for (const auto &v : notes)
-        contents << v.toObject()["content"].toString();
-    QVERIFY(contents.contains("Note one content"));
-    QVERIFY(contents.contains("Note two content"));
-
-    // Verify titles survived.
-    QStringList titles;
-    for (const auto &v : notes)
-        titles << v.toObject()["title"].toString();
-    QVERIFY(titles.contains("Note One"));
-    QVERIFY(titles.contains("Note Two"));
+    for (const auto &v : afterImport) {
+        int id = v.toObject()["id"].toInt();
+        contents << backend.loadNote(id);
+    }
+    QVERIFY(contents.contains("First note body"));
+    QVERIFY(contents.contains("Second note body"));
 }
 
-// ── Cross-device restore ─────────────────────────────────────────────────
-
-void TestBackup::testCrossDeviceRestore()
+void TestBackup::testCrossDeviceRestoreViaBackend()
 {
-    QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
-    CryptoManager crypto;
+    wipeTestData();
 
-    // Device A: create account + notes + export.
-    DatabaseManager dbA(tmpDir.path() + "/deviceA.db");
-    QVERIFY(dbA.init());
-    QByteArray saltA;
-    QByteArray keyA = setupAccount(dbA, crypto, TEST_MNEMONIC, TEST_PIN, saltA);
-    QVERIFY(!keyA.isEmpty());
+    // "Device A": create account, notes, export.
+    {
+        NotesBackend backendA;
+        importAndUnlock(backendA);
 
-    createEncryptedNote(dbA, crypto, keyA, "Secret diary entry", "Diary");
+        QJsonObject n = parseJson(backendA.createNote());
+        backendA.saveNote(n["id"].toInt(), "Cross-device secret");
 
-    QByteArray backupData = buildBackupFile(dbA, crypto, keyA);
-    QString backupPath = tmpDir.path() + "/cross.imnotes";
-    QFile f(backupPath);
-    QVERIFY(f.open(QIODevice::WriteOnly));
-    f.write(backupData);
-    f.close();
+        QTemporaryDir tmpDir;
+        QString exportPath = tmpDir.path() + "/cross.imnotes";
+        QVERIFY(parseJson(backendA.exportBackup(exportPath))["ok"].toBool());
 
-    // Device B: different salt (different account setup), same mnemonic.
-    DatabaseManager dbB(tmpDir.path() + "/deviceB.db");
-    QVERIFY(dbB.init());
-    QByteArray saltB;
-    QByteArray keyB = setupAccount(dbB, crypto, TEST_MNEMONIC, "654321", saltB);
-    QVERIFY(!keyB.isEmpty());
+        // Copy the backup to a known location before backendA is destroyed.
+        QFile::copy(exportPath, "/tmp/test_cross_device.imnotes");
+    }
 
-    // keyA != keyB because different salts.
-    QVERIFY(keyA != keyB);
+    // "Device B": wipe, create fresh account with same mnemonic, import.
+    wipeTestData();
+    {
+        NotesBackend backendB;
+        importAndUnlock(backendB);
 
-    // Parse backup and try decrypting with keyB (current device key) — should fail.
-    QFile bf(backupPath);
-    QVERIFY(bf.open(QIODevice::ReadOnly));
-    QJsonObject backup = QJsonDocument::fromJson(bf.readAll()).object();
-    bf.close();
+        // Import with mnemonic (cross-device: different salt).
+        QString importResult = backendB.importBackup(
+            "/tmp/test_cross_device.imnotes", TEST_MNEMONIC);
+        QJsonObject imported = parseJson(importResult);
+        QVERIFY(imported["ok"].toBool());
+        QCOMPARE(imported["imported"].toInt(), 1);
 
-    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
-    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
+        // Verify content.
+        QJsonArray notes = QJsonDocument::fromJson(
+            backendB.loadNotes().toUtf8()).array();
+        QCOMPARE(notes.size(), 1);
+        QString content = backendB.loadNote(notes[0].toObject()["id"].toInt());
+        QCOMPARE(content, "Cross-device secret");
+    }
 
-    QByteArray failedDecrypt = crypto.decrypt(ciphertext, keyB, nonce);
-    QVERIFY(failedDecrypt.isEmpty()); // Different key, decryption fails.
-
-    // Re-derive using backup's salt + same mnemonic — should succeed.
-    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
-    QByteArray restoreKey = crypto.deriveKey(normalizeMnemonic(TEST_MNEMONIC), backupSalt);
-    QByteArray plaintext = crypto.decrypt(ciphertext, restoreKey, nonce);
-    QVERIFY(!plaintext.isEmpty());
-
-    QJsonArray notes = QJsonDocument::fromJson(plaintext).array();
-    QCOMPARE(notes.size(), 1);
-    QCOMPARE(notes[0].toObject()["content"].toString(), "Secret diary entry");
-    QCOMPARE(notes[0].toObject()["title"].toString(), "Diary");
+    QFile::remove("/tmp/test_cross_device.imnotes");
 }
 
-// ── Error handling ───────────────────────────────────────────────────────
-
-void TestBackup::testImportInvalidJson()
+void TestBackup::testImportBackupInvalidJson()
 {
-    QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
 
+    QTemporaryDir tmpDir;
     QString path = tmpDir.path() + "/bad.imnotes";
     QFile f(path);
     QVERIFY(f.open(QIODevice::WriteOnly));
     f.write("this is not json");
     f.close();
 
-    // Parse as JSON — should fail.
-    QFile rf(path);
-    QVERIFY(rf.open(QIODevice::ReadOnly));
-    QJsonDocument doc = QJsonDocument::fromJson(rf.readAll());
-    rf.close();
-    QVERIFY(!doc.isObject());
+    QString result = backend.importBackup(path);
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Invalid backup format"));
 }
 
-void TestBackup::testImportUnsupportedVersion()
+void TestBackup::testImportBackupUnsupportedVersion()
 {
-    QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
 
     QJsonObject backup;
     backup["version"] = 99;
@@ -298,221 +251,247 @@ void TestBackup::testImportUnsupportedVersion()
     backup["nonce"] = "AAAA";
     backup["ciphertext"] = "AAAA";
 
+    QTemporaryDir tmpDir;
     QString path = tmpDir.path() + "/v99.imnotes";
     QFile f(path);
     QVERIFY(f.open(QIODevice::WriteOnly));
     f.write(QJsonDocument(backup).toJson(QJsonDocument::Compact));
     f.close();
 
-    // Read back and check version.
-    QFile rf(path);
-    QVERIFY(rf.open(QIODevice::ReadOnly));
-    QJsonObject loaded = QJsonDocument::fromJson(rf.readAll()).object();
-    rf.close();
-    QVERIFY(loaded["version"].toInt() != 1);
+    QString result = backend.importBackup(path);
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Unsupported backup version"));
 }
 
-void TestBackup::testImportWrongMnemonic()
+void TestBackup::testImportBackupWrongMnemonic()
 {
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    // Create and export a note.
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n["id"].toInt(), "Secret");
+
     QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
-    CryptoManager crypto;
+    QString exportPath = tmpDir.path() + "/export.imnotes";
+    QVERIFY(parseJson(backend.exportBackup(exportPath))["ok"].toBool());
 
-    // Create backup encrypted with TEST_MNEMONIC.
-    DatabaseManager db(tmpDir.path() + "/source.db");
-    QVERIFY(db.init());
-    QByteArray salt;
-    QByteArray key = setupAccount(db, crypto, TEST_MNEMONIC, TEST_PIN, salt);
-    QVERIFY(!key.isEmpty());
-
-    createEncryptedNote(db, crypto, key, "Secret", "Title");
-
-    QByteArray backupData = buildBackupFile(db, crypto, key);
-
-    // Parse backup and try to decrypt with a different mnemonic.
-    QJsonObject backup = QJsonDocument::fromJson(backupData).object();
-    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
-    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
-    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
-
-    // Different mnemonic (24-word test vector).
+    // Wipe and re-import with a different mnemonic.
+    wipeTestData();
+    NotesBackend backend2;
     QString wrongMnemonic = "abandon abandon abandon abandon abandon abandon "
                             "abandon abandon abandon abandon abandon abandon "
                             "abandon abandon abandon abandon abandon abandon "
                             "abandon abandon abandon abandon abandon art";
-    QByteArray wrongKey = crypto.deriveKey(normalizeMnemonic(wrongMnemonic), backupSalt);
-    QVERIFY(!wrongKey.isEmpty());
+    backend2.importMnemonic(wrongMnemonic, TEST_PIN, TEST_PIN);
+    QCOMPARE(backend2.currentScreen(), "note");
 
-    QByteArray decrypted = crypto.decrypt(ciphertext, wrongKey, nonce);
-    QVERIFY(decrypted.isEmpty()); // Wrong mnemonic → GCM auth tag fails.
+    QString result = backend2.importBackup(exportPath, wrongMnemonic);
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Cannot decrypt"));
 }
 
-void TestBackup::testImportNonexistentFile()
+void TestBackup::testImportBackupNonexistentFile()
 {
-    QFile f("/tmp/does_not_exist_backup_12345.imnotes");
-    QVERIFY(!f.open(QIODevice::ReadOnly));
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    QString result = backend.importBackup("/tmp/does_not_exist_12345.imnotes");
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Cannot read file"));
 }
 
-void TestBackup::testImportCorruptCiphertext()
+void TestBackup::testImportBackupCorruptCiphertext()
 {
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n["id"].toInt(), "Content to corrupt");
+
     QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
-    CryptoManager crypto;
+    QString exportPath = tmpDir.path() + "/corrupt.imnotes";
+    QVERIFY(parseJson(backend.exportBackup(exportPath))["ok"].toBool());
 
-    // Create a valid backup.
-    DatabaseManager db(tmpDir.path() + "/source.db");
-    QVERIFY(db.init());
-    QByteArray salt;
-    QByteArray key = setupAccount(db, crypto, TEST_MNEMONIC, TEST_PIN, salt);
-    QVERIFY(!key.isEmpty());
+    // Corrupt the ciphertext.
+    QFile f(exportPath);
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QJsonObject backup = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
 
-    createEncryptedNote(db, crypto, key, "Content", "Title");
+    QByteArray ct = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
+    ct[0] = ct[0] ^ 0xFF;
+    backup["ciphertext"] = QString::fromLatin1(ct.toBase64());
 
-    QByteArray backupData = buildBackupFile(db, crypto, key);
-    QJsonObject backup = QJsonDocument::fromJson(backupData).object();
+    QString corruptPath = tmpDir.path() + "/corrupt2.imnotes";
+    QFile f2(corruptPath);
+    QVERIFY(f2.open(QIODevice::WriteOnly));
+    f2.write(QJsonDocument(backup).toJson(QJsonDocument::Compact));
+    f2.close();
 
-    // Corrupt the ciphertext by flipping bits.
-    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
-    QVERIFY(!ciphertext.isEmpty());
-    ciphertext[0] = ciphertext[0] ^ 0xFF;
-    backup["ciphertext"] = QString::fromLatin1(ciphertext.toBase64());
-
-    // Try to decrypt with the correct key — should fail due to GCM auth tag.
-    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
-    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
-    QByteArray corruptCt = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
-
-    QByteArray restoreKey = crypto.deriveKey(normalizeMnemonic(TEST_MNEMONIC), backupSalt);
-    QByteArray decrypted = crypto.decrypt(corruptCt, restoreKey, nonce);
-    QVERIFY(decrypted.isEmpty()); // GCM tag check fails.
+    QString result = backend.importBackup(corruptPath);
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Cannot decrypt"));
 }
 
-// ── Backup format validation ─────────────────────────────────────────────
-
-void TestBackup::testBackupFormatFields()
+void TestBackup::testImportBackupEmptyExport()
 {
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    // Export with no notes.
     QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
-    CryptoManager crypto;
+    QString path = tmpDir.path() + "/empty.imnotes";
+    QString result = backend.exportBackup(path);
+    QJsonObject exported = parseJson(result);
+    QVERIFY(exported["ok"].toBool());
+    QCOMPARE(exported["noteCount"].toInt(), 0);
 
-    DatabaseManager db(tmpDir.path() + "/source.db");
-    QVERIFY(db.init());
-    QByteArray salt;
-    QByteArray key = setupAccount(db, crypto, TEST_MNEMONIC, TEST_PIN, salt);
-    QVERIFY(!key.isEmpty());
-
-    createEncryptedNote(db, crypto, key, "Test content", "Test Title");
-
-    QByteArray backupData = buildBackupFile(db, crypto, key);
-    QJsonObject backup = QJsonDocument::fromJson(backupData).object();
-
-    // All required fields must be present.
-    QVERIFY(backup.contains("version"));
-    QVERIFY(backup.contains("salt"));
-    QVERIFY(backup.contains("nonce"));
-    QVERIFY(backup.contains("ciphertext"));
-    QVERIFY(backup.contains("noteCount"));
-
-    QCOMPARE(backup["version"].toInt(), 1);
-    QCOMPARE(backup["noteCount"].toInt(), 1);
-
-    // salt, nonce, ciphertext must be valid base64.
-    QVERIFY(!QByteArray::fromBase64(backup["salt"].toString().toLatin1()).isEmpty());
-    QVERIFY(!QByteArray::fromBase64(backup["nonce"].toString().toLatin1()).isEmpty());
-    QVERIFY(!QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1()).isEmpty());
+    // Import empty backup.
+    QString importResult = backend.importBackup(path);
+    QJsonObject imported = parseJson(importResult);
+    QVERIFY(imported["ok"].toBool());
+    QCOMPARE(imported["imported"].toInt(), 0);
 }
 
-// ── Empty backup import ──────────────────────────────────────────────────
-
-void TestBackup::testEmptyBackupImport()
+void TestBackup::testExportBackupAutoPathGeneration()
 {
-    QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
-    CryptoManager crypto;
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
 
-    // Create an account with no notes, then export.
-    DatabaseManager db(tmpDir.path() + "/empty.db");
-    QVERIFY(db.init());
-    QByteArray salt;
-    QByteArray key = setupAccount(db, crypto, TEST_MNEMONIC, TEST_PIN, salt);
-    QVERIFY(!key.isEmpty());
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n["id"].toInt(), "Auto-export test");
 
-    QByteArray backupData = buildBackupFile(db, crypto, key);
-    QJsonObject backup = QJsonDocument::fromJson(backupData).object();
+    QString result = backend.exportBackupAuto();
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj["ok"].toBool());
+    QCOMPARE(obj["noteCount"].toInt(), 1);
 
-    QCOMPARE(backup["noteCount"].toInt(), 0);
+    // Path should be in the backups directory.
+    QString path = obj["path"].toString();
+    QVERIFY(path.startsWith(NotesBackend::backupsDir()));
+    QVERIFY(path.endsWith(".imnotes"));
 
-    // Decrypt the backup — should be an empty JSON array.
-    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
-    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
-    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
-
-    QByteArray restoreKey = crypto.deriveKey(normalizeMnemonic(TEST_MNEMONIC), backupSalt);
-    QByteArray plaintext = crypto.decrypt(ciphertext, restoreKey, nonce);
-    QVERIFY(!plaintext.isEmpty());
-
-    QJsonArray notes = QJsonDocument::fromJson(plaintext).array();
-    QCOMPARE(notes.size(), 0);
+    // File should exist.
+    QVERIFY(QFile::exists(path));
 }
 
-// ── Multiple notes roundtrip ─────────────────────────────────────────────
-
-void TestBackup::testMultiNoteRoundtrip()
+void TestBackup::testListBackups()
 {
-    QTemporaryDir tmpDir;
-    QVERIFY(tmpDir.isValid());
-    CryptoManager crypto;
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
 
-    DatabaseManager db(tmpDir.path() + "/multi.db");
-    QVERIFY(db.init());
-    QByteArray salt;
-    QByteArray key = setupAccount(db, crypto, TEST_MNEMONIC, TEST_PIN, salt);
-    QVERIFY(!key.isEmpty());
+    // No backups yet.
+    QJsonArray emptyList = QJsonDocument::fromJson(
+        backend.listBackups().toUtf8()).array();
+    QCOMPARE(emptyList.size(), 0);
 
-    // Create 5 notes with varied content.
-    QStringList expectedContents = {
+    // Create a note and export once via auto, once via explicit path.
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n["id"].toInt(), "Backup list test");
+
+    backend.exportBackupAuto();
+
+    // Write a second backup file manually to avoid timestamp collision.
+    QString secondPath = NotesBackend::backupsDir() + "/manual_backup.imnotes";
+    backend.exportBackup(secondPath);
+
+    QJsonArray list = QJsonDocument::fromJson(
+        backend.listBackups().toUtf8()).array();
+    QCOMPARE(list.size(), 2);
+
+    // Each entry should have name and path.
+    for (const auto &v : list) {
+        QJsonObject entry = v.toObject();
+        QVERIFY(entry.contains("name"));
+        QVERIFY(entry.contains("path"));
+        QVERIFY(entry["name"].toString().endsWith(".imnotes"));
+    }
+}
+
+void TestBackup::testMultiNoteRoundtripViaBackend()
+{
+    wipeTestData();
+    NotesBackend backend;
+    importAndUnlock(backend);
+
+    // Create 4 notes with varied content.
+    QStringList contents = {
         "First note body",
         "Second note\nwith multiple\nlines",
-        "", // empty note
-        "Fourth note with unicode: \xC3\xA9\xC3\xA0\xC3\xBC",
-        "Fifth note"
-    };
-    QStringList expectedTitles = {
-        "Note 1", "Note 2", "", "Note 4", "Note 5"
+        "Third note with unicode: \xC3\xA9\xC3\xA0\xC3\xBC",
+        "Fourth note"
     };
 
-    for (int i = 0; i < 5; ++i)
-        createEncryptedNote(db, crypto, key, expectedContents[i], expectedTitles[i]);
-
-    // Export.
-    QByteArray backupData = buildBackupFile(db, crypto, key);
-
-    // Parse and decrypt.
-    QJsonObject backup = QJsonDocument::fromJson(backupData).object();
-    QCOMPARE(backup["noteCount"].toInt(), 5);
-
-    QByteArray backupSalt = QByteArray::fromBase64(backup["salt"].toString().toLatin1());
-    QByteArray nonce = QByteArray::fromBase64(backup["nonce"].toString().toLatin1());
-    QByteArray ciphertext = QByteArray::fromBase64(backup["ciphertext"].toString().toLatin1());
-
-    QByteArray restoreKey = crypto.deriveKey(normalizeMnemonic(TEST_MNEMONIC), backupSalt);
-    QByteArray plaintext = crypto.decrypt(ciphertext, restoreKey, nonce);
-    QVERIFY(!plaintext.isEmpty());
-
-    QJsonArray notes = QJsonDocument::fromJson(plaintext).array();
-    QCOMPARE(notes.size(), 5);
-
-    // Verify all content survived the roundtrip.
-    QStringList restoredContents, restoredTitles;
-    for (const auto &v : notes) {
-        restoredContents << v.toObject()["content"].toString();
-        restoredTitles << v.toObject()["title"].toString();
+    QList<int> noteIds;
+    for (const auto &content : contents) {
+        QJsonObject n = parseJson(backend.createNote());
+        int id = n["id"].toInt();
+        noteIds << id;
+        backend.saveNote(id, content);
     }
 
-    for (const auto &expected : expectedContents)
+    // Export.
+    QTemporaryDir tmpDir;
+    QString exportPath = tmpDir.path() + "/multi.imnotes";
+    QVERIFY(parseJson(backend.exportBackup(exportPath))["ok"].toBool());
+
+    // Delete all notes.
+    for (int id : noteIds)
+        backend.deleteNote(id);
+
+    // Import.
+    QString importResult = backend.importBackup(exportPath);
+    QJsonObject imported = parseJson(importResult);
+    QVERIFY(imported["ok"].toBool());
+    QCOMPARE(imported["imported"].toInt(), 4);
+
+    // Verify all content survived.
+    QJsonArray restored = QJsonDocument::fromJson(
+        backend.loadNotes().toUtf8()).array();
+    QCOMPARE(restored.size(), 4);
+
+    QStringList restoredContents;
+    for (const auto &v : restored) {
+        int id = v.toObject()["id"].toInt();
+        restoredContents << backend.loadNote(id);
+    }
+    for (const auto &expected : contents)
         QVERIFY(restoredContents.contains(expected));
-    for (const auto &expected : expectedTitles)
-        QVERIFY(restoredTitles.contains(expected));
+}
+
+void TestBackup::testExportRequiresUnlock()
+{
+    wipeTestData();
+    NotesBackend backend;
+    // Don't import — backend is not unlocked.
+
+    QString result = backend.exportBackup("/tmp/should_not_exist.imnotes");
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Not unlocked"));
+    QVERIFY(!QFile::exists("/tmp/should_not_exist.imnotes"));
+}
+
+void TestBackup::testImportRequiresUnlock()
+{
+    wipeTestData();
+    NotesBackend backend;
+
+    QString result = backend.importBackup("/tmp/any_file.imnotes");
+    QJsonObject obj = parseJson(result);
+    QVERIFY(obj.contains("error"));
+    QVERIFY(obj["error"].toString().contains("Not unlocked"));
 }
 
 QTEST_MAIN(TestBackup)
