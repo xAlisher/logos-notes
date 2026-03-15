@@ -59,6 +59,9 @@ private slots:
     // ── JSON escaping ────────────────────────────────────────────────
     void testErrorJsonEscaping();
 
+    // ── Backup passthrough ────────────────────────────────────────────
+    void testBackupPassthrough();
+
 private:
     void wipeTestData();
 };
@@ -362,6 +365,59 @@ void TestPlugin::testErrorJsonEscaping()
              qPrintable(QString("Invalid JSON from errorJson: %1").arg(result2)));
     QVERIFY(doc2.isObject());
     QVERIFY(doc2.object().contains("error"));
+}
+
+void TestPlugin::testBackupPassthrough()
+{
+    wipeTestData();
+    NotesPlugin plugin;
+    plugin.initialize();
+
+    // Import and create a note.
+    plugin.importMnemonic(TEST_MNEMONIC, TEST_PIN, TEST_PIN);
+    QString createResult = plugin.createNote();
+    QJsonObject created = parseJson(createResult);
+    plugin.saveNote(created["id"].toInt(), "Backup passthrough test");
+
+    // listBackups — should be empty initially.
+    QString listResult = plugin.listBackups();
+    QJsonArray emptyList = QJsonDocument::fromJson(listResult.toUtf8()).array();
+    QCOMPARE(emptyList.size(), 0);
+
+    // exportBackupAuto — should succeed and return JSON with ok/path/noteCount.
+    QString autoResult = plugin.exportBackupAuto();
+    QJsonObject autoObj = parseJson(autoResult);
+    QVERIFY(autoObj["ok"].toBool());
+    QCOMPARE(autoObj["noteCount"].toInt(), 1);
+    QVERIFY(autoObj["path"].toString().endsWith(".imnotes"));
+
+    // listBackups — should now have 1 entry.
+    listResult = plugin.listBackups();
+    QJsonArray oneList = QJsonDocument::fromJson(listResult.toUtf8()).array();
+    QCOMPARE(oneList.size(), 1);
+    QVERIFY(oneList[0].toObject().contains("name"));
+    QVERIFY(oneList[0].toObject().contains("path"));
+
+    // exportBackup — explicit path.
+    QTemporaryDir tmpDir;
+    QString explicitPath = tmpDir.path() + "/plugin_backup.imnotes";
+    QString exportResult = plugin.exportBackup(explicitPath);
+    QJsonObject exportObj = parseJson(exportResult);
+    QVERIFY(exportObj["ok"].toBool());
+    QCOMPARE(exportObj["path"].toString(), explicitPath);
+
+    // Delete the note, then import the backup.
+    plugin.deleteNote(created["id"].toInt());
+
+    QString importResult = plugin.importBackup(explicitPath);
+    QJsonObject importObj = parseJson(importResult);
+    QVERIFY(importObj["ok"].toBool());
+    QCOMPARE(importObj["imported"].toInt(), 1);
+
+    // Verify the note is back.
+    QString notesJson = plugin.loadNotes();
+    QJsonArray notes = QJsonDocument::fromJson(notesJson.toUtf8()).array();
+    QCOMPARE(notes.size(), 1);
 }
 
 QTEST_MAIN(TestPlugin)
