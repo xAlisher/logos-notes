@@ -83,7 +83,7 @@ Identity
            └─ Public key (deterministic, same phrase = same key always)
 ```
 
-An attacker with full disk access gets encrypted blobs and nothing else. The database has `PRAGMA secure_delete=ON` and `0600` file permissions.
+An attacker with full disk access finds no plaintext notes or mnemonic — only encrypted blobs, the PIN-wrapped master key, and KDF salts. The database has `PRAGMA secure_delete=ON` and `0600` file permissions.
 
 All temporary key material (PIN-derived keys, intermediate buffers, mnemonic UTF-8 bytes) is wrapped in a [SecureBuffer](https://github.com/xAlisher/logos-notes/blob/master/src/core/SecureBuffer.h) RAII class that calls `sodium_memzero` on destruction.
 
@@ -120,7 +120,7 @@ We built two modules:
 
 ## Lessons for Other Builders
 
-Two weeks of building taught me more about the Logos platform than any documentation could. Here are the things I wish I'd known on day one.
+Four days of building taught me more about the Logos platform than any documentation could. Here are the things I wish I'd known on day one.
 
 ### The plugin surface rule
 
@@ -205,7 +205,7 @@ cmake --build build
 ./build/logos-notes
 ```
 
-Twenty-six tests. Five releases. Four blog posts. Zero plaintext on disk.
+Twenty-six tests. Four releases. Four blog posts. Zero plaintext on disk.
 
 Clone it, break it, build on top of it. Find me on [Status](https://status.app/u/CwmAChEKD0FsaXNoZXIgU2hlcmFsaQM=#zQ3shWBWbQjMhpevjRT3KifqunFR8F81hbwzRMs7193PgWrhf) or in the Logos Discord.
 
