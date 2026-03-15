@@ -158,12 +158,13 @@ logos.callModule("notes", "methodName", [arg1, arg2])
 1. Manual UI/UX test checklist (see below)
 2. `cmake --build build && cmake --install build`
 3. Kill processes, test in Logos App AppImage
-4. `cd build && ctest --output-on-failure` — all tests must pass
-5. Merge to master (see autonomous merge criteria)
-6. Update README.md + screenshots
-7. Create GitHub release with version tag
-8. Write blog post in `blog/` — update `blog/README.md`
-9. Post to X
+4. Rebuild the current branch before `ctest` if tests, packaging, or build wiring changed
+5. `cd build && ctest --output-on-failure` — all tests must pass
+6. Merge to master (see autonomous merge criteria)
+7. Update README.md + screenshots
+8. Create GitHub release with version tag
+9. Write blog post in `blog/` — update `blog/README.md`
+10. Post to X
 
 ### Security fix routine
 1. Branch: `security/pX-fixes`
@@ -171,6 +172,12 @@ logos.callModule("notes", "methodName", [arg1, arg2])
 3. Implement fixes, run tests locally
 4. Commit and push branch — **do NOT merge yet**
 5. Comment on relevant GitHub issue: tag as `[Claude Code]`
+   Comment must include:
+   - exact branch tip SHA
+   - exact commands run
+   - what was verified
+   - what was NOT verified
+   - validation status for `Unit`, `Artifact`, `Integration`, and `UI`
 6. Request Codex review — wait for `Reviewed by: Codex` comment
 7. Read Codex findings, fix follow-ups, push, re-comment
 8. Repeat until Codex posts LGTM or "no new findings"
@@ -178,7 +185,7 @@ logos.callModule("notes", "methodName", [arg1, arg2])
 
 ### Autonomous merge criteria
 Merge without waiting for Alisher when ALL are true:
-- `ctest` passes (2 tests, all cases green)
+- `ctest` passes (current registered test set, all cases green)
 - No HIGH or MEDIUM findings open in PROJECT_KNOWLEDGE.md for this change
 - Codex comment on the branch contains "LGTM" or "no new findings"
 - Not a schema migration or destructive change (those always need Alisher sign-off)
@@ -217,6 +224,14 @@ Before ending any session:
 - When Codex raises a finding, fix and re-comment — never silent
 - New bugs found during a fix branch → open a new issue, do not fold in silently
 - Codex may update `PROJECT_KNOWLEDGE.md` directly — check it at session start
+- Distinguish validation levels explicitly in comments:
+  - `Unit` = local tests / direct code-path verification
+  - `Artifact` = build/package output exists and has expected structure
+  - `Integration` = installation / runtime flow verified in the real host
+  - `UI` = user-visible behavior verified end-to-end
+- If a remaining gap would require mock injection, test-only seams, or production-code changes
+  not present on the branch, treat it as LOW testability debt unless there is concrete evidence
+  the production path is already wrong
 
 ---
 
