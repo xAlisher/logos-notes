@@ -40,8 +40,11 @@ Item {
 
     function saveCurrentNote() {
         saveTimer.stop()
-        if (activeNoteId > 0 && !loading)
-            backend.saveNote(activeNoteId, editor.text)
+        if (activeNoteId > 0 && !loading) {
+            var result = backend.saveNote(activeNoteId, editor.text)
+            if (result !== "ok")
+                warningText = "Failed to save note. Your changes may be lost."
+        }
     }
 
     function selectNote(id) {

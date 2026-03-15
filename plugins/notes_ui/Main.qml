@@ -473,8 +473,11 @@ Item {
 
         function saveCurrentNote() {
             saveTimer.stop()
-            if (activeNoteId > 0 && !loading && typeof logos !== "undefined" && logos.callModule)
-                logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
+            if (activeNoteId > 0 && !loading && typeof logos !== "undefined" && logos.callModule) {
+                var result = logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
+                if (result !== "ok")
+                    root.errorMessage = "Failed to save note. Your changes may be lost."
+            }
         }
 
         function selectNote(id) {
