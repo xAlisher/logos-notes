@@ -29,8 +29,9 @@ When Alisher says `run`, treat it as this ordered routine:
 1. Check GitHub for new issue comments, issue state changes, and new Claude handoff items
 2. React to any open review/follow-up work before doing local verification
 3. Check local repo state (`git status`, relevant instructions, current branch context)
-4. Run the relevant local verification steps for the current state
-5. Report both GitHub updates and local results, not just test output
+4. Rebuild first if the reviewed branch adds or changes tests, packaging outputs, or build wiring
+5. Run the relevant local verification steps for the current state
+6. Report both GitHub updates and local results, not just test output
 
 ---
 
@@ -45,9 +46,12 @@ cmake -B build -G Ninja \
 # Build
 cmake --build build -j4
 
+# Rebuild before ctest when branch contents changed
+cmake --build build -j4
+
 # Run tests — always from build/ directory, never repo root
 cd build && ctest --output-on-failure
-# Expected: 3 registered tests (test_multi_note, test_security, test_backup)
+# Expected: current registered test set for the reviewed branch
 # These are QtTest binaries — CTest does not report per-case count
 
 # Return to repo root before linting
@@ -112,6 +116,9 @@ cd ..
 - LGTM = post "LGTM — no new findings" or "LGTM — remaining issues filed as #N".
 - If you find a regression introduced by a fix, treat it as a new High/Medium regardless
   of round count.
+- If exercising a failure path would require mock injection, test-only seams, or
+  production-code changes not present on the reviewed branch, treat the gap as LOW
+  testability debt unless there is concrete evidence the production path is already wrong.
 
 ---
 
@@ -131,6 +138,15 @@ On technical disagreements with Claude:
 Format every review comment:
 ```
 Reviewed by: Codex — Round N
+
+Validation:
+- Unit: ✅/❌
+- Artifact: ✅/❌
+- Integration: ✅/❌
+- UI: ✅/❌
+
+Not verified:
+- <explicit unverified item>
 
 **[HIGH/MEDIUM/LOW] Short title**
 File: `src/core/CryptoManager.cpp:142`
@@ -184,6 +200,12 @@ Before ending any session:
 - GitHub issues are the shared communication channel
 - Tag your comments: `Reviewed by: Codex`
 - Claude tags as `[Claude Code]`
+- Claude handoff comments must include:
+  - exact branch tip SHA
+  - exact commands run
+  - what was verified
+  - what was NOT verified
+  - validation status for `Unit`, `Artifact`, `Integration`, and `UI`
 - When Claude fixes a finding and re-comments, verify the fix — do not assume it's correct
 - You may update `PROJECT_KNOWLEDGE.md` directly
 - Claude checks PROJECT_KNOWLEDGE.md at session start — this is the relay, not you
