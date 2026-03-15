@@ -27,6 +27,7 @@ Item {
     property int lockoutRemaining: 0
     property string pendingBackupPath: ""
     property string restoreStatus: ""
+    property string restoreWarning: ""
 
     function parseLockoutSeconds(msg) {
         var match = msg.match(/(\d+)\s*seconds/)
@@ -227,6 +228,7 @@ Item {
                     root.pendingBackupPath = ""
                     var parsed = JSON.parse(result)
                     if (parsed.success) {
+                        root.restoreWarning = parsed.warning || ""
                         root.currentScreen = "note"
                     } else {
                         root.errorMessage = parsed.error || "Import failed"
@@ -415,6 +417,29 @@ Item {
         property int activeNoteId: -1
         property bool loading: false
         property bool showSettings: false
+
+        // Warning banner for partial restore
+        Rectangle {
+            id: warningBanner
+            anchors { top: parent.top; left: parent.left; right: parent.right }
+            height: root.restoreWarning.length > 0 ? 36 : 0
+            visible: root.restoreWarning.length > 0
+            color: "#ca8a04"
+            z: 10
+
+            Text {
+                anchors.centerIn: parent
+                text: root.restoreWarning
+                color: "#FFFFFF"
+                font.pixelSize: 12
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.restoreWarning = ""
+            }
+        }
 
         onVisibleChanged: {
             if (visible) {

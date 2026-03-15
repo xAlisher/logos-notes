@@ -71,6 +71,36 @@ Item {
         color: Theme.palette.background
     }
 
+    // Warning banner (partial restore, etc.)
+    property string warningText: ""
+    Connections {
+        target: backend
+        function onErrorMessageChanged() {
+            if (backend.errorMessage.length > 0 && backend.currentScreen === "note")
+                root.warningText = backend.errorMessage
+        }
+    }
+    Rectangle {
+        anchors { top: parent.top; left: parent.left; right: parent.right }
+        height: root.warningText.length > 0 ? 36 : 0
+        visible: height > 0
+        color: "#ca8a04"
+        z: 10
+
+        LogosText {
+            anchors.centerIn: parent
+            text: root.warningText
+            color: "#FFFFFF"
+            font.pixelSize: Theme.typography.secondaryText
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.warningText = ""
+        }
+    }
+
     // ── Sidebar ──────────────────────────────────────────────────────
     Rectangle {
         id: sidebar
