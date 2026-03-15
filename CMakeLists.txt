@@ -182,6 +182,26 @@ target_link_libraries(test_security PRIVATE
 )
 add_test(NAME test_security COMMAND test_security)
 
+add_executable(test_backup
+    tests/test_backup.cpp
+    src/core/DatabaseManager.h
+    src/core/DatabaseManager.cpp
+    src/core/CryptoManager.h
+    src/core/CryptoManager.cpp
+    src/core/KeyManager.h
+    src/core/KeyManager.cpp
+    src/core/NotesBackend.h
+    src/core/NotesBackend.cpp
+)
+target_include_directories(test_backup PRIVATE src)
+target_link_libraries(test_backup PRIVATE
+    Qt6::Core
+    Qt6::Test
+    Qt6::Sql
+    PkgConfig::sodium
+)
+add_test(NAME test_backup COMMAND test_backup)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 
 set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
