@@ -244,6 +244,15 @@ Go goroutine-based callbacks (like `KeycardSetSignalEventCallback`) fire on Go t
 ### 27. install(CODE) must honor DESTDIR for staged builds
 `install(CODE)` blocks run post-install scripts. When referencing installed file paths, prefix with `$ENV{DESTDIR}` so staged installs (`DESTDIR=/tmp/staged cmake --install`) work correctly.
 
+### 28. Go JSON-RPC requires "params" field even for no-arg methods
+`KeycardCallRPC` returns `{"result":null}` when the `"params"` field is omitted from the request JSON. Always include `"params":[{}]` even for methods with empty args (`*struct{}`). This was the root cause of ExportLoginKeys returning null in logos_host.
+
+### 29. Go callbacks (signals) don't work in logos_host
+Neither Session API signals (`KeycardSetSignalEventCallback`) nor Flow API signals (`keycard.flow-result`) fire reliably inside the logos_host process. The Go goroutine thread can't reach the plugin. Use RPC polling (`GetStatus`) instead of push signals. For key export, use synchronous RPC calls, not the Flow API.
+
+### 30. Keycard accounts don't store wrapped keys
+Mnemonic accounts wrap the master key with a PIN-derived key and store it in `wrapped_key` table. Keycard accounts derive the key from the card on every unlock — no wrapped key stored. The `key_source` meta field ("keycard" or "mnemonic") determines which unlock flow to use.
+
 ---
 
 ## Logos Developer Tools
@@ -329,9 +338,9 @@ Keycard (#33) and wallet (#32) are independent features — neither blocks the o
 | # | Title | Branch | Status |
 |---|-------|--------|--------|
 | #34 | Reader detection + card state UI | merged to master | ✅ Complete — hardware verified, Codex LGTM |
-| #35 | PIN authorization + key export | — | Next |
-| #36 | Wire key into NotesBackend encryption | — | Blocked on #35 |
-| #37 | Keycard ↔ mnemonic migration path | — | Blocked on #36 |
+| #35 | PIN authorization + key export | `feature/keycard-pin-auth` | ✅ Code done, Codex review requested |
+| #36 | Wire key into NotesBackend encryption | `feature/keycard-pin-auth` | ✅ Code done (same branch as #35) |
+| #37 | Keycard ↔ mnemonic migration path | — | Postponed — not needed for v1.0.0 |
 
 ### Wallet integration (v0.7.0+)
 
