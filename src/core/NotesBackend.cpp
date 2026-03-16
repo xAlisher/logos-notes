@@ -737,7 +737,17 @@ void NotesBackend::unlockWithKeycard(const QString &keycardPin)
         return;
     }
 
-    // 3. Hold master key and go to notes
+    // 3. Verify this is the same card that was used to import.
+    //    Compare derived fingerprint against stored account_fingerprint.
+    QString derivedFp = deriveFingerprintFromKey(masterKey.ref());
+    QString storedFp = m_db.loadMeta("account_fingerprint", "");
+    if (!storedFp.isEmpty() && derivedFp != storedFp) {
+        setError("Wrong Keycard. This account was created with a different card.");
+        sodium_memzero(cardKey.data(), cardKey.size());
+        return;
+    }
+
+    // 4. Hold master key and go to notes
     m_keys.setMasterKey(masterKey.toByteArray());
     m_failedAttempts = 0;
     m_db.saveMeta("pin_failed_attempts", "0");
