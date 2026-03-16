@@ -243,6 +243,33 @@ install(FILES modules/notes/manifest.json
 install(FILES lib/keycard/libkeycard.so
     DESTINATION "${NOTES_MODULE_DIR}"
 )
+
+# Bundle libpcsclite alongside libkeycard so the module is self-contained.
+# libkeycard.so links against libpcsclite.so.1 — inside the AppImage sandbox
+# the system library path isn't available, so we ship a copy.
+# Find the system libpcsclite.so.1 (not the dev symlink — may not exist)
+find_file(PCSCLITE_SO "libpcsclite.so.1"
+    PATHS /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu /lib /usr/lib
+    NO_DEFAULT_PATH
+)
+if(PCSCLITE_SO)
+    get_filename_component(PCSCLITE_REAL "${PCSCLITE_SO}" REALPATH)
+    install(FILES "${PCSCLITE_REAL}"
+        DESTINATION "${NOTES_MODULE_DIR}"
+        RENAME "libpcsclite.so.1"
+    )
+else()
+    message(WARNING "libpcsclite.so.1 not found — Keycard will not work in AppImage without it")
+endif()
+
+# Fix RPATH on installed libkeycard.so so it finds libpcsclite.so.1 in $ORIGIN
+install(CODE "
+    execute_process(
+        COMMAND patchelf --set-rpath \$ORIGIN
+            \"${NOTES_MODULE_DIR}/libkeycard.so\"
+        ERROR_QUIET
+    )
+")
 install(FILES
     plugins/notes_ui/manifest.json
     plugins/notes_ui/metadata.json
