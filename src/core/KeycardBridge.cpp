@@ -102,7 +102,7 @@ QString KeycardBridge::statusText() const
     return QStringLiteral("Unknown state");
 }
 
-bool KeycardBridge::authorize(const QString &pin)
+QJsonObject KeycardBridge::authorize(const QString &pin)
 {
     QJsonObject params;
     params["pin"] = pin;
@@ -111,12 +111,25 @@ bool KeycardBridge::authorize(const QString &pin)
 
     QJsonValue authErr = response.value("error");
     if (!authErr.isNull() && !authErr.isUndefined()) {
-        qWarning() << "keycard: authorize failed:" << authErr;
-        return false;
+        qWarning() << "keycard: authorize RPC error:" << authErr;
+        return {{"authorized", false}, {"error", authErr.toString()}};
     }
 
-    // State will be updated via signal callback to Authorized
-    return true;
+    QJsonObject result = response["result"].toObject();
+    bool authorized = result["authorized"].toBool(false);
+
+    if (authorized) {
+        m_state = State::Authorized;
+        emit stateChanged(m_state);
+    } else {
+        // Poll to get updated remaining attempts
+        pollStatus();
+    }
+
+    QJsonObject out;
+    out["authorized"] = authorized;
+    out["remainingAttempts"] = m_remainingPIN;
+    return out;
 }
 
 QByteArray KeycardBridge::exportKey(const QString &path)
@@ -132,16 +145,20 @@ QByteArray KeycardBridge::exportKey(const QString &path)
         return {};
     }
 
-    // The response contains key material — extract the EIP-1581 encryption key
+    // Response: {"result":{"keys":{"encryptionPrivateKey":{"privateKey":"hex","publicKey":"hex","address":"0x..."}, ...}}}
     QJsonObject result = response["result"].toObject();
-    QString encKeyHex = result["encryptionPrivateKey"].toString();
+    QJsonObject keys = result["keys"].toObject();
+    QJsonObject encKey = keys["encryptionPrivateKey"].toObject();
+    QString privKeyHex = encKey["privateKey"].toString();
 
-    if (encKeyHex.isEmpty()) {
-        qWarning() << "keycard: no encryption key in export response";
+    if (privKeyHex.isEmpty()) {
+        qWarning() << "keycard: no encryption private key in export response";
+        qDebug() << "keycard: available keys:" << keys.keys();
         return {};
     }
 
-    return QByteArray::fromHex(encKeyHex.toUtf8());
+    qDebug() << "keycard: exported encryption key," << privKeyHex.size() << "hex chars";
+    return QByteArray::fromHex(privKeyHex.toUtf8());
 }
 
 void KeycardBridge::pollStatus()
@@ -165,6 +182,19 @@ void KeycardBridge::pollStatus()
 
     // If we got a valid status, the RPC server is running
     m_running = true;
+
+    // Extract card info
+    QJsonObject kcStatus = result["keycardStatus"].toObject();
+    if (!kcStatus.isEmpty()) {
+        m_remainingPIN = kcStatus["remainingAttemptsPIN"].toInt(-1);
+        m_remainingPUK = kcStatus["remainingAttemptsPUK"].toInt(-1);
+        m_keyInitialized = kcStatus["keyInitialized"].toBool(false);
+    }
+
+    QJsonObject kcInfo = result["keycardInfo"].toObject();
+    if (!kcInfo.isEmpty()) {
+        m_keyUID = kcInfo["keyUID"].toString();
+    }
 
     State newState = parseState(stateStr);
     if (newState != m_state) {

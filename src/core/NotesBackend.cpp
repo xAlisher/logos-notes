@@ -669,5 +669,30 @@ QString NotesBackend::getKeycardState()
     obj["state"] = keycardState();
     obj["status"] = m_keycard.statusText();
     obj["running"] = m_keycard.isRunning();
+    obj["remainingPIN"] = m_keycard.remainingPINAttempts();
+    obj["remainingPUK"] = m_keycard.remainingPUKAttempts();
+    obj["keyInitialized"] = m_keycard.keyInitialized();
+    return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::keycardAuthorize(const QString &pin)
+{
+    QJsonObject result = m_keycard.authorize(pin);
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::keycardExportKey()
+{
+    QByteArray key = m_keycard.exportKey();
+    if (key.isEmpty()) {
+        QJsonObject err;
+        err["error"] = "Failed to export key from Keycard";
+        return QString::fromUtf8(QJsonDocument(err).toJson(QJsonDocument::Compact));
+    }
+
+    QJsonObject obj;
+    obj["success"] = true;
+    obj["keyHex"] = QString::fromLatin1(key.toHex());
+    obj["keySize"] = key.size();
     return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }

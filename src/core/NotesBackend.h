@@ -32,6 +32,10 @@ public:
     Q_INVOKABLE QString stopKeycardDetection();
     Q_INVOKABLE QString getKeycardState();
 
+    // Keycard PIN authorization + key export
+    Q_INVOKABLE QString keycardAuthorize(const QString &pin);
+    Q_INVOKABLE QString keycardExportKey();
+
     // Called from ImportScreen: validate mnemonic + PIN, derive key, save state.
     Q_INVOKABLE void importMnemonic(const QString &mnemonic,
                                     const QString &pin,

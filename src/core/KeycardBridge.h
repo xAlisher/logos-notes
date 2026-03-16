@@ -49,13 +49,18 @@ public:
     // Actively query the Go RPC for current state (updates cached state).
     void pollStatus();
 
-    // Authorize with PIN. Returns true on success.
-    // On failure, sets error state (wrong PIN, blocked, etc.)
-    bool authorize(const QString &pin);
+    // Authorize with PIN. Returns JSON: {"authorized":true} or {"authorized":false,"remainingAttempts":N}
+    QJsonObject authorize(const QString &pin);
 
     // Export key at derivation path. Returns raw private key bytes.
     // Default path: m/43'/60'/1581' (EIP-1581 encryption root)
     QByteArray exportKey(const QString &path = "m/43'/60'/1581'");
+
+    // Card info from last pollStatus (remaining attempts, key UID, etc.)
+    int remainingPINAttempts() const { return m_remainingPIN; }
+    int remainingPUKAttempts() const { return m_remainingPUK; }
+    bool keyInitialized() const { return m_keyInitialized; }
+    QString keyUID() const { return m_keyUID; }
 
 signals:
     void stateChanged(KeycardBridge::State newState);
@@ -73,6 +78,12 @@ private:
     State m_state = State::Unknown;
     bool m_running = false;
     int m_rpcId = 0;
+
+    // Card status from GetStatus responses
+    int m_remainingPIN = -1;
+    int m_remainingPUK = -1;
+    bool m_keyInitialized = false;
+    QString m_keyUID;
 
     // Singleton for signal callback routing (Go callback is C function pointer)
     static KeycardBridge *s_instance;

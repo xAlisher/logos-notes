@@ -29,6 +29,9 @@ Item {
     property string restoreStatus: ""
     property string restoreWarning: ""
 
+    // ── Import tab state ─────────────────────────────────────────────────
+    property int importTab: 0  // 0 = Recovery Phrase, 1 = Keycard, 2 = Logos Wallet
+
     // ── Keycard state ────────────────────────────────────────────────────
     property string keycardState: "unknown"
     property string keycardStatus: ""
@@ -88,6 +91,7 @@ Item {
                 mnemonicArea.text = ""
                 importPinField.text = ""
                 importPinConfirmField.text = ""
+                keycardPinField.text = ""
                 root.pendingBackupPath = ""
                 root.restoreStatus = ""
                 root.errorMessage = ""
@@ -101,119 +105,353 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: "Import Recovery Phrase"
+                text: "Import"
                 font.pixelSize: 30
                 font.weight: Font.Bold
                 color: root.textColor
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            Text {
+            // ── Tab bar ──────────────────────────────────────────────
+            Row {
                 Layout.fillWidth: true
-                visible: root.pendingBackupPath.length > 0
-                text: {
-                    var name = root.pendingBackupPath.split("/").pop().replace(".imnotes", "")
-                    var fp = name.split("_")[0]
-                    return fp ? fp : ""
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 0
+
+                Repeater {
+                    model: ["Recovery Phrase", "Keycard", "Logos Wallet"]
+                    delegate: Rectangle {
+                        required property int index
+                        required property string modelData
+                        width: 140
+                        height: 36
+                        color: root.importTab === index ? root.bgSecondary : "transparent"
+                        border.width: root.importTab === index ? 1 : 0
+                        border.color: root.importTab === index ? root.borderColor : "transparent"
+                        radius: 8
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData
+                            font.pixelSize: 12
+                            font.weight: root.importTab === index ? Font.Bold : Font.Normal
+                            color: root.importTab === index ? root.textColor
+                                   : (index === 2 ? root.textPlaceholder : root.textSecondary)
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: index === 2 ? Qt.ArrowCursor : Qt.PointingHandCursor
+                            onClicked: {
+                                if (index === 2) return  // Wallet tab is TBD
+                                root.importTab = index
+                                root.errorMessage = ""
+                            }
+                        }
+                    }
                 }
-                color: root.textPlaceholder
-                font.pixelSize: 11
-                font.family: "Courier New, monospace"
-                horizontalAlignment: Text.AlignHCenter
             }
 
-            Text {
-                text: "Recovery phrase"
-                color: root.textSecondary
-                font.pixelSize: 12
-            }
-
-            Rectangle {
+            // ── Tab 0: Recovery Phrase ─────────────────────────────────
+            Item {
                 Layout.fillWidth: true
-                height: 100
-                radius: 4
-                color: root.bgSecondary
-                border.width: 1
-                border.color: mnemonicArea.activeFocus
-                              ? root.overlayOrange : root.bgElevated
+                visible: root.importTab === 0
+                implicitHeight: mnemonicCol.implicitHeight
 
-                TextEdit {
-                    id: mnemonicArea
-                    anchors { fill: parent; margins: 12 }
-                    color: root.textColor
-                    font.pixelSize: 12
-                    wrapMode: TextEdit.Wrap
-                    opacity: activeFocus ? 1.0 : 0.0
+                ColumnLayout {
+                    id: mnemonicCol
+                    anchors { left: parent.left; right: parent.right }
+                    spacing: 16
 
                     Text {
-                        visible: mnemonicArea.text.length === 0 && mnemonicArea.activeFocus
-                        text: "Enter 12 or 24 word recovery phrase"
+                        Layout.fillWidth: true
+                        visible: root.pendingBackupPath.length > 0
+                        text: {
+                            var name = root.pendingBackupPath.split("/").pop().replace(".imnotes", "")
+                            var fp = name.split("_")[0]
+                            return fp ? fp : ""
+                        }
                         color: root.textPlaceholder
+                        font.pixelSize: 11
+                        font.family: "Courier New, monospace"
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+
+                    Text {
+                        text: "Recovery phrase"
+                        color: root.textSecondary
                         font.pixelSize: 12
                     }
-                }
 
-                // Mask overlay — shows word count when not focused
-                Text {
-                    anchors { fill: parent; margins: 12 }
-                    visible: !mnemonicArea.activeFocus
-                    color: mnemonicArea.text.length > 0 ? root.textColor : root.textPlaceholder
-                    font.pixelSize: 12
-                    text: {
-                        if (mnemonicArea.text.length === 0)
-                            return "Enter 12 or 24 word recovery phrase"
-                        var count = mnemonicArea.text.trim().split(/\s+/).length
-                        return "••• " + count + " words entered •••"
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 100
+                        radius: 4
+                        color: root.bgSecondary
+                        border.width: 1
+                        border.color: mnemonicArea.activeFocus
+                                      ? root.overlayOrange : root.bgElevated
+
+                        TextEdit {
+                            id: mnemonicArea
+                            anchors { fill: parent; margins: 12 }
+                            color: root.textColor
+                            font.pixelSize: 12
+                            wrapMode: TextEdit.Wrap
+                            opacity: activeFocus ? 1.0 : 0.0
+
+                            Text {
+                                visible: mnemonicArea.text.length === 0 && mnemonicArea.activeFocus
+                                text: "Enter 12 or 24 word recovery phrase"
+                                color: root.textPlaceholder
+                                font.pixelSize: 12
+                            }
+                        }
+
+                        Text {
+                            anchors { fill: parent; margins: 12 }
+                            visible: !mnemonicArea.activeFocus
+                            color: mnemonicArea.text.length > 0 ? root.textColor : root.textPlaceholder
+                            font.pixelSize: 12
+                            text: {
+                                if (mnemonicArea.text.length === 0)
+                                    return "Enter 12 or 24 word recovery phrase"
+                                var count = mnemonicArea.text.trim().split(/\s+/).length
+                                return "••• " + count + " words entered •••"
+                            }
+                        }
+                    }
+
+                    Text { text: "PIN"; color: root.textSecondary; font.pixelSize: 12 }
+
+                    TextField {
+                        id: importPinField
+                        Layout.fillWidth: true
+                        placeholderText: "PIN (min 6 characters)"
+                        echoMode: TextInput.Password
+                        color: root.textColor; font.pixelSize: 14
+                        placeholderTextColor: root.textPlaceholder
+                        background: Rectangle {
+                            color: root.bgSecondary; radius: 4; border.width: 1
+                            border.color: importPinField.activeFocus ? root.overlayOrange : root.bgElevated
+                        }
+                    }
+
+                    Text { text: "Confirm PIN"; color: root.textSecondary; font.pixelSize: 12 }
+
+                    TextField {
+                        id: importPinConfirmField
+                        Layout.fillWidth: true
+                        placeholderText: "Confirm PIN"
+                        echoMode: TextInput.Password
+                        color: root.textColor; font.pixelSize: 14
+                        placeholderTextColor: root.textPlaceholder
+                        background: Rectangle {
+                            color: root.bgSecondary; radius: 4; border.width: 1
+                            border.color: importPinConfirmField.activeFocus ? root.overlayOrange : root.bgElevated
+                        }
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: "Import"
+                        contentItem: Text {
+                            text: parent.text; font.pixelSize: 14; font.weight: Font.Medium
+                            color: root.textColor
+                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            color: parent.pressed ? root.primaryHover : root.primary
+                            radius: 16; implicitHeight: 44
+                        }
+                        onClicked: {
+                            root.errorMessage = ""
+                            if (typeof logos === "undefined" || !logos.callModule) return
+                            var result = logos.callModule("notes", "importMnemonic",
+                                                          [mnemonicArea.text,
+                                                           importPinField.text,
+                                                           importPinConfirmField.text,
+                                                           root.pendingBackupPath])
+                            root.pendingBackupPath = ""
+                            var parsed = JSON.parse(result)
+                            if (parsed.success) {
+                                root.restoreWarning = parsed.warning || ""
+                                root.currentScreen = "note"
+                            } else {
+                                root.errorMessage = parsed.error || "Import failed"
+                            }
+                        }
                     }
                 }
             }
 
-            Text {
-                text: "PIN"
-                color: root.textSecondary
-                font.pixelSize: 12
-            }
-
-            TextField {
-                id: importPinField
+            // ── Tab 1: Keycard ───────────────────────────────────────
+            Item {
                 Layout.fillWidth: true
-                placeholderText: "PIN (min 6 characters)"
-                echoMode: TextInput.Password
-                color: root.textColor
-                font.pixelSize: 14
-                placeholderTextColor: root.textPlaceholder
-                background: Rectangle {
-                    color: root.bgSecondary
-                    radius: 4
-                    border.width: 1
-                    border.color: importPinField.activeFocus
-                                  ? root.overlayOrange : root.bgElevated
+                visible: root.importTab === 1
+                implicitHeight: keycardCol.implicitHeight
+
+                ColumnLayout {
+                    id: keycardCol
+                    anchors { left: parent.left; right: parent.right }
+                    spacing: 16
+
+                    // Auto-start detection when switching to Keycard tab
+                    Component.onCompleted: {
+                        // Detection starts when user clicks the tab
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        text: {
+                            if (!root.keycardDetecting) return "Connect Keycard"
+                            if (root.keycardState === "authorized") return "Keycard Unlocked"
+                            if (root.keycardState === "ready") return "Keycard Detected"
+                            if (root.keycardState === "waitingForCard") return "Insert Keycard..."
+                            if (root.keycardState === "waitingForReader") return "Connect Reader..."
+                            if (root.keycardState === "connectingCard") return "Connecting..."
+                            return "Detecting..."
+                        }
+                        contentItem: Text {
+                            text: parent.text; font.pixelSize: 14; font.weight: Font.Medium
+                            color: root.textColor
+                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            color: {
+                                if (root.keycardState === "authorized") return "#22c55e"
+                                if (root.keycardState === "ready") return "#22c55e"
+                                return parent.pressed ? "#3a3a3a" : root.bgSecondary
+                            }
+                            radius: 16; implicitHeight: 44; border.width: 1
+                            border.color: {
+                                if (root.keycardState === "ready" || root.keycardState === "authorized")
+                                    return "#22c55e"
+                                return root.borderColor
+                            }
+                        }
+                        onClicked: {
+                            if (typeof logos === "undefined" || !logos.callModule) return
+                            if (!root.keycardDetecting) {
+                                var result = logos.callModule("notes", "startKeycardDetection", [])
+                                try {
+                                    var parsed = JSON.parse(result)
+                                    if (parsed.error) { root.errorMessage = parsed.error; return }
+                                } catch(e) {}
+                                root.keycardDetecting = true
+                                root.errorMessage = ""
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.keycardStatus
+                        color: {
+                            if (root.keycardState === "ready" || root.keycardState === "authorized")
+                                return "#22c55e"
+                            if (root.keycardState === "emptyKeycard" || root.keycardState === "blockedPIN"
+                                || root.keycardState === "blockedPUK" || root.keycardState === "notKeycard"
+                                || root.keycardState === "connectionError" || root.keycardState === "noPCSC")
+                                return root.errorColor
+                            return root.textPlaceholder
+                        }
+                        font.pixelSize: 11
+                        visible: root.keycardDetecting && root.keycardStatus.length > 0
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.WordWrap
+                    }
+
+                    // PIN field — visible when card is ready
+                    Text {
+                        text: "Keycard PIN"
+                        color: root.textSecondary
+                        font.pixelSize: 12
+                        visible: root.keycardState === "ready"
+                    }
+
+                    TextField {
+                        id: keycardPinField
+                        Layout.fillWidth: true
+                        placeholderText: "Enter Keycard PIN"
+                        echoMode: TextInput.Password
+                        visible: root.keycardState === "ready"
+                        color: root.textColor; font.pixelSize: 14
+                        placeholderTextColor: root.textPlaceholder
+                        background: Rectangle {
+                            color: root.bgSecondary; radius: 4; border.width: 1
+                            border.color: keycardPinField.activeFocus ? root.overlayOrange : root.bgElevated
+                        }
+                        Keys.onReturnPressed: keycardUnlockBtn.clicked()
+                    }
+
+                    Button {
+                        id: keycardUnlockBtn
+                        Layout.fillWidth: true
+                        visible: root.keycardState === "ready"
+                        text: "Unlock Keycard"
+                        contentItem: Text {
+                            text: parent.text; font.pixelSize: 14; font.weight: Font.Medium
+                            color: root.textColor
+                            horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
+                        }
+                        background: Rectangle {
+                            color: parent.pressed ? root.primaryHover : root.primary
+                            radius: 16; implicitHeight: 44
+                        }
+                        onClicked: {
+                            if (typeof logos === "undefined" || !logos.callModule) return
+                            root.errorMessage = ""
+                            var result = logos.callModule("notes", "keycardAuthorize",
+                                                          [keycardPinField.text])
+                            try {
+                                var parsed = JSON.parse(result)
+                                if (parsed.authorized) {
+                                    root.keycardState = "authorized"
+                                    root.keycardStatus = "Keycard unlocked"
+                                } else {
+                                    var msg = "Wrong PIN"
+                                    if (parsed.remainingAttempts >= 0)
+                                        msg += " — " + parsed.remainingAttempts + " attempts remaining"
+                                    if (parsed.remainingAttempts === 0)
+                                        msg = "PIN blocked — use PUK to unblock"
+                                    root.errorMessage = msg
+                                }
+                            } catch(e) {
+                                root.errorMessage = "Keycard authorization failed"
+                            }
+                            keycardPinField.text = ""
+                        }
+                    }
+
+                    // Authorized state
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Keycard unlocked — key ready for encryption"
+                        color: "#22c55e"
+                        font.pixelSize: 13
+                        visible: root.keycardState === "authorized"
+                        horizontalAlignment: Text.AlignHCenter
+                        font.weight: Font.Medium
+                    }
                 }
             }
 
-            Text {
-                text: "Confirm PIN"
-                color: root.textSecondary
-                font.pixelSize: 12
-            }
-
-            TextField {
-                id: importPinConfirmField
+            // ── Tab 2: Logos Wallet (TBD) ─────────────────────────────
+            Item {
                 Layout.fillWidth: true
-                placeholderText: "Confirm PIN"
-                echoMode: TextInput.Password
-                color: root.textColor
-                font.pixelSize: 14
-                placeholderTextColor: root.textPlaceholder
-                background: Rectangle {
-                    color: root.bgSecondary
-                    radius: 4
-                    border.width: 1
-                    border.color: importPinConfirmField.activeFocus
-                                  ? root.overlayOrange : root.bgElevated
+                visible: root.importTab === 2
+                implicitHeight: 100
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Logos Wallet integration coming soon"
+                    color: root.textPlaceholder
+                    font.pixelSize: 14
                 }
             }
 
+            // ── Error message (shared across tabs) ────────────────────
             Text {
                 Layout.fillWidth: true
                 text: root.errorMessage
@@ -223,154 +461,21 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Button {
-                Layout.fillWidth: true
-                text: "Import"
-                contentItem: Text {
-                    text: parent.text
-                    font.pixelSize: 14
-                    font.weight: Font.Medium
-                    color: root.textColor
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    color: parent.pressed ? root.primaryHover : root.primary
-                    radius: 16
-                    implicitHeight: 44
-                }
-                onClicked: {
-                    root.errorMessage = ""
-                    if (typeof logos === "undefined" || !logos.callModule) return
-                    var result = logos.callModule("notes", "importMnemonic",
-                                                  [mnemonicArea.text,
-                                                   importPinField.text,
-                                                   importPinConfirmField.text,
-                                                   root.pendingBackupPath])
-                    root.pendingBackupPath = ""
-                    var parsed = JSON.parse(result)
-                    if (parsed.success) {
-                        root.restoreWarning = parsed.warning || ""
-                        root.currentScreen = "note"
-                    } else {
-                        root.errorMessage = parsed.error || "Import failed"
-                    }
-                }
-            }
-
-            // ── Keycard section ────────────────────────────────────
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 1
-                color: root.borderColor
-                Layout.topMargin: 4
-                Layout.bottomMargin: 4
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: "or"
-                color: root.textPlaceholder
-                font.pixelSize: 12
-                horizontalAlignment: Text.AlignHCenter
-            }
-
-            Button {
-                Layout.fillWidth: true
-                text: {
-                    if (!root.keycardDetecting) return "Connect Keycard"
-                    if (root.keycardState === "ready" || root.keycardState === "authorized")
-                        return "Keycard Detected"
-                    if (root.keycardState === "waitingForCard")
-                        return "Insert Keycard..."
-                    if (root.keycardState === "waitingForReader")
-                        return "Connect Reader..."
-                    if (root.keycardState === "connectingCard")
-                        return "Connecting..."
-                    return "Detecting..."
-                }
-                contentItem: Text {
-                    text: parent.text
-                    font.pixelSize: 14
-                    font.weight: Font.Medium
-                    color: root.textColor
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    color: {
-                        if (root.keycardState === "ready" || root.keycardState === "authorized")
-                            return "#22c55e"  // green
-                        return parent.pressed ? "#3a3a3a" : root.bgSecondary
-                    }
-                    radius: 16
-                    implicitHeight: 44
-                    border.width: 1
-                    border.color: {
-                        if (root.keycardState === "ready" || root.keycardState === "authorized")
-                            return "#22c55e"
-                        return root.borderColor
-                    }
-                }
-                onClicked: {
-                    if (typeof logos === "undefined" || !logos.callModule) return
-                    if (!root.keycardDetecting) {
-                        var result = logos.callModule("notes", "startKeycardDetection", [])
-                        try {
-                            var parsed = JSON.parse(result)
-                            if (parsed.error) {
-                                root.errorMessage = parsed.error
-                                return
-                            }
-                        } catch(e) {}
-                        root.keycardDetecting = true
-                        root.errorMessage = ""
-                    }
-                }
-            }
-
-            // Keycard status text
-            Text {
-                Layout.fillWidth: true
-                text: root.keycardStatus
-                color: {
-                    if (root.keycardState === "ready" || root.keycardState === "authorized")
-                        return "#22c55e"
-                    if (root.keycardState === "emptyKeycard" || root.keycardState === "blockedPIN"
-                        || root.keycardState === "blockedPUK" || root.keycardState === "notKeycard"
-                        || root.keycardState === "connectionError" || root.keycardState === "noPCSC")
-                        return root.errorColor
-                    return root.textPlaceholder
-                }
-                font.pixelSize: 11
-                visible: root.keycardDetecting && root.keycardStatus.length > 0
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.WordWrap
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: 1
-                color: root.borderColor
-                visible: root.keycardDetecting
-                Layout.topMargin: 4
-                Layout.bottomMargin: 4
-            }
-            // ── End Keycard section ───────────────────────────────────
-
+            // ── Restore from backup (Recovery Phrase tab only) ────────
             Text {
                 id: pluginRestoreStatus
                 Layout.fillWidth: true
                 text: root.restoreStatus
                 color: root.primary
                 font.pixelSize: 12
-                visible: text.length > 0
+                visible: root.importTab === 0 && text.length > 0
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
             }
 
             Text {
                 Layout.fillWidth: true
+                visible: root.importTab === 0
                 text: root.pendingBackupPath.length > 0
                       ? "Change backup"
                       : "Restore from backup"

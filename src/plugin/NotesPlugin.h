@@ -56,6 +56,10 @@ public:
     Q_INVOKABLE QString stopKeycardDetection();
     Q_INVOKABLE QString getKeycardState();
 
+    // Keycard PIN + key export
+    Q_INVOKABLE QString keycardAuthorize(const QString& pin);
+    Q_INVOKABLE QString keycardExportKey();
+
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);
 

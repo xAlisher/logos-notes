@@ -150,6 +150,18 @@ QString NotesPlugin::getKeycardState()
     return m_backend.getKeycardState();
 }
 
+// ── Keycard PIN + key export ─────────────────────────────────────────────────
+
+QString NotesPlugin::keycardAuthorize(const QString& pin)
+{
+    return m_backend.keycardAuthorize(pin);
+}
+
+QString NotesPlugin::keycardExportKey()
+{
+    return m_backend.keycardExportKey();
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 QString NotesPlugin::ok()
