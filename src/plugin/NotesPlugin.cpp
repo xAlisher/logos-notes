@@ -97,6 +97,11 @@ QString NotesPlugin::lockSession()
     return ok();
 }
 
+QString NotesPlugin::getKeySource()
+{
+    return m_backend.getKeySource();
+}
+
 QString NotesPlugin::getAccountFingerprint()
 {
     return m_backend.getAccountFingerprint();
@@ -148,6 +153,38 @@ QString NotesPlugin::stopKeycardDetection()
 QString NotesPlugin::getKeycardState()
 {
     return m_backend.getKeycardState();
+}
+
+// ── Keycard PIN + key export ─────────────────────────────────────────────────
+
+QString NotesPlugin::keycardAuthorize(const QString& pin)
+{
+    return m_backend.keycardAuthorize(pin);
+}
+
+QString NotesPlugin::keycardExportKey()
+{
+    return m_backend.keycardExportKey();
+}
+
+QString NotesPlugin::importFromKeycard(const QString& keycardPin)
+{
+    m_backend.importFromKeycard(keycardPin);
+
+    if (m_backend.currentScreen() == QStringLiteral("note"))
+        return successJson();
+
+    return errorJson(m_backend.errorMessage());
+}
+
+QString NotesPlugin::unlockWithKeycard(const QString& keycardPin)
+{
+    m_backend.unlockWithKeycard(keycardPin);
+
+    if (m_backend.currentScreen() == QStringLiteral("note"))
+        return successJson();
+
+    return errorJson(m_backend.errorMessage());
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

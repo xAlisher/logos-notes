@@ -43,6 +43,7 @@ public:
     Q_INVOKABLE QString deleteNote(int id);
 
     Q_INVOKABLE QString lockSession();
+    Q_INVOKABLE QString getKeySource();
     Q_INVOKABLE QString getAccountFingerprint();
     Q_INVOKABLE QString exportBackup(const QString& filePath);
     Q_INVOKABLE QString exportBackupAuto();
@@ -55,6 +56,12 @@ public:
     Q_INVOKABLE QString startKeycardDetection();
     Q_INVOKABLE QString stopKeycardDetection();
     Q_INVOKABLE QString getKeycardState();
+
+    // Keycard PIN + key export + import
+    Q_INVOKABLE QString keycardAuthorize(const QString& pin);
+    Q_INVOKABLE QString keycardExportKey();
+    Q_INVOKABLE QString importFromKeycard(const QString& keycardPin);
+    Q_INVOKABLE QString unlockWithKeycard(const QString& keycardPin);
 
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);

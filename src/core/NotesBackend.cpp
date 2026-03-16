@@ -3,6 +3,7 @@
 
 #include <sodium.h>
 #include <QCryptographicHash>
+#include <QThread>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -382,6 +383,11 @@ bool NotesBackend::hasAccount() const
     return m_db.isInitialized();
 }
 
+QString NotesBackend::getKeySource() const
+{
+    return m_db.loadMeta("key_source", "mnemonic");
+}
+
 QString NotesBackend::exportBackup(const QString &filePath)
 {
     if (!m_keys.isUnlocked())
@@ -619,6 +625,138 @@ void NotesBackend::setError(const QString &msg)
 
 // ── Keycard ──────────────────────────────────────────────────────────────────
 
+// Derive the 256-bit AES master key from a Keycard secp256k1 private key.
+// Domain separation ensures different apps derive different keys from the same card.
+static SecureBuffer deriveKeycardMasterKey(const QByteArray &cardKey)
+{
+    QByteArray domainInput = cardKey + QByteArrayLiteral("logos-notes-encryption");
+    QByteArray hash = QCryptographicHash::hash(domainInput, QCryptographicHash::Sha256);
+    SecureBuffer result(hash);
+    sodium_memzero(domainInput.data(), domainInput.size());
+    sodium_memzero(hash.data(), hash.size());
+    return result;
+}
+
+// Derive a deterministic Ed25519 fingerprint from the master key.
+static QString deriveFingerprintFromKey(const QByteArray &masterKey)
+{
+    unsigned char ed_pk[crypto_sign_PUBLICKEYBYTES];
+    unsigned char ed_sk[crypto_sign_SECRETKEYBYTES];
+    unsigned char seed[crypto_sign_SEEDBYTES];
+
+    QByteArray fpHash = QCryptographicHash::hash(masterKey, QCryptographicHash::Sha256);
+    memcpy(seed, fpHash.constData(), crypto_sign_SEEDBYTES);
+    crypto_sign_seed_keypair(ed_pk, ed_sk, seed);
+    sodium_memzero(seed, sizeof(seed));
+    sodium_memzero(ed_sk, sizeof(ed_sk));
+    sodium_memzero(fpHash.data(), fpHash.size());
+
+    return QByteArray(reinterpret_cast<const char*>(ed_pk),
+                      crypto_sign_PUBLICKEYBYTES).toHex().left(16);
+}
+
+void NotesBackend::importFromKeycard(const QString &keycardPin)
+{
+    // Ensure detection is running
+    if (!m_keycard.isRunning())
+        m_keycard.start();
+
+    // 1. Authorize with Keycard PIN
+    QJsonObject authResult = m_keycard.authorize(keycardPin);
+    if (!authResult["authorized"].toBool()) {
+        int remaining = authResult["remainingAttempts"].toInt(-1);
+        if (remaining == 0)
+            setError("PIN blocked — use PUK to unblock");
+        else if (remaining > 0)
+            setError(QString("Wrong PIN — %1 attempts remaining").arg(remaining));
+        else
+            setError(authResult["error"].toString("Keycard authorization failed"));
+        return;
+    }
+
+    // 2. Export key via Session API RPC
+    QByteArray cardKey = m_keycard.exportKey();
+    if (cardKey.isEmpty()) {
+        setError("Key export failed: " + m_keycard.lastError());
+        return;
+    }
+
+    // 3. Domain separation → 256-bit AES master key
+    SecureBuffer masterKey = deriveKeycardMasterKey(cardKey);
+    sodium_memzero(cardKey.data(), cardKey.size());
+
+    if (masterKey.isEmpty() || masterKey.size() != 32) {
+        setError("Key derivation failed.");
+        return;
+    }
+
+    // 4. Store key source metadata (no wrapped key — card required every unlock)
+    m_db.saveMeta("key_source", "keycard");
+    m_db.saveMeta("keycard_uid", m_keycard.keyUID());
+    m_db.saveMeta("account_fingerprint", deriveFingerprintFromKey(masterKey.ref()));
+
+    // 5. Hold master key in memory
+    m_keys.setMasterKey(masterKey.toByteArray());
+
+    m_db.setInitialized();
+    setError({});
+    setScreen("note");
+}
+
+void NotesBackend::unlockWithKeycard(const QString &keycardPin)
+{
+    // Ensure detection is running
+    if (!m_keycard.isRunning())
+        m_keycard.start();
+
+    // 1. Authorize
+    QJsonObject authResult = m_keycard.authorize(keycardPin);
+    if (!authResult["authorized"].toBool()) {
+        int remaining = authResult["remainingAttempts"].toInt(-1);
+        if (remaining == 0)
+            setError("PIN blocked — use PUK to unblock");
+        else if (remaining > 0)
+            setError(QString("Wrong PIN — %1 attempts remaining").arg(remaining));
+        else
+            setError(authResult["error"].toString("Keycard authorization failed"));
+        return;
+    }
+
+    // 2. Export key
+    QByteArray cardKey = m_keycard.exportKey();
+    if (cardKey.isEmpty()) {
+        setError("Key export failed: " + m_keycard.lastError());
+        return;
+    }
+
+    SecureBuffer masterKey = deriveKeycardMasterKey(cardKey);
+    sodium_memzero(cardKey.data(), cardKey.size());
+
+    if (masterKey.isEmpty()) {
+        setError("Key derivation failed.");
+        return;
+    }
+
+    // 3. Verify this is the same card that was used to import.
+    //    Compare derived fingerprint against stored account_fingerprint.
+    QString derivedFp = deriveFingerprintFromKey(masterKey.ref());
+    QString storedFp = m_db.loadMeta("account_fingerprint", "");
+    if (!storedFp.isEmpty() && derivedFp != storedFp) {
+        setError("Wrong Keycard. This account was created with a different card.");
+        sodium_memzero(cardKey.data(), cardKey.size());
+        return;
+    }
+
+    // 4. Hold master key and go to notes
+    m_keys.setMasterKey(masterKey.toByteArray());
+    m_failedAttempts = 0;
+    m_db.saveMeta("pin_failed_attempts", "0");
+
+    migratePlaintextTitles();
+    setError({});
+    setScreen("note");
+}
+
 QString NotesBackend::keycardState() const
 {
     switch (m_keycard.state()) {
@@ -669,5 +807,30 @@ QString NotesBackend::getKeycardState()
     obj["state"] = keycardState();
     obj["status"] = m_keycard.statusText();
     obj["running"] = m_keycard.isRunning();
+    obj["remainingPIN"] = m_keycard.remainingPINAttempts();
+    obj["remainingPUK"] = m_keycard.remainingPUKAttempts();
+    obj["keyInitialized"] = m_keycard.keyInitialized();
+    return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::keycardAuthorize(const QString &pin)
+{
+    QJsonObject result = m_keycard.authorize(pin);
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::keycardExportKey()
+{
+    QByteArray key = m_keycard.exportKey();
+    if (key.isEmpty()) {
+        QJsonObject err;
+        err["error"] = "Failed to export key from Keycard";
+        return QString::fromUtf8(QJsonDocument(err).toJson(QJsonDocument::Compact));
+    }
+
+    QJsonObject obj;
+    obj["success"] = true;
+    obj["keyHex"] = QString::fromLatin1(key.toHex());
+    obj["keySize"] = key.size();
     return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }

@@ -6,14 +6,23 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QDebug>
+#include <QThread>
+#include <QCoreApplication>
 
 // C API from libkeycard.so (status-keycard-go)
 extern "C" {
+    // Session API (RPC)
     extern char* KeycardInitializeRPC(void);
     extern char* KeycardCallRPC(char* payload);
     extern void  KeycardSetSignalEventCallback(void* cb);
     extern void  ResetAPI(void);
     extern void  Free(void* param);
+
+    // Flow API (atomic operations)
+    extern char* KeycardInitFlow(char* storageDir);
+    extern char* KeycardStartFlow(int flowType, char* jsonParams);
+    extern char* KeycardResumeFlow(char* jsonParams);
+    extern char* KeycardCancelFlow(void);
 }
 
 KeycardBridge *KeycardBridge::s_instance = nullptr;
@@ -102,7 +111,7 @@ QString KeycardBridge::statusText() const
     return QStringLiteral("Unknown state");
 }
 
-bool KeycardBridge::authorize(const QString &pin)
+QJsonObject KeycardBridge::authorize(const QString &pin)
 {
     QJsonObject params;
     params["pin"] = pin;
@@ -111,37 +120,172 @@ bool KeycardBridge::authorize(const QString &pin)
 
     QJsonValue authErr = response.value("error");
     if (!authErr.isNull() && !authErr.isUndefined()) {
-        qWarning() << "keycard: authorize failed:" << authErr;
-        return false;
+        qWarning() << "keycard: authorize RPC error:" << authErr;
+        return {{"authorized", false}, {"error", authErr.toString()}};
     }
 
-    // State will be updated via signal callback to Authorized
-    return true;
+    QJsonObject result = response["result"].toObject();
+    bool authorized = result["authorized"].toBool(false);
+
+    if (authorized) {
+        m_state = State::Authorized;
+        emit stateChanged(m_state);
+    } else {
+        // Poll to get updated remaining attempts
+        pollStatus();
+    }
+
+    QJsonObject out;
+    out["authorized"] = authorized;
+    out["remainingAttempts"] = m_remainingPIN;
+    return out;
 }
 
 QByteArray KeycardBridge::exportKey(const QString &path)
 {
     Q_UNUSED(path)
 
-    // ExportRecoverKeys returns master, wallet, and EIP-1581 keys
-    QJsonObject response = rpcCall("keycard.ExportRecoverKeys");
+    // ExportLoginKeys returns encryption + whisper keys
+    QJsonObject response = rpcCall("keycard.ExportLoginKeys");
+
+    m_lastError.clear();
 
     QJsonValue exportErr = response.value("error");
     if (!exportErr.isNull() && !exportErr.isUndefined()) {
-        qWarning() << "keycard: exportKey failed:" << exportErr;
+        m_lastError = exportErr.toString();
+        qWarning() << "keycard: exportKey RPC error:" << m_lastError;
         return {};
     }
 
-    // The response contains key material — extract the EIP-1581 encryption key
+    // Response: {"result":{"keys":{"encryptionPrivateKey":{"privateKey":"hex",...},...}}}
     QJsonObject result = response["result"].toObject();
-    QString encKeyHex = result["encryptionPrivateKey"].toString();
 
-    if (encKeyHex.isEmpty()) {
-        qWarning() << "keycard: no encryption key in export response";
+    QJsonObject keys = result["keys"].toObject();
+    if (keys.isEmpty()) {
+        m_lastError = "No keys. Full RPC response: " +
+            QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact)).left(500);
+        qWarning() << "keycard:" << m_lastError;
         return {};
     }
 
-    return QByteArray::fromHex(encKeyHex.toUtf8());
+    qDebug() << "keycard: available key types:" << keys.keys();
+    QJsonObject encKey = keys["encryptionPrivateKey"].toObject();
+    QString privKeyHex = encKey["privateKey"].toString();
+
+    if (privKeyHex.isEmpty()) {
+        // Try eip1581 as fallback
+        QJsonObject eip = keys["eip1581"].toObject();
+        privKeyHex = eip["privateKey"].toString();
+        if (!privKeyHex.isEmpty())
+            qDebug() << "keycard: using eip1581 key instead of encryptionPrivateKey";
+    }
+
+    if (privKeyHex.isEmpty()) {
+        m_lastError = "No private key in exported keys: " + keys.keys().join(", ");
+        qWarning() << "keycard:" << m_lastError;
+        return {};
+    }
+
+    qDebug() << "keycard: exported encryption key," << privKeyHex.size() << "hex chars";
+    return QByteArray::fromHex(privKeyHex.toUtf8());
+}
+
+QByteArray KeycardBridge::loginFlow(const QString &pin)
+{
+    // Stop Session API to avoid conflicts with Flow API
+    // (both share the global Go context)
+    if (m_running) {
+        rpcCall("keycard.Stop");
+        ResetAPI();
+        m_running = false;
+    }
+
+    // Initialize Flow API with storage file path for pairings
+    QString storageDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(storageDir);
+    QString storageFile = storageDir + "/keycard_pairings";
+
+    // Reset any previous flow result
+    m_lastFlowResult = QJsonObject();
+
+    // Keep QByteArray alive for the C call
+    QByteArray storageBytes = storageFile.toUtf8();
+    char *initResult = KeycardInitFlow(storageBytes.data());
+    if (initResult) {
+        QString res = QString::fromUtf8(initResult);
+        qDebug() << "keycard: flow init:" << res;
+        if (res != "ok") {
+            m_lastError = "Flow init failed: " + res;
+            Free(initResult);
+            return {};
+        }
+        Free(initResult);
+    }
+
+    // Register signal callback
+    KeycardSetSignalEventCallback(reinterpret_cast<void*>(&KeycardBridge::signalCallback));
+
+    // Start Login flow (type 3) with PIN
+    QJsonObject flowParams;
+    flowParams["pin"] = pin;
+    QByteArray paramsJson = QJsonDocument(flowParams).toJson(QJsonDocument::Compact);
+
+    qDebug() << "keycard: starting login flow with storage:" << storageFile;
+    char *startResult = KeycardStartFlow(3, paramsJson.data());
+    if (startResult) {
+        QString res = QString::fromUtf8(startResult);
+        Free(startResult);
+        if (res != "ok") {
+            m_lastError = "Flow start failed: " + res;
+            qWarning() << "keycard:" << m_lastError;
+            return {};
+        }
+    }
+
+    // Wait for flow-result signal (up to 10 seconds)
+    // Go callback fires on a goroutine thread — use atomic flag for cross-thread visibility.
+    m_flowResultReady.store(false);
+    m_lastFlowResult = QJsonObject();
+
+    for (int i = 0; i < 100; ++i) {
+        QThread::msleep(100);
+
+        if (m_flowResultReady.load()) {
+            qDebug() << "keycard: flow result ready after" << (i * 100) << "ms";
+            break;
+        }
+    }
+
+    if (!m_flowResultReady.load()) {
+        m_lastError = "Login flow timed out (10s)";
+        KeycardCancelFlow();
+        return {};
+    }
+
+    // Check for error
+    QString error = m_lastFlowResult["error"].toString();
+    if (!error.isEmpty()) {
+        m_lastError = "Login flow error: " + error;
+        return {};
+    }
+
+    // Extract encryption private key
+    QJsonObject encKey = m_lastFlowResult["encryption-key"].toObject();
+    QString privKeyHex = encKey["privateKey"].toString();
+
+    if (privKeyHex.isEmpty()) {
+        m_lastError = "No encryption key in flow result";
+        return {};
+    }
+
+    // Also capture key UID
+    m_keyUID = m_lastFlowResult["key-uid"].toString();
+
+    qDebug() << "keycard: loginFlow exported encryption key," << privKeyHex.size() << "hex chars";
+    m_state = State::Authorized;
+    emit stateChanged(m_state);
+
+    return QByteArray::fromHex(privKeyHex.toUtf8());
 }
 
 void KeycardBridge::pollStatus()
@@ -166,6 +310,19 @@ void KeycardBridge::pollStatus()
     // If we got a valid status, the RPC server is running
     m_running = true;
 
+    // Extract card info
+    QJsonObject kcStatus = result["keycardStatus"].toObject();
+    if (!kcStatus.isEmpty()) {
+        m_remainingPIN = kcStatus["remainingAttemptsPIN"].toInt(-1);
+        m_remainingPUK = kcStatus["remainingAttemptsPUK"].toInt(-1);
+        m_keyInitialized = kcStatus["keyInitialized"].toBool(false);
+    }
+
+    QJsonObject kcInfo = result["keycardInfo"].toObject();
+    if (!kcInfo.isEmpty()) {
+        m_keyUID = kcInfo["keyUID"].toString();
+    }
+
     State newState = parseState(stateStr);
     if (newState != m_state) {
         m_state = newState;
@@ -181,11 +338,10 @@ QJsonObject KeycardBridge::rpcCall(const QString &method, const QJsonObject &par
     request["id"] = QString::number(++m_rpcId);
     request["method"] = method;
 
-    if (!params.isEmpty()) {
-        QJsonArray paramsArray;
-        paramsArray.append(params);
-        request["params"] = paramsArray;
-    }
+    // Always include params — Go RPC requires "params":[{}] even for no-arg methods.
+    QJsonArray paramsArray;
+    paramsArray.append(params.isEmpty() ? QJsonObject() : params);
+    request["params"] = paramsArray;
 
     QByteArray payload = QJsonDocument(request).toJson(QJsonDocument::Compact);
 
@@ -216,6 +372,10 @@ void KeycardBridge::signalCallback(const char *jsonEvent)
             qDebug() << "keycard: state changed to" << stateStr;
             emit s_instance->stateChanged(newState);
         }
+    } else if (type == "keycard.flow-result") {
+        s_instance->m_lastFlowResult = event["event"].toObject();
+        s_instance->m_flowResultReady.store(true);
+        qDebug() << "keycard: flow result signal received";
     }
 }
 
