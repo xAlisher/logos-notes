@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QJsonObject>
+#include <atomic>
 
 // Thin C++ wrapper around libkeycard.so (status-keycard-go compiled via CGO).
 // Manages PC/SC reader monitoring and card state via JSON-RPC.
@@ -56,6 +57,14 @@ public:
     // Default path: m/43'/60'/1581' (EIP-1581 encryption root)
     QByteArray exportKey(const QString &path = "m/43'/60'/1581'");
 
+    // Flow API: Login (auth + export in one atomic operation).
+    // Returns the encryption private key bytes, or empty on failure.
+    // This avoids the mutex bug in Session API's ExportLoginKeys.
+    QByteArray loginFlow(const QString &pin);
+
+    // Last error from an RPC call (for debugging)
+    QString lastError() const { return m_lastError; }
+
     // Card info from last pollStatus (remaining attempts, key UID, etc.)
     int remainingPINAttempts() const { return m_remainingPIN; }
     int remainingPUKAttempts() const { return m_remainingPUK; }
@@ -78,6 +87,10 @@ private:
     State m_state = State::Unknown;
     bool m_running = false;
     int m_rpcId = 0;
+
+    QString m_lastError;
+    QJsonObject m_lastFlowResult;
+    std::atomic<bool> m_flowResultReady{false};
 
     // Card status from GetStatus responses
     int m_remainingPIN = -1;

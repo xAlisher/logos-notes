@@ -36,6 +36,13 @@ public:
     Q_INVOKABLE QString keycardAuthorize(const QString &pin);
     Q_INVOKABLE QString keycardExportKey();
 
+    // Keycard import: authorize card with PIN, export key, create account.
+    // No separate app PIN — Keycard PIN is the only auth. Card must be present to unlock.
+    Q_INVOKABLE void importFromKeycard(const QString &keycardPin);
+
+    // Keycard unlock: authorize card, re-derive key, decrypt notes.
+    Q_INVOKABLE void unlockWithKeycard(const QString &keycardPin);
+
     // Called from ImportScreen: validate mnemonic + PIN, derive key, save state.
     Q_INVOKABLE void importMnemonic(const QString &mnemonic,
                                     const QString &pin,
@@ -58,8 +65,11 @@ public:
     // Short hex fingerprint derived from master key (for display in Settings).
     Q_INVOKABLE QString getAccountFingerprint() const;
 
-    // Returns true if the database has a stored account (wrapped key).
+    // Returns true if the database has a stored account (wrapped key or keycard).
     bool hasAccount() const;
+
+    // Returns "keycard" or "mnemonic" (default).
+    Q_INVOKABLE QString getKeySource() const;
 
     // Export all notes as an encrypted backup file. Returns the file path or error.
     Q_INVOKABLE QString exportBackup(const QString &filePath);

@@ -73,10 +73,24 @@ Item {
         }
     }
 
+    // Key source: "mnemonic" or "keycard"
+    property string keySource: "mnemonic"
+
     Component.onCompleted: {
         if (typeof logos === "undefined" || !logos.callModule) return
         var result = logos.callModule("notes", "isInitialized", [])
-        root.currentScreen = (result === "true") ? "unlock" : "import"
+        if (result === "true") {
+            var ks = logos.callModule("notes", "getKeySource", [])
+            root.keySource = ks ? ks.trim() : "mnemonic"
+            root.currentScreen = "unlock"
+            // Auto-start Keycard detection for Keycard accounts
+            if (root.keySource === "keycard") {
+                logos.callModule("notes", "startKeycardDetection", [])
+                root.keycardDetecting = true
+            }
+        } else {
+            root.currentScreen = "import"
+        }
     }
 
     Rectangle { anchors.fill: parent; color: root.bgColor }
@@ -382,14 +396,14 @@ Item {
                             color: root.bgSecondary; radius: 4; border.width: 1
                             border.color: keycardPinField.activeFocus ? root.overlayOrange : root.bgElevated
                         }
-                        Keys.onReturnPressed: keycardUnlockBtn.clicked()
+                        Keys.onReturnPressed: keycardImportBtn.clicked()
                     }
 
                     Button {
-                        id: keycardUnlockBtn
+                        id: keycardImportBtn
                         Layout.fillWidth: true
                         visible: root.keycardState === "ready"
-                        text: "Unlock Keycard"
+                        text: "Unlock & Import"
                         contentItem: Text {
                             text: parent.text; font.pixelSize: 14; font.weight: Font.Medium
                             color: root.textColor
@@ -402,37 +416,19 @@ Item {
                         onClicked: {
                             if (typeof logos === "undefined" || !logos.callModule) return
                             root.errorMessage = ""
-                            var result = logos.callModule("notes", "keycardAuthorize",
+                            // Stop polling to avoid mutex race with ExportLoginKeys
+                            root.keycardDetecting = false
+                            var result = logos.callModule("notes", "importFromKeycard",
                                                           [keycardPinField.text])
-                            try {
-                                var parsed = JSON.parse(result)
-                                if (parsed.authorized) {
-                                    root.keycardState = "authorized"
-                                    root.keycardStatus = "Keycard unlocked"
-                                } else {
-                                    var msg = "Wrong PIN"
-                                    if (parsed.remainingAttempts >= 0)
-                                        msg += " — " + parsed.remainingAttempts + " attempts remaining"
-                                    if (parsed.remainingAttempts === 0)
-                                        msg = "PIN blocked — use PUK to unblock"
-                                    root.errorMessage = msg
-                                }
-                            } catch(e) {
-                                root.errorMessage = "Keycard authorization failed"
+                            var parsed = JSON.parse(result)
+                            if (parsed.success) {
+                                root.currentScreen = "note"
+                            } else {
+                                root.errorMessage = parsed.error || "Keycard import failed"
+                                root.keycardDetecting = true  // Resume polling on failure
                             }
                             keycardPinField.text = ""
                         }
-                    }
-
-                    // Authorized state
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Keycard unlocked — key ready for encryption"
-                        color: "#22c55e"
-                        font.pixelSize: 13
-                        visible: root.keycardState === "authorized"
-                        horizontalAlignment: Text.AlignHCenter
-                        font.weight: Font.Medium
                     }
                 }
             }
@@ -549,10 +545,12 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
             }
 
+            // ── Mnemonic PIN unlock ──────────────────────────────
             Text {
                 text: "PIN"
                 color: root.textSecondary
                 font.pixelSize: 12
+                visible: root.keySource !== "keycard"
             }
 
             TextField {
@@ -560,6 +558,7 @@ Item {
                 Layout.fillWidth: true
                 placeholderText: "Enter PIN"
                 echoMode: TextInput.Password
+                visible: root.keySource !== "keycard"
                 enabled: root.lockoutRemaining === 0
                 color: root.textColor
                 font.pixelSize: 14
@@ -575,6 +574,48 @@ Item {
                     if (root.lockoutRemaining === 0)
                         unlockButton.clicked()
                 }
+            }
+
+            // ── Keycard unlock ───────────────────────────────────
+            Text {
+                text: "Insert Keycard and enter PIN"
+                color: root.textSecondary
+                font.pixelSize: 12
+                visible: root.keySource === "keycard"
+                horizontalAlignment: Text.AlignHCenter
+                Layout.fillWidth: true
+            }
+
+            // Keycard status on unlock screen
+            Text {
+                Layout.fillWidth: true
+                text: root.keycardStatus
+                color: {
+                    if (root.keycardState === "ready") return "#22c55e"
+                    return root.textPlaceholder
+                }
+                font.pixelSize: 11
+                visible: root.keySource === "keycard" && root.keycardDetecting
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            TextField {
+                id: unlockKeycardPinField
+                Layout.fillWidth: true
+                placeholderText: "Keycard PIN"
+                echoMode: TextInput.Password
+                visible: root.keySource === "keycard"
+                color: root.textColor
+                font.pixelSize: 14
+                placeholderTextColor: root.textPlaceholder
+                background: Rectangle {
+                    color: root.bgSecondary
+                    radius: 4
+                    border.width: 1
+                    border.color: unlockKeycardPinField.activeFocus
+                                  ? root.overlayOrange : root.bgElevated
+                }
+                Keys.onReturnPressed: unlockButton.clicked()
             }
 
             Text {
@@ -595,7 +636,7 @@ Item {
                 enabled: root.lockoutRemaining === 0
                 text: root.lockoutRemaining > 0
                       ? "Locked (" + root.lockoutRemaining + "s)"
-                      : "Unlock"
+                      : (root.keySource === "keycard" ? "Unlock with Keycard" : "Unlock")
                 contentItem: Text {
                     text: parent.text
                     font.pixelSize: 14
@@ -614,6 +655,23 @@ Item {
                 onClicked: {
                     root.errorMessage = ""
                     if (typeof logos === "undefined" || !logos.callModule) return
+
+                    if (root.keySource === "keycard") {
+                        // Stop polling to avoid mutex race with key export
+                        root.keycardDetecting = false
+                        var kcResult = logos.callModule("notes", "unlockWithKeycard",
+                                                        [unlockKeycardPinField.text])
+                        var kcParsed = JSON.parse(kcResult)
+                        if (kcParsed.success) {
+                            root.currentScreen = "note"
+                        } else {
+                            root.errorMessage = kcParsed.error || "Keycard unlock failed"
+                            root.keycardDetecting = true  // Resume polling on failure
+                        }
+                        unlockKeycardPinField.text = ""
+                        return
+                    }
+
                     var result = logos.callModule("notes", "unlockWithPin",
                                                   [unlockPinField.text])
                     var parsed = JSON.parse(result)
@@ -1065,6 +1123,23 @@ Item {
                             font.pixelSize: 14
                             font.weight: Font.Bold
                             color: root.textColor
+                        }
+
+                        Row {
+                            spacing: 8
+                            Text {
+                                text: "Encryption:"
+                                color: root.textSecondary
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                text: root.keySource === "keycard" ? "Keycard"
+                                    : root.keySource === "wallet" ? "Logos Wallet"
+                                    : "Recovery Phrase"
+                                color: root.keySource === "keycard" ? "#22c55e" : root.textColor
+                                font.pixelSize: 12
+                                font.weight: Font.Medium
+                            }
                         }
 
                         Row {
