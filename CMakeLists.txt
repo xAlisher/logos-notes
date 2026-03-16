@@ -262,11 +262,12 @@ else()
     message(WARNING "libpcsclite.so.1 not found — Keycard will not work in AppImage without it")
 endif()
 
-# Fix RPATH on installed libkeycard.so so it finds libpcsclite.so.1 in $ORIGIN
+# Fix RPATH on installed libkeycard.so so it finds libpcsclite.so.1 in $ORIGIN.
+# Use $ENV{DESTDIR} to honor staged installs (e.g. DESTDIR=/tmp/staged cmake --install).
 install(CODE "
+    set(_dest \"\$ENV{DESTDIR}${NOTES_MODULE_DIR}/libkeycard.so\")
     execute_process(
-        COMMAND patchelf --set-rpath \$ORIGIN
-            \"${NOTES_MODULE_DIR}/libkeycard.so\"
+        COMMAND patchelf --set-rpath \$ORIGIN \"\${_dest}\"
         ERROR_QUIET
     )
 ")
