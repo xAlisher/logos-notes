@@ -56,7 +56,7 @@ Item {
         }
     }
 
-    // Poll Keycard state while detection is active
+    // Poll Keycard state while detection is active (import/unlock screens)
     Timer {
         id: keycardPollTimer
         interval: 500
@@ -69,6 +69,35 @@ Item {
                 var obj = JSON.parse(json)
                 root.keycardState = obj.state || "unknown"
                 root.keycardStatus = obj.status || ""
+            } catch(e) {}
+        }
+    }
+
+    // Monitor card presence while unlocked — auto-lock if card/reader removed
+    Timer {
+        id: keycardGuardTimer
+        interval: 2000
+        repeat: true
+        running: root.keySource === "keycard" && root.currentScreen === "note"
+        onTriggered: {
+            if (typeof logos === "undefined" || !logos.callModule) return
+            var json = logos.callModule("notes", "getKeycardState", [])
+            try {
+                var obj = JSON.parse(json)
+                var st = obj.state || "unknown"
+                if (st === "waitingForCard" || st === "waitingForReader"
+                    || st === "unknown" || st === "noPCSC") {
+                    // Card or reader removed — lock session
+                    logos.callModule("notes", "lockSession", [])
+                    root.keycardDetecting = false
+                    root.currentScreen = "unlock"
+                    root.errorMessage = st === "waitingForReader"
+                        ? "Card reader disconnected — session locked"
+                        : "Keycard removed — session locked"
+                    // Restart detection for unlock screen
+                    logos.callModule("notes", "startKeycardDetection", [])
+                    root.keycardDetecting = true
+                }
             } catch(e) {}
         }
     }
