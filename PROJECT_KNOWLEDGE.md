@@ -40,7 +40,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 |---------|-------------|--------|
 | v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
-| v1.0.0 | Keycard hardware key derivation | In progress — Sub-1 done, awaiting hardware test |
+| v1.0.0 | Keycard hardware key derivation | In progress — Sub-1 merged, Sub-2 next |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
@@ -229,6 +229,21 @@ SDK provides `LogosResult` type with `success`, `getString()`, `getInt()`, `getM
 ### 22. logos-cpp-generator for typed inter-module calls
 Auto-generates typed C++ wrappers from compiled modules. Instead of raw `invokeRemoteMethod("module", "method", args)`, get compile-time checked `logos->module.method(args)`. Important for v1.1.0 when keycard-module talks to notes.
 
+### 23. JSON-RPC null error: check isNull, not contains
+Go JSON-RPC responses include `"error": null` on success. `QJsonObject::contains("error")` returns true for null values. Must check `response.value("error").isNull()` instead.
+
+### 24. AppImage sandbox hides system libraries from plugins
+Plugins loaded by `logos_host` inside the AppImage can't find system `.so` files. `LD_LIBRARY_PATH` is set to AppImage paths only. Bundle all transitive dependencies (e.g. `libpcsclite.so.1`) in the module directory and use `$ORIGIN` RPATH.
+
+### 25. Go signal callbacks don't cross logos_host IPC boundaries
+Go goroutine-based callbacks (like `KeycardSetSignalEventCallback`) fire on Go threads. In the logos_host plugin architecture, these don't reliably reach the Qt event loop. Use active RPC polling (`keycard.GetStatus`) instead of relying on push signals.
+
+### 26. CMake IMPORTED libraries embed full paths in NEEDED
+`add_library(IMPORTED)` with `IMPORTED_LOCATION` embeds the absolute build path as the `NEEDED` entry in the linked binary. Use `link_directories()` + link by name instead, so the binary gets a relative `NEEDED` entry that resolves via RPATH.
+
+### 27. install(CODE) must honor DESTDIR for staged builds
+`install(CODE)` blocks run post-install scripts. When referencing installed file paths, prefix with `$ENV{DESTDIR}` so staged installs (`DESTDIR=/tmp/staged cmake --install`) work correctly.
+
 ---
 
 ## Logos Developer Tools
@@ -313,7 +328,7 @@ Keycard (#33) and wallet (#32) are independent features — neither blocks the o
 #### Sub-issue tracker
 | # | Title | Branch | Status |
 |---|-------|--------|--------|
-| #34 | Reader detection + card state UI | `feature/keycard-reader-detection` | ✅ Code done, awaiting hardware test |
+| #34 | Reader detection + card state UI | merged to master | ✅ Complete — hardware verified, Codex LGTM |
 | #35 | PIN authorization + key export | — | Next |
 | #36 | Wire key into NotesBackend encryption | — | Blocked on #35 |
 | #37 | Keycard ↔ mnemonic migration path | — | Blocked on #36 |
