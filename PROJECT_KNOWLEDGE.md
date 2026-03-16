@@ -139,7 +139,7 @@ Q_INVOKABLE QString deleteNote(int id);
 
 1. **New Logos App repo**: `logos-co/logos-app` vs `logos-co/logos-app-poc` — is the new repo the successor? Need to check PluginInterface compatibility before v0.6.0 LGX work.
 2. **initLogos signature**: current code passes `LogosAPI*` but SDK headers may expect `QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
-3. **Social backup CID discovery**: Storage team confirmed web-of-trust approach is intended. Open question: how do peers discover latest CID? Via Logos Messaging? Signed latest-CID record? Awaiting response from bkomuves in Discord.
+3. **Social backup CID discovery**: fryorcraken (2026-03-15) suggests pushing CID to Waku or to the blockchain. Two options for Phase 3 Trust Network: (a) Waku message with latest CID signed by sender, (b) on-chain record. Waku is lighter-weight and already in the stack via chat module.
 4. **Logos Storage built-in encryption**: bkomuves mentioned automatic encryption may be built-in. Not yet implemented. Worth watching before Phase 2 design.
 5. **AppImage unblock**: three options identified — `QT_QML_NO_CACHEGEN=1`, `qt_deploy_qml_imports()`, or Nix bundle. Option 3 recommended. Not yet attempted.
 
