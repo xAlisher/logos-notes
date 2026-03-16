@@ -217,6 +217,30 @@ The bundler reads `metadata.json` from `drv.src + "/metadata.json"` at Nix eval 
 ### 18. Follow nixpkgs from logos-cpp-sdk for Qt compatibility
 The Logos ecosystem pins Qt via `nixpkgs.follows = "logos-cpp-sdk/nixpkgs"`. Our flake must follow the same chain. Mixing nixpkgs versions causes Qt ABI mismatches at runtime.
 
+### 19. initLogos must NOT use override
+`initLogos(LogosAPI*)` is called reflectively via `QMetaObject::invokeMethod`, not through virtual dispatch. Using `override` may cause it to not be found. LogosAPI pointer must be stored in the global `logosAPI` variable from `PluginInterface`, not in a class member.
+
+### 20. logos-module-builder simplifies builds
+The official `logos-module-builder` flake provides `mkLogosModule` + `module.yaml` — reduces ~300 lines of CMake+Nix to ~70 lines declarative config. Uses `logos_module()` CMake function. Worth migrating to for v1.1.0 (shared keycard-module). Scaffold with `nix flake init -t github:logos-co/logos-module-builder`.
+
+### 21. LogosResult for structured returns
+SDK provides `LogosResult` type with `success`, `getString()`, `getInt()`, `getMap()`, `getError()` — cleaner than our raw JSON string approach. Consider adopting for new methods.
+
+### 22. logos-cpp-generator for typed inter-module calls
+Auto-generates typed C++ wrappers from compiled modules. Instead of raw `invokeRemoteMethod("module", "method", args)`, get compile-time checked `logos->module.method(args)`. Important for v1.1.0 when keycard-module talks to notes.
+
+---
+
+## Logos Developer Tools
+
+| Tool | Purpose |
+|------|---------|
+| `lm` | Inspect compiled module binaries (metadata + method signatures) |
+| `logoscore` | Headless runtime — load modules and invoke methods from CLI without logos-app |
+| `lgpm` | Package manager CLI — install/list LGX packages |
+| `logos-cpp-generator` | Generate typed SDK wrappers from compiled modules |
+| `mkLogosModule` | Nix function — builds core modules from `module.yaml` |
+
 ---
 
 ## Logos Storage Research Notes
@@ -469,6 +493,7 @@ getRooms()
 | Chat UI reference | https://github.com/logos-co/logos-chat-ui |
 | Chat module reference | https://github.com/logos-co/logos-chat-module |
 | Template module | https://github.com/logos-co/logos-template-module |
+| Developer tutorial | https://github.com/logos-co/logos-tutorial |
 | C++ SDK | https://github.com/logos-co/logos-cpp-sdk |
 | Logos docs | https://github.com/logos-co/logos-docs |
 | Logos Storage | https://github.com/logos-storage/logos-storage-nim |
