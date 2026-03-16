@@ -57,8 +57,9 @@ bool KeycardBridge::start()
 
     QJsonObject response = rpcCall("keycard.Start", params);
 
-    if (response.contains("error")) {
-        qWarning() << "keycard: start failed:" << response["error"];
+    QJsonValue errVal = response.value("error");
+    if (!errVal.isNull() && !errVal.isUndefined()) {
+        qWarning() << "keycard: start failed:" << errVal;
         m_state = State::NoPCSC;
         emit stateChanged(m_state);
         return false;
@@ -108,8 +109,9 @@ bool KeycardBridge::authorize(const QString &pin)
 
     QJsonObject response = rpcCall("keycard.Authorize", params);
 
-    if (response.contains("error")) {
-        qWarning() << "keycard: authorize failed:" << response["error"];
+    QJsonValue authErr = response.value("error");
+    if (!authErr.isNull() && !authErr.isUndefined()) {
+        qWarning() << "keycard: authorize failed:" << authErr;
         return false;
     }
 
@@ -124,8 +126,9 @@ QByteArray KeycardBridge::exportKey(const QString &path)
     // ExportRecoverKeys returns master, wallet, and EIP-1581 keys
     QJsonObject response = rpcCall("keycard.ExportRecoverKeys");
 
-    if (response.contains("error")) {
-        qWarning() << "keycard: exportKey failed:" << response["error"];
+    QJsonValue exportErr = response.value("error");
+    if (!exportErr.isNull() && !exportErr.isUndefined()) {
+        qWarning() << "keycard: exportKey failed:" << exportErr;
         return {};
     }
 
@@ -139,6 +142,36 @@ QByteArray KeycardBridge::exportKey(const QString &path)
     }
 
     return QByteArray::fromHex(encKeyHex.toUtf8());
+}
+
+void KeycardBridge::pollStatus()
+{
+    // Always attempt RPC — m_running may have been set in a previous callModule invocation
+    QJsonObject response = rpcCall("keycard.GetStatus");
+
+    QJsonValue errVal = response.value("error");
+    if (!errVal.isNull() && !errVal.isUndefined()) {
+        qDebug() << "keycard: pollStatus error:" << errVal;
+        return;
+    }
+
+    QJsonObject result = response["result"].toObject();
+    QString stateStr = result["state"].toString();
+
+    if (stateStr.isEmpty()) {
+        qDebug() << "keycard: pollStatus empty state, response:" << response;
+        return;
+    }
+
+    // If we got a valid status, the RPC server is running
+    m_running = true;
+
+    State newState = parseState(stateStr);
+    if (newState != m_state) {
+        m_state = newState;
+        qDebug() << "keycard: polled state:" << stateStr << "->" << static_cast<int>(newState);
+        emit stateChanged(newState);
+    }
 }
 
 QJsonObject KeycardBridge::rpcCall(const QString &method, const QJsonObject &params)
@@ -188,16 +221,19 @@ void KeycardBridge::signalCallback(const char *jsonEvent)
 
 KeycardBridge::State KeycardBridge::parseState(const QString &stateStr)
 {
-    if (stateStr == "noPCSC")              return State::NoPCSC;
-    if (stateStr == "waitingForReader")    return State::WaitingForReader;
-    if (stateStr == "waitingForCard")      return State::WaitingForCard;
-    if (stateStr == "connectingCard")      return State::ConnectingCard;
-    if (stateStr == "connectionError")     return State::ConnectionError;
-    if (stateStr == "notKeycard")          return State::NotKeycard;
-    if (stateStr == "emptyKeycard")        return State::EmptyKeycard;
-    if (stateStr == "blockedPIN")          return State::BlockedPIN;
-    if (stateStr == "blockedPUK")          return State::BlockedPUK;
-    if (stateStr == "ready")               return State::Ready;
-    if (stateStr == "authorized")          return State::Authorized;
+    // Normalize: Go uses both "waitingForCard" (signals) and "waiting-for-card" (GetStatus)
+    QString s = stateStr.toLower().remove('-');
+
+    if (s == "nopcsc" || s == "nopcsc")    return State::NoPCSC;
+    if (s == "waitingforreader")           return State::WaitingForReader;
+    if (s == "waitingforcard")             return State::WaitingForCard;
+    if (s == "connectingcard")             return State::ConnectingCard;
+    if (s == "connectionerror")            return State::ConnectionError;
+    if (s == "notkeycard")                 return State::NotKeycard;
+    if (s == "emptykeycard")               return State::EmptyKeycard;
+    if (s == "blockedpin")                 return State::BlockedPIN;
+    if (s == "blockedpuk")                 return State::BlockedPUK;
+    if (s == "ready")                      return State::Ready;
+    if (s == "authorized")                 return State::Authorized;
     return State::Unknown;
 }

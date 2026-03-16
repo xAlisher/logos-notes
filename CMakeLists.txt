@@ -18,12 +18,10 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(sodium REQUIRED IMPORTED_TARGET libsodium)
 
 # ── libkeycard (status-keycard-go, compiled via CGO) ─────────────────────────
+# Link by name (-lkeycard) so the NEEDED entry is "libkeycard.so" not a full path.
+# At runtime, $ORIGIN RPATH resolves it from the same directory as notes_plugin.so.
 set(KEYCARD_LIB_DIR "${CMAKE_SOURCE_DIR}/lib/keycard")
-add_library(keycard SHARED IMPORTED)
-set_target_properties(keycard PROPERTIES
-    IMPORTED_LOCATION "${KEYCARD_LIB_DIR}/libkeycard.so"
-    INTERFACE_INCLUDE_DIRECTORIES "${KEYCARD_LIB_DIR}"
-)
+link_directories("${KEYCARD_LIB_DIR}")
 
 # ── Sources ──────────────────────────────────────────────────────────────────
 set(SOURCES
@@ -65,7 +63,7 @@ target_link_libraries(logos-notes PRIVATE
     keycard
 )
 
-target_include_directories(logos-notes PRIVATE src)
+target_include_directories(logos-notes PRIVATE src "${KEYCARD_LIB_DIR}")
 
 # ── Logos Design System ──────────────────────────────────────────────────────
 # Permanent path in nix store — set QML_IMPORT_PATH at runtime for standalone runs:
@@ -130,6 +128,7 @@ set_target_properties(notes_plugin PROPERTIES
 
 target_include_directories(notes_plugin PRIVATE
     src
+    "${KEYCARD_LIB_DIR}"
     "${LOGOS_LIBLOGOS_HEADERS}"
     "${LOGOS_CPP_SDK}/include"
     "${LOGOS_CPP_SDK}/include/cpp"
@@ -142,6 +141,12 @@ target_link_libraries(notes_plugin PRIVATE
     PkgConfig::sodium
     "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
     keycard
+)
+
+# Ensure $ORIGIN RPATH so notes_plugin.so finds libkeycard.so in same directory
+set_target_properties(notes_plugin PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
 )
 
 # Q_PLUGIN_METADATA(FILE "plugin_metadata.json") resolves relative to the

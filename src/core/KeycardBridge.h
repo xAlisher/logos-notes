@@ -46,6 +46,9 @@ public:
     // Whether the bridge is actively monitoring.
     bool isRunning() const { return m_running; }
 
+    // Actively query the Go RPC for current state (updates cached state).
+    void pollStatus();
+
     // Authorize with PIN. Returns true on success.
     // On failure, sets error state (wrong PIN, blocked, etc.)
     bool authorize(const QString &pin);

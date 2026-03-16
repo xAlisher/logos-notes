@@ -660,8 +660,11 @@ QString NotesBackend::stopKeycardDetection()
     return QStringLiteral("ok");
 }
 
-QString NotesBackend::getKeycardState() const
+QString NotesBackend::getKeycardState()
 {
+    // Actively poll the Go RPC for current state (signal callbacks may not work cross-thread)
+    m_keycard.pollStatus();
+
     QJsonObject obj;
     obj["state"] = keycardState();
     obj["status"] = m_keycard.statusText();

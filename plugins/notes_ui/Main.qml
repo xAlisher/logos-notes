@@ -62,11 +62,14 @@ Item {
         onTriggered: {
             if (typeof logos === "undefined" || !logos.callModule) return
             var json = logos.callModule("notes", "getKeycardState", [])
+            root.keycardStatus = "raw: " + json
             try {
                 var obj = JSON.parse(json)
                 root.keycardState = obj.state || "unknown"
-                root.keycardStatus = obj.status || ""
-            } catch(e) {}
+                root.keycardStatus = obj.state + " | " + obj.status
+            } catch(e) {
+                root.keycardStatus = "parse error: " + json
+            }
         }
     }
 
