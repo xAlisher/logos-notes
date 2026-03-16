@@ -6,6 +6,7 @@
 #include "CryptoManager.h"
 #include "DatabaseManager.h"
 #include "KeyManager.h"
+#include "KeycardBridge.h"
 
 // QML-facing backend. Registered as a context property "backend".
 // Drives screen navigation and note persistence.
@@ -15,12 +16,21 @@ class NotesBackend : public QObject
 
     Q_PROPERTY(QString currentScreen READ currentScreen NOTIFY currentScreenChanged)
     Q_PROPERTY(QString errorMessage  READ errorMessage  NOTIFY errorMessageChanged)
+    Q_PROPERTY(QString keycardState  READ keycardState  NOTIFY keycardStateChanged)
+    Q_PROPERTY(QString keycardStatus READ keycardStatusText NOTIFY keycardStateChanged)
 
 public:
     explicit NotesBackend(QObject *parent = nullptr);
 
     QString currentScreen() const;
     QString errorMessage()  const;
+    QString keycardState()  const;
+    QString keycardStatusText() const;
+
+    // Keycard reader detection
+    Q_INVOKABLE QString startKeycardDetection();
+    Q_INVOKABLE QString stopKeycardDetection();
+    Q_INVOKABLE QString getKeycardState();
 
     // Called from ImportScreen: validate mnemonic + PIN, derive key, save state.
     Q_INVOKABLE void importMnemonic(const QString &mnemonic,
@@ -73,14 +83,16 @@ public:
 signals:
     void currentScreenChanged();
     void errorMessageChanged();
+    void keycardStateChanged();
 
 private:
     void setScreen(const QString &screen);
     void setError(const QString &msg);
 
-    CryptoManager  m_crypto;
+    CryptoManager   m_crypto;
     DatabaseManager m_db;
     KeyManager      m_keys;
+    KeycardBridge   m_keycard;
 
     QString m_currentScreen;
     QString m_errorMessage;

@@ -17,6 +17,12 @@ qt_policy(SET QTP0004 NEW)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(sodium REQUIRED IMPORTED_TARGET libsodium)
 
+# ── libkeycard (status-keycard-go, compiled via CGO) ─────────────────────────
+# Link by name (-lkeycard) so the NEEDED entry is "libkeycard.so" not a full path.
+# At runtime, $ORIGIN RPATH resolves it from the same directory as notes_plugin.so.
+set(KEYCARD_LIB_DIR "${CMAKE_SOURCE_DIR}/lib/keycard")
+link_directories("${KEYCARD_LIB_DIR}")
+
 # ── Sources ──────────────────────────────────────────────────────────────────
 set(SOURCES
     src/main.cpp
@@ -28,6 +34,8 @@ set(SOURCES
     src/core/DatabaseManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/KeycardBridge.h
+    src/core/KeycardBridge.cpp
 )
 
 qt_add_executable(logos-notes ${SOURCES})
@@ -52,9 +60,10 @@ target_link_libraries(logos-notes PRIVATE
     Qt6::QuickControls2
     Qt6::Sql
     PkgConfig::sodium
+    keycard
 )
 
-target_include_directories(logos-notes PRIVATE src)
+target_include_directories(logos-notes PRIVATE src "${KEYCARD_LIB_DIR}")
 
 # ── Logos Design System ──────────────────────────────────────────────────────
 # Permanent path in nix store — set QML_IMPORT_PATH at runtime for standalone runs:
@@ -102,6 +111,8 @@ set(PLUGIN_SOURCES
     src/core/DatabaseManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/KeycardBridge.h
+    src/core/KeycardBridge.cpp
 )
 
 add_library(notes_plugin MODULE ${PLUGIN_SOURCES})
@@ -117,6 +128,7 @@ set_target_properties(notes_plugin PROPERTIES
 
 target_include_directories(notes_plugin PRIVATE
     src
+    "${KEYCARD_LIB_DIR}"
     "${LOGOS_LIBLOGOS_HEADERS}"
     "${LOGOS_CPP_SDK}/include"
     "${LOGOS_CPP_SDK}/include/cpp"
@@ -128,6 +140,13 @@ target_link_libraries(notes_plugin PRIVATE
     Qt6::Sql
     PkgConfig::sodium
     "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
+    keycard
+)
+
+# Ensure $ORIGIN RPATH so notes_plugin.so finds libkeycard.so in same directory
+set_target_properties(notes_plugin PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
 )
 
 # Q_PLUGIN_METADATA(FILE "plugin_metadata.json") resolves relative to the
@@ -142,104 +161,51 @@ configure_file(
 enable_testing()
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
-add_executable(test_multi_note
-    tests/test_multi_note.cpp
+# Common core sources shared by all test targets
+set(TEST_CORE_SOURCES
     src/core/DatabaseManager.h
     src/core/DatabaseManager.cpp
     src/core/CryptoManager.h
     src/core/CryptoManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/KeycardBridge.h
+    src/core/KeycardBridge.cpp
     src/core/NotesBackend.h
     src/core/NotesBackend.cpp
 )
-target_include_directories(test_multi_note PRIVATE src)
-target_link_libraries(test_multi_note PRIVATE
+
+set(TEST_CORE_LIBS
     Qt6::Core
     Qt6::Test
     Qt6::Sql
     PkgConfig::sodium
+    keycard
 )
+
+add_executable(test_multi_note tests/test_multi_note.cpp ${TEST_CORE_SOURCES})
+target_include_directories(test_multi_note PRIVATE src)
+target_link_libraries(test_multi_note PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_multi_note COMMAND test_multi_note)
 
-add_executable(test_security
-    tests/test_security.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_security tests/test_security.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_security PRIVATE src)
-target_link_libraries(test_security PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_security PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_security COMMAND test_security)
 
-add_executable(test_backup
-    tests/test_backup.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_backup tests/test_backup.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_backup PRIVATE src)
-target_link_libraries(test_backup PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_backup PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_backup COMMAND test_backup)
 
-add_executable(test_account
-    tests/test_account.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_account tests/test_account.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_account PRIVATE src)
-target_link_libraries(test_account PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_account PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_account COMMAND test_account)
 
-add_executable(test_note_api
-    tests/test_note_api.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
-)
+add_executable(test_note_api tests/test_note_api.cpp ${TEST_CORE_SOURCES})
 target_include_directories(test_note_api PRIVATE src)
-target_link_libraries(test_note_api PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_note_api PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_note_api COMMAND test_note_api)
 
 add_executable(test_plugin
@@ -248,14 +214,7 @@ add_executable(test_plugin
     "${LOGOS_CPP_SDK}/include/cpp/logos_api.h"
     src/plugin/NotesPlugin.h
     src/plugin/NotesPlugin.cpp
-    src/core/DatabaseManager.h
-    src/core/DatabaseManager.cpp
-    src/core/CryptoManager.h
-    src/core/CryptoManager.cpp
-    src/core/KeyManager.h
-    src/core/KeyManager.cpp
-    src/core/NotesBackend.h
-    src/core/NotesBackend.cpp
+    ${TEST_CORE_SOURCES}
 )
 target_include_directories(test_plugin PRIVATE
     src
@@ -264,12 +223,7 @@ target_include_directories(test_plugin PRIVATE
     "${LOGOS_CPP_SDK}/include/cpp"
     "${LOGOS_CPP_SDK}/include/core"
 )
-target_link_libraries(test_plugin PRIVATE
-    Qt6::Core
-    Qt6::Test
-    Qt6::Sql
-    PkgConfig::sodium
-)
+target_link_libraries(test_plugin PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_plugin COMMAND test_plugin)
 
 # ── Install ───────────────────────────────────────────────────────────────────
@@ -286,6 +240,37 @@ install(TARGETS notes_plugin
 install(FILES modules/notes/manifest.json
     DESTINATION "${NOTES_MODULE_DIR}"
 )
+install(FILES lib/keycard/libkeycard.so
+    DESTINATION "${NOTES_MODULE_DIR}"
+)
+
+# Bundle libpcsclite alongside libkeycard so the module is self-contained.
+# libkeycard.so links against libpcsclite.so.1 — inside the AppImage sandbox
+# the system library path isn't available, so we ship a copy.
+# Find the system libpcsclite.so.1 (not the dev symlink — may not exist)
+find_file(PCSCLITE_SO "libpcsclite.so.1"
+    PATHS /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu /lib /usr/lib
+    NO_DEFAULT_PATH
+)
+if(PCSCLITE_SO)
+    get_filename_component(PCSCLITE_REAL "${PCSCLITE_SO}" REALPATH)
+    install(FILES "${PCSCLITE_REAL}"
+        DESTINATION "${NOTES_MODULE_DIR}"
+        RENAME "libpcsclite.so.1"
+    )
+else()
+    message(WARNING "libpcsclite.so.1 not found — Keycard will not work in AppImage without it")
+endif()
+
+# Fix RPATH on installed libkeycard.so so it finds libpcsclite.so.1 in $ORIGIN.
+# Use $ENV{DESTDIR} to honor staged installs (e.g. DESTDIR=/tmp/staged cmake --install).
+install(CODE "
+    set(_dest \"\$ENV{DESTDIR}${NOTES_MODULE_DIR}/libkeycard.so\")
+    execute_process(
+        COMMAND patchelf --set-rpath \$ORIGIN \"\${_dest}\"
+        ERROR_QUIET
+    )
+")
 install(FILES
     plugins/notes_ui/manifest.json
     plugins/notes_ui/metadata.json

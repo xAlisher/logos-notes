@@ -137,6 +137,74 @@ Item {
             }
         }
 
+        // ── Keycard section ────────────────────────────────────
+        Rectangle {
+            Layout.fillWidth: true
+            height: 1
+            color: Theme.palette.backgroundElevated
+            Layout.topMargin: 4
+            Layout.bottomMargin: 4
+        }
+
+        LogosText {
+            Layout.fillWidth: true
+            text: "or"
+            color: Theme.palette.textPlaceholder
+            font.pixelSize: Theme.typography.secondaryText
+            horizontalAlignment: Text.AlignHCenter
+        }
+
+        LogosButton {
+            Layout.fillWidth: true
+            text: {
+                if (!keycardDetecting) return "Connect Keycard"
+                var st = backend.keycardState
+                if (st === "ready" || st === "authorized") return "Keycard Detected"
+                if (st === "waitingForCard") return "Insert Keycard..."
+                if (st === "waitingForReader") return "Connect Reader..."
+                if (st === "connectingCard") return "Connecting..."
+                return "Detecting..."
+            }
+            onClicked: {
+                if (!keycardDetecting) {
+                    backend.startKeycardDetection()
+                    keycardDetecting = true
+                }
+            }
+            background: Rectangle {
+                color: {
+                    var st = backend.keycardState
+                    if (st === "ready" || st === "authorized") return "#22c55e"
+                    return parent.isActive ? "#3a3a3a" : Theme.palette.backgroundSecondary
+                }
+                radius: Theme.spacing.radiusXlarge
+                border.width: 1
+                border.color: {
+                    var st = backend.keycardState
+                    if (st === "ready" || st === "authorized") return "#22c55e"
+                    return Theme.palette.backgroundElevated
+                }
+            }
+        }
+
+        LogosText {
+            Layout.fillWidth: true
+            text: backend.keycardStatus
+            color: {
+                var st = backend.keycardState
+                if (st === "ready" || st === "authorized") return "#22c55e"
+                if (st === "emptyKeycard" || st === "blockedPIN" || st === "blockedPUK"
+                    || st === "notKeycard" || st === "connectionError" || st === "noPCSC")
+                    return Theme.palette.error
+                return Theme.palette.textPlaceholder
+            }
+            font.pixelSize: 11
+            visible: keycardDetecting && backend.keycardStatus.length > 0
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+        }
+        // ── End Keycard section ───────────────────────────────────
+
         LogosText {
             id: restoreStatus
             Layout.fillWidth: true
@@ -169,7 +237,8 @@ Item {
     // Store pending backup path — restored after import succeeds.
     // Reset on every load (Loader recreates, but explicit is safer).
     property string pendingBackupPath: ""
-    Component.onCompleted: { pendingBackupPath = ""; restoreStatus.text = "" }
+    property bool keycardDetecting: false
+    Component.onCompleted: { pendingBackupPath = ""; restoreStatus.text = ""; keycardDetecting = false }
 
     FileDialog {
         id: restoreDialog

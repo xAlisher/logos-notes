@@ -616,3 +616,58 @@ void NotesBackend::setError(const QString &msg)
         emit errorMessageChanged();
     }
 }
+
+// ── Keycard ──────────────────────────────────────────────────────────────────
+
+QString NotesBackend::keycardState() const
+{
+    switch (m_keycard.state()) {
+    case KeycardBridge::State::Unknown:          return "unknown";
+    case KeycardBridge::State::NoPCSC:           return "noPCSC";
+    case KeycardBridge::State::WaitingForReader: return "waitingForReader";
+    case KeycardBridge::State::WaitingForCard:   return "waitingForCard";
+    case KeycardBridge::State::ConnectingCard:   return "connectingCard";
+    case KeycardBridge::State::ConnectionError:  return "connectionError";
+    case KeycardBridge::State::NotKeycard:       return "notKeycard";
+    case KeycardBridge::State::EmptyKeycard:     return "emptyKeycard";
+    case KeycardBridge::State::BlockedPIN:       return "blockedPIN";
+    case KeycardBridge::State::BlockedPUK:       return "blockedPUK";
+    case KeycardBridge::State::Ready:            return "ready";
+    case KeycardBridge::State::Authorized:       return "authorized";
+    }
+    return "unknown";
+}
+
+QString NotesBackend::keycardStatusText() const
+{
+    return m_keycard.statusText();
+}
+
+QString NotesBackend::startKeycardDetection()
+{
+    connect(&m_keycard, &KeycardBridge::stateChanged,
+            this, &NotesBackend::keycardStateChanged,
+            Qt::UniqueConnection);
+
+    if (m_keycard.start())
+        return QStringLiteral("ok");
+    return m_keycard.statusText();
+}
+
+QString NotesBackend::stopKeycardDetection()
+{
+    m_keycard.stop();
+    return QStringLiteral("ok");
+}
+
+QString NotesBackend::getKeycardState()
+{
+    // Actively poll the Go RPC for current state (signal callbacks may not work cross-thread)
+    m_keycard.pollStatus();
+
+    QJsonObject obj;
+    obj["state"] = keycardState();
+    obj["status"] = m_keycard.statusText();
+    obj["running"] = m_keycard.isRunning();
+    return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}

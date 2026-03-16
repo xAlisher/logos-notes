@@ -40,7 +40,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 |---------|-------------|--------|
 | v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
-| v1.0.0 | Keycard hardware key derivation | Planned — USB reader arriving |
+| v1.0.0 | Keycard hardware key derivation | In progress — Sub-1 done, awaiting hardware test |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
@@ -139,7 +139,7 @@ Q_INVOKABLE QString deleteNote(int id);
 
 1. **New Logos App repo**: `logos-co/logos-app` vs `logos-co/logos-app-poc` — is the new repo the successor? Need to check PluginInterface compatibility before v0.6.0 LGX work.
 2. **initLogos signature**: current code passes `LogosAPI*` but SDK headers may expect `QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
-3. **Social backup CID discovery**: Storage team confirmed web-of-trust approach is intended. Open question: how do peers discover latest CID? Via Logos Messaging? Signed latest-CID record? Awaiting response from bkomuves in Discord.
+3. **Social backup CID discovery**: ✅ Resolved. bkomuves (2026-03-16): CIDs are shared out-of-band, no protocol-level directory service (privacy). fryorcraken suggested Waku or blockchain, but blockchain is a public directory — ruled out. **Decision: Waku direct messages between trusted peers only.** App sends signed CID to each trusted peer via Logos Messaging. No public lookup.
 4. **Logos Storage built-in encryption**: bkomuves mentioned automatic encryption may be built-in. Not yet implemented. Worth watching before Phase 2 design.
 5. **AppImage unblock**: three options identified — `QT_QML_NO_CACHEGEN=1`, `qt_deploy_qml_imports()`, or Nix bundle. Option 3 recommended. Not yet attempted.
 
@@ -217,6 +217,30 @@ The bundler reads `metadata.json` from `drv.src + "/metadata.json"` at Nix eval 
 ### 18. Follow nixpkgs from logos-cpp-sdk for Qt compatibility
 The Logos ecosystem pins Qt via `nixpkgs.follows = "logos-cpp-sdk/nixpkgs"`. Our flake must follow the same chain. Mixing nixpkgs versions causes Qt ABI mismatches at runtime.
 
+### 19. initLogos must NOT use override
+`initLogos(LogosAPI*)` is called reflectively via `QMetaObject::invokeMethod`, not through virtual dispatch. Using `override` may cause it to not be found. LogosAPI pointer must be stored in the global `logosAPI` variable from `PluginInterface`, not in a class member.
+
+### 20. logos-module-builder simplifies builds
+The official `logos-module-builder` flake provides `mkLogosModule` + `module.yaml` — reduces ~300 lines of CMake+Nix to ~70 lines declarative config. Uses `logos_module()` CMake function. Worth migrating to for v1.1.0 (shared keycard-module). Scaffold with `nix flake init -t github:logos-co/logos-module-builder`.
+
+### 21. LogosResult for structured returns
+SDK provides `LogosResult` type with `success`, `getString()`, `getInt()`, `getMap()`, `getError()` — cleaner than our raw JSON string approach. Consider adopting for new methods.
+
+### 22. logos-cpp-generator for typed inter-module calls
+Auto-generates typed C++ wrappers from compiled modules. Instead of raw `invokeRemoteMethod("module", "method", args)`, get compile-time checked `logos->module.method(args)`. Important for v1.1.0 when keycard-module talks to notes.
+
+---
+
+## Logos Developer Tools
+
+| Tool | Purpose |
+|------|---------|
+| `lm` | Inspect compiled module binaries (metadata + method signatures) |
+| `logoscore` | Headless runtime — load modules and invoke methods from CLI without logos-app |
+| `lgpm` | Package manager CLI — install/list LGX packages |
+| `logos-cpp-generator` | Generate typed SDK wrappers from compiled modules |
+| `mkLogosModule` | Nix function — builds core modules from `module.yaml` |
+
 ---
 
 ## Logos Storage Research Notes
@@ -277,11 +301,22 @@ Keycard (#33) and wallet (#32) are independent features — neither blocks the o
 ### Keycard integration (v1.0.0)
 
 - Hardware: Status Keycard (ISO 7816) + USB PC/SC reader
-- Library: `status-keycard-go` compiled as `libkeycard.so`, thin C++ wrapper
+- Library: `status-keycard-go` compiled as `libkeycard.so`, thin C++ wrapper (`KeycardBridge`)
 - Key derivation: BIP44 path `m/43'/60'/1581'` (EIP-1581 encryption root)
 - Note: Keycard uses secp256k1, current fingerprint uses Ed25519 — need domain separation
 - Phase 1: link into notes_plugin directly. Phase 2: extract shared keycard-module for ecosystem.
 - Reference: `~/status-desktop/vendor/status-keycard-go/` and `vendor/status-keycard-qt/`
+- Build: `scripts/build-libkeycard.sh` compiles Go → `lib/keycard/libkeycard.so`
+- C API: `KeycardInitializeRPC()`, `KeycardCallRPC()`, `KeycardSetSignalEventCallback()`, `Free()`
+- JSON-RPC methods: `keycard.Start`, `keycard.Stop`, `keycard.GetStatus`, `keycard.Authorize`, `keycard.ExportRecoverKeys`
+
+#### Sub-issue tracker
+| # | Title | Branch | Status |
+|---|-------|--------|--------|
+| #34 | Reader detection + card state UI | `feature/keycard-reader-detection` | ✅ Code done, awaiting hardware test |
+| #35 | PIN authorization + key export | — | Next |
+| #36 | Wire key into NotesBackend encryption | — | Blocked on #35 |
+| #37 | Keycard ↔ mnemonic migration path | — | Blocked on #36 |
 
 ### Wallet integration (v0.7.0+)
 
@@ -458,6 +493,7 @@ getRooms()
 | Chat UI reference | https://github.com/logos-co/logos-chat-ui |
 | Chat module reference | https://github.com/logos-co/logos-chat-module |
 | Template module | https://github.com/logos-co/logos-template-module |
+| Developer tutorial | https://github.com/logos-co/logos-tutorial |
 | C++ SDK | https://github.com/logos-co/logos-cpp-sdk |
 | Logos docs | https://github.com/logos-co/logos-docs |
 | Logos Storage | https://github.com/logos-storage/logos-storage-nim |
