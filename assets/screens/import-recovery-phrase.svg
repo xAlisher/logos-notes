@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="700" viewBox="0 0 480 700">
+  <rect width="480" height="700" fill="#171717"/>
+
+  <!-- Title -->
+  <text x="240" y="60" text-anchor="middle" font-family="Inter, sans-serif" font-size="30" font-weight="700" fill="#FFFFFF">Import</text>
+
+  <!-- Tab bar -->
+  <g transform="translate(30, 85)">
+    <rect x="0" y="0" width="140" height="36" rx="8" fill="transparent"/>
+    <text x="70" y="23" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF">Recovery Phrase</text>
+
+    <rect x="140" y="0" width="140" height="36" rx="8" fill="transparent"/>
+    <text x="210" y="23" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Keycard</text>
+
+    <rect x="280" y="0" width="140" height="36" rx="8" fill="transparent"/>
+    <text x="350" y="23" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#717784">Logos Wallet</text>
+  </g>
+
+  <!-- Active tab indicator -->
+  <rect x="30" y="85" width="140" height="36" rx="8" fill="#262626" stroke="#434343" stroke-width="1"/>
+  <text x="100" y="108" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" font-weight="700" fill="#FFFFFF">Recovery Phrase</text>
+
+  <!-- Recovery phrase label -->
+  <text x="30" y="155" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Recovery phrase</text>
+
+  <!-- Mnemonic input -->
+  <rect x="30" y="165" width="420" height="100" rx="4" fill="#262626" stroke="#0E121B" stroke-width="1"/>
+  <text x="42" y="195" font-family="Inter, sans-serif" font-size="12" fill="#717784">Enter 12 or 24 word recovery phrase</text>
+
+  <!-- PIN label -->
+  <text x="30" y="295" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">PIN</text>
+
+  <!-- PIN field -->
+  <rect x="30" y="305" width="420" height="44" rx="4" fill="#262626" stroke="#0E121B" stroke-width="1"/>
+  <text x="42" y="332" font-family="Inter, sans-serif" font-size="14" fill="#717784">PIN (min 6 characters)</text>
+
+  <!-- Confirm PIN label -->
+  <text x="30" y="379" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Confirm PIN</text>
+
+  <!-- Confirm PIN field -->
+  <rect x="30" y="389" width="420" height="44" rx="4" fill="#262626" stroke="#0E121B" stroke-width="1"/>
+  <text x="42" y="416" font-family="Inter, sans-serif" font-size="14" fill="#717784">Confirm PIN</text>
+
+  <!-- Import button -->
+  <rect x="30" y="460" width="420" height="44" rx="16" fill="#ED7B58"/>
+  <text x="240" y="487" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#FFFFFF">Import</text>
+
+  <!-- Restore from backup link -->
+  <text x="240" y="535" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Restore from backup</text>
+</svg>

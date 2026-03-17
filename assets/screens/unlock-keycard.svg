@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="500" viewBox="0 0 480 500">
+  <rect width="480" height="500" fill="#171717"/>
+
+  <!-- Title -->
+  <text x="240" y="80" text-anchor="middle" font-family="Inter, sans-serif" font-size="30" font-weight="700" fill="#FFFFFF">Unlock</text>
+
+  <!-- Fingerprint -->
+  <text x="240" y="110" text-anchor="middle" font-family="Courier New, monospace" font-size="11" fill="#717784">588ad41ac631ec52</text>
+
+  <!-- Insert Keycard instruction -->
+  <text x="240" y="155" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Insert Keycard and enter PIN</text>
+
+  <!-- Keycard status -->
+  <text x="240" y="180" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#22c55e">Keycard detected — enter PIN</text>
+
+  <!-- Keycard PIN field -->
+  <rect x="80" y="200" width="320" height="44" rx="4" fill="#262626" stroke="#FF8800" stroke-width="1"/>
+  <text x="92" y="227" font-family="Inter, sans-serif" font-size="14" fill="#717784">Keycard PIN</text>
+
+  <!-- Unlock with Keycard button -->
+  <rect x="80" y="270" width="320" height="44" rx="16" fill="#ED7B58"/>
+  <text x="240" y="297" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#FFFFFF">Unlock with Keycard</text>
+</svg>

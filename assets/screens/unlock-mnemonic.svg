@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="500" viewBox="0 0 480 500">
+  <rect width="480" height="500" fill="#171717"/>
+
+  <!-- Title -->
+  <text x="240" y="80" text-anchor="middle" font-family="Inter, sans-serif" font-size="30" font-weight="700" fill="#FFFFFF">Unlock</text>
+
+  <!-- Fingerprint -->
+  <text x="240" y="110" text-anchor="middle" font-family="Courier New, monospace" font-size="11" fill="#717784">588ad41ac631ec52</text>
+
+  <!-- PIN label -->
+  <text x="80" y="155" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">PIN</text>
+
+  <!-- PIN field -->
+  <rect x="80" y="165" width="320" height="44" rx="4" fill="#262626" stroke="#0E121B" stroke-width="1"/>
+  <text x="92" y="192" font-family="Inter, sans-serif" font-size="14" fill="#717784">Enter PIN</text>
+
+  <!-- Unlock button -->
+  <rect x="80" y="235" width="320" height="44" rx="16" fill="#ED7B58"/>
+  <text x="240" y="262" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#FFFFFF">Unlock</text>
+</svg>

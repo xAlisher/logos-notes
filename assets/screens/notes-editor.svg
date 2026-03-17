@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#171717"/>
+
+  <!-- Sidebar -->
+  <rect x="0" y="0" width="220" height="600" fill="#262626"/>
+
+  <!-- New Note button -->
+  <rect x="0" y="0" width="220" height="40" fill="transparent"/>
+  <text x="110" y="25" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#ED7B58">+ New Note</text>
+
+  <!-- Note list items -->
+  <!-- Active note -->
+  <rect x="0" y="40" width="220" height="56" fill="transparent"/>
+  <rect x="0" y="40" width="3" height="56" fill="#FF8800"/>
+  <text x="16" y="62" font-family="Inter, sans-serif" font-size="13" fill="#FFFFFF">Meeting Notes</text>
+  <text x="16" y="80" font-family="Inter, sans-serif" font-size="11" fill="#717784">2m ago</text>
+
+  <!-- Second note -->
+  <rect x="0" y="96" width="220" height="56" fill="transparent"/>
+  <text x="16" y="118" font-family="Inter, sans-serif" font-size="13" fill="#A4A4A4">Shopping List</text>
+  <text x="16" y="136" font-family="Inter, sans-serif" font-size="11" fill="#717784">1h ago</text>
+
+  <!-- Third note -->
+  <rect x="0" y="152" width="220" height="56" fill="transparent"/>
+  <text x="16" y="174" font-family="Inter, sans-serif" font-size="13" fill="#A4A4A4">Project Ideas</text>
+  <text x="16" y="192" font-family="Inter, sans-serif" font-size="11" fill="#717784">3h ago</text>
+
+  <!-- Sidebar bottom bar -->
+  <rect x="0" y="556" width="220" height="44" fill="#262626"/>
+  <text x="75" y="583" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Settings</text>
+  <text x="155" y="583" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#ED7B58">Lock</text>
+
+  <!-- Editor area -->
+  <text x="250" y="50" font-family="Courier New, monospace" font-size="14" fill="#FFFFFF">Meeting Notes</text>
+  <text x="250" y="80" font-family="Courier New, monospace" font-size="14" fill="#FFFFFF">==============</text>
+  <text x="250" y="110" font-family="Courier New, monospace" font-size="14" fill="#FFFFFF"></text>
+  <text x="250" y="140" font-family="Courier New, monospace" font-size="14" fill="#FFFFFF">Discuss Keycard integration timeline</text>
+  <text x="250" y="170" font-family="Courier New, monospace" font-size="14" fill="#FFFFFF">Review backup encryption approach</text>
+  <text x="250" y="200" font-family="Courier New, monospace" font-size="14" fill="#FFFFFF">Plan Trust Network phase</text>
+
+  <!-- Cursor blink line -->
+  <rect x="476" y="188" width="1" height="16" fill="#FF8800"/>
+
+  <!-- Placeholder for empty state -->
+  <!-- <text x="510" y="300" text-anchor="middle" font-family="Courier New, monospace" font-size="14" fill="#717784" opacity="0.6">Start writing...</text> -->
+</svg>

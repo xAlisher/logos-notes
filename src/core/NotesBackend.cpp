@@ -668,7 +668,7 @@ void NotesBackend::importFromKeycard(const QString &keycardPin)
         if (remaining == 0)
             setError("PIN blocked — use PUK to unblock");
         else if (remaining > 0)
-            setError(QString("Wrong PIN — %1 attempts remaining").arg(remaining));
+            setError(QString("Wrong PIN. %1 attempts left").arg(remaining));
         else
             setError(authResult["error"].toString("Keycard authorization failed"));
         return;
@@ -716,7 +716,7 @@ void NotesBackend::unlockWithKeycard(const QString &keycardPin)
         if (remaining == 0)
             setError("PIN blocked — use PUK to unblock");
         else if (remaining > 0)
-            setError(QString("Wrong PIN — %1 attempts remaining").arg(remaining));
+            setError(QString("Wrong PIN. %1 attempts left").arg(remaining));
         else
             setError(authResult["error"].toString("Keycard authorization failed"));
         return;
@@ -742,7 +742,7 @@ void NotesBackend::unlockWithKeycard(const QString &keycardPin)
     QString derivedFp = deriveFingerprintFromKey(masterKey.ref());
     QString storedFp = m_db.loadMeta("account_fingerprint", "");
     if (!storedFp.isEmpty() && derivedFp != storedFp) {
-        setError("Wrong Keycard. This account was created with a different card.");
+        setError("Wrong keys. Try different Keycard.");
         sodium_memzero(cardKey.data(), cardKey.size());
         return;
     }
