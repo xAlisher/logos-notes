@@ -323,6 +323,7 @@ Item {
                     var parsed = JSON.parse(result)
                     if (parsed.success) {
                         root.keySource = "keycard"
+                        root.restoreWarning = parsed.warning || ""
                         root.currentScreen = "note"
                     } else {
                         root.errorMessage = parsed.error || "Failed to create database"

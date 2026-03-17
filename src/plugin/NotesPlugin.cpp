@@ -172,8 +172,15 @@ QString NotesPlugin::importFromKeycard(const QString& keycardPin,
 {
     m_backend.importFromKeycard(keycardPin, backupPath);
 
-    if (m_backend.currentScreen() == QStringLiteral("note"))
+    if (m_backend.currentScreen() == QStringLiteral("note")) {
+        // Surface partial restore warning if any (same pattern as importMnemonic)
+        QString warning = m_backend.errorMessage();
+        if (!warning.isEmpty()) {
+            return QStringLiteral("{\"success\":true,\"warning\":\"")
+                   + warning.replace('"', '\'') + QStringLiteral("\"}");
+        }
         return successJson();
+    }
 
     return errorJson(m_backend.errorMessage());
 }

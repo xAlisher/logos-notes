@@ -714,12 +714,12 @@ void NotesBackend::importFromKeycard(const QString &keycardPin,
         int failedCount = parsed.value("failed").toInt(0);
         if (failedCount > 0) {
             int restoredCount = parsed.value("imported").toInt();
-            setError(QString("Restored %1 note(s), %2 failed.").arg(restoredCount).arg(failedCount));
+            // Set warning — don't clear it, plugin will pass it through
+            setError(QString("Restored %1 note(s), %2 failed to restore.").arg(restoredCount).arg(failedCount));
         }
     }
 
     m_db.setInitialized();
-    setError({});
     setScreen("note");
 }
 
