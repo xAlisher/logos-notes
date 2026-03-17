@@ -139,7 +139,14 @@ Q_INVOKABLE QString deleteNote(int id);
 
 1. **New Logos App repo**: `logos-co/logos-app` vs `logos-co/logos-app-poc` — is the new repo the successor? Need to check PluginInterface compatibility before v0.6.0 LGX work.
 2. **initLogos signature**: current code passes `LogosAPI*` but SDK headers may expect `QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
-3. **Social backup CID discovery**: ✅ Resolved. bkomuves (2026-03-16): CIDs are shared out-of-band, no protocol-level directory service (privacy). fryorcraken suggested Waku or blockchain, but blockchain is a public directory — ruled out. **Decision: Waku direct messages between trusted peers only.** App sends signed CID to each trusted peer via Logos Messaging. No public lookup.
+3. **Social backup CID discovery**: ✅ Resolved with depth. Giuliano (2026-03-17) provided detailed guidance:
+   - **Permissioned groups required** — can't be permissionless or you get abuse. Trust group members by construction.
+   - **Rolling updates** (new blob replaces old) looks like Status' historical message archives. No built-in "latest CID" lookup.
+   - **CID delivery options**: (a) Waku messaging with MVDS/SDS for reliable delay-tolerant delivery, or (b) request/response protocol on join — broadcast ask, get CID replies. Not expensive for small groups. (c) On-chain CID placement if you don't mind gas (gasless chain available).
+   - **No remote download requests** on storage nodes currently — no security model. Permissioned groups assume members are incentivized to store by construction and trust each other not to abuse.
+   - **Blob size**: make blobs as large as possible for efficient network use. Batch all notes into one encrypted blob per backup, not per-note CIDs.
+   - **Post-mainnet**: incentivized storage with provider protections is planned but not available yet.
+   - **Decision**: permissioned trust groups via Waku messaging. Request/response CID exchange on group join. One encrypted blob per backup.
 4. **Logos Storage built-in encryption**: bkomuves mentioned automatic encryption may be built-in. Not yet implemented. Worth watching before Phase 2 design.
 5. **AppImage unblock**: three options identified — `QT_QML_NO_CACHEGEN=1`, `qt_deploy_qml_imports()`, or Nix bundle. Option 3 recommended. Not yet attempted.
 
