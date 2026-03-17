@@ -232,6 +232,17 @@ set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
 set(NOTES_MODULE_DIR "${LOGOS_APP_DATA}/modules/notes")
 set(NOTES_UI_DIR     "${LOGOS_APP_DATA}/plugins/notes_ui")
 
+# Clean up old module versions before installing to prevent version conflicts.
+# Logos App may load old backup directories (notes.bak, notes.old) instead of current build.
+install(CODE "
+    set(_modules_dir \"${LOGOS_APP_DATA}/modules\")
+    file(GLOB _old_notes \"\${_modules_dir}/notes.*\")
+    foreach(_dir \${_old_notes})
+        message(STATUS \"Removing old notes module: \${_dir}\")
+        file(REMOVE_RECURSE \"\${_dir}\")
+    endforeach()
+")
+
 install(TARGETS logos-notes DESTINATION "$ENV{HOME}/bin")
 
 install(TARGETS notes_plugin
