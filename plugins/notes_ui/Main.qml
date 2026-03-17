@@ -45,6 +45,34 @@ Item {
     property bool cardDetected: keycardState === "ready" || keycardState === "authorized"
     property bool keycardReady: cardDetected
 
+    // Suppress brief error flashes during card connection transitions
+    property bool showCardError: false
+    Timer {
+        id: cardErrorDelay
+        interval: 1500
+        onTriggered: root.showCardError = true
+    }
+    onKeycardStateChanged: {
+        if (cardDetected || keycardState === "waitingForCard" || !readerConnected) {
+            root.showCardError = false
+            cardErrorDelay.stop()
+        } else if (readerConnected && !cardDetected) {
+            // Start delay before showing error (skip transient states)
+            if (!cardErrorDelay.running)
+                cardErrorDelay.start()
+        }
+    }
+
+    function restartKeycardDetection() {
+        root.keycardState = "unknown"
+        root.keycardStatus = ""
+        root.keycardDetecting = false
+        if (typeof logos !== "undefined" && logos.callModule) {
+            logos.callModule("notes", "startKeycardDetection", [])
+            root.keycardDetecting = true
+        }
+    }
+
     function parseLockoutSeconds(msg) {
         var match = msg.match(/(\d+)\s*seconds/)
         return match ? parseInt(match[1]) : 0
@@ -96,13 +124,12 @@ Item {
                 if (st === "waitingForCard" || st === "waitingForReader"
                     || st === "unknown" || st === "noPCSC") {
                     logos.callModule("notes", "lockSession", [])
-                    root.keycardDetecting = false
-                    root.currentScreen = "unlock"
-                    root.errorMessage = st === "waitingForReader"
+                    var msg = st === "waitingForReader"
                         ? "Card reader disconnected — session locked"
                         : "Keycard removed — session locked"
-                    logos.callModule("notes", "startKeycardDetection", [])
-                    root.keycardDetecting = true
+                    root.restartKeycardDetection()
+                    root.currentScreen = "unlock"
+                    root.errorMessage = msg
                 }
             } catch(e) {}
         }
@@ -183,20 +210,18 @@ Item {
                 }
             }
 
-            // ── Two-line status indicators ──────────────────────────
+            // ── Two-line status indicators (always reserve space for both) ──
             Column {
                 spacing: 8
                 Layout.fillWidth: true
 
-                // Line 1: Reader status
                 Row {
                     spacing: 8
                     Rectangle {
                         width: 8; height: 8; radius: 4
                         anchors.verticalCenter: parent.verticalCenter
                         color: root.readerConnected ? root.successGreen
-                             : (root.keycardState === "noPCSC" || root.keycardState === "waitingForReader" && root.keycardDetecting && root.keycardState !== "unknown"
-                                ? root.errorColor : root.statusGray)
+                             : (root.keycardState === "noPCSC" ? root.errorColor : root.statusGray)
                         opacity: (!root.readerConnected && root.keycardDetecting
                                   && root.keycardState !== "noPCSC") ? dotBlinkTarget.opacity : 1.0
                     }
@@ -210,29 +235,29 @@ Item {
                     }
                 }
 
-                // Line 2: Card status (only visible when reader connected)
                 Row {
                     spacing: 8
-                    visible: root.readerConnected
                     Rectangle {
                         width: 8; height: 8; radius: 4
                         anchors.verticalCenter: parent.verticalCenter
                         color: root.cardDetected ? root.successGreen
-                             : (root.keycardState === "waitingForCard" ? root.statusGray
-                             : (root.keycardState === "notKeycard" || root.keycardState === "emptyKeycard"
-                                || root.keycardState === "connectionError" ? root.errorColor : root.statusGray))
-                        opacity: (root.readerConnected && !root.cardDetected
-                                  && root.keycardState === "waitingForCard") ? dotBlinkTarget.opacity : 1.0
+                             : (root.showCardError ? root.errorColor : root.statusGray)
+                        opacity: root.readerConnected
+                                 ? ((!root.cardDetected && root.keycardState === "waitingForCard")
+                                    ? dotBlinkTarget.opacity : 1.0)
+                                 : 0.3
                     }
                     Text {
                         text: root.cardDetected ? "Keycard detected"
-                            : (root.keycardState === "notKeycard" ? "Not a Keycard"
-                            : (root.keycardState === "emptyKeycard" ? "Keycard not initialized"
-                            : (root.keycardState === "connectionError" ? "Connection error"
-                            : (root.keycardState === "waitingForCard" ? "Looking for Keycard"
-                            : "Keycard not found"))))
+                            : (root.readerConnected
+                                ? (root.keycardState === "notKeycard" ? "Not a Keycard"
+                                : (root.keycardState === "emptyKeycard" ? "Keycard not initialized"
+                                : (root.keycardState === "connectionError" ? "Connection error"
+                                : "Looking for Keycard")))
+                                : "Looking for Keycard")
                         color: root.cardDetected ? root.successGreen
-                             : (root.keycardState === "waitingForCard" ? root.textSecondary : root.errorColor)
+                             : (root.showCardError ? root.errorColor : root.textSecondary)
+                        opacity: root.readerConnected ? 1.0 : 0.3
                         font.pixelSize: 13
                     }
                 }
@@ -294,7 +319,7 @@ Item {
                     root.errorMessage = ""
                     root.keycardDetecting = false
                     var result = logos.callModule("notes", "importFromKeycard",
-                                                  [keycardPinField.text])
+                                                  [keycardPinField.text, root.pendingBackupPath])
                     var parsed = JSON.parse(result)
                     if (parsed.success) {
                         root.keySource = "keycard"
@@ -307,15 +332,14 @@ Item {
                 }
             }
 
-            // ── Decrypt backup link ─────────────────────────────────
+            // ── Decrypt backup link ──────────────────────────────────
             Text {
                 Layout.fillWidth: true
-                text: root.pendingBackupPath.length > 0
-                      ? "Change backup: " + root.pendingBackupPath.split("/").pop()
-                      : "Decrypt existing .imnotes backup"
+                horizontalAlignment: Text.AlignHCenter
+                visible: root.pendingBackupPath.length === 0
+                text: "Decrypt existing .imnotes backup"
                 color: root.primary
                 font.pixelSize: 12
-                horizontalAlignment: Text.AlignHCenter
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -323,33 +347,44 @@ Item {
                         if (typeof logos === "undefined" || !logos.callModule) return
                         var json = logos.callModule("notes", "listBackups", [])
                         var backups = JSON.parse(json)
-                        if (backups.length === 0) {
-                            root.restoreStatus = "No backups found"
-                            return
-                        }
-                        if (backups.length === 1) {
-                            root.pendingBackupPath = backups[0].path
-                            root.restoreStatus = "Backup: " + backups[0].name
-                            return
-                        }
-                        var currentIdx = -1
-                        for (var i = 0; i < backups.length; i++) {
-                            if (backups[i].path === root.pendingBackupPath) { currentIdx = i; break }
-                        }
-                        var nextIdx = (currentIdx + 1) % backups.length
-                        root.pendingBackupPath = backups[nextIdx].path
-                        root.restoreStatus = "Backup " + (nextIdx+1) + "/" + backups.length + ": " + backups[nextIdx].name
+                        if (backups.length === 0) { root.errorMessage = "No backups found"; return }
+                        root.pendingBackupPath = backups[0].path
                     }
                 }
             }
 
             Text {
                 Layout.fillWidth: true
-                text: root.restoreStatus
-                color: root.primary
-                font.pixelSize: 11
-                visible: text.length > 0
                 horizontalAlignment: Text.AlignHCenter
+                visible: root.pendingBackupPath.length > 0
+                text: root.pendingBackupPath.split("/").pop()
+                color: root.textColor
+                font.pixelSize: 12
+            }
+
+            Text {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                visible: root.pendingBackupPath.length > 0
+                text: "Change backup"
+                color: root.primary
+                font.pixelSize: 12
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof logos === "undefined" || !logos.callModule) return
+                        var json = logos.callModule("notes", "listBackups", [])
+                        var backups = JSON.parse(json)
+                        if (backups.length === 0) return
+                        var currentIdx = -1
+                        for (var i = 0; i < backups.length; i++) {
+                            if (backups[i].path === root.pendingBackupPath) { currentIdx = i; break }
+                        }
+                        var nextIdx = (currentIdx + 1) % backups.length
+                        root.pendingBackupPath = backups[nextIdx].path
+                    }
+                }
             }
 
         }
@@ -569,7 +604,7 @@ Item {
                 }
             }
 
-            // ── Keycard two-line status (keycard accounts only) ─────
+            // ── Keycard two-line status (always reserve space for both) ─────
             Column {
                 spacing: 8
                 Layout.fillWidth: true
@@ -597,21 +632,25 @@ Item {
 
                 Row {
                     spacing: 8
-                    visible: root.readerConnected
                     Rectangle {
                         width: 8; height: 8; radius: 4
                         anchors.verticalCenter: parent.verticalCenter
                         color: root.cardDetected ? root.successGreen
-                             : (root.keycardState === "waitingForCard" ? root.statusGray : root.errorColor)
-                        opacity: (root.readerConnected && !root.cardDetected
-                                  && root.keycardState === "waitingForCard") ? dotBlinkTarget.opacity : 1.0
+                             : (root.showCardError ? root.errorColor : root.statusGray)
+                        opacity: root.readerConnected
+                                 ? ((!root.cardDetected && root.keycardState === "waitingForCard")
+                                    ? dotBlinkTarget.opacity : 1.0)
+                                 : 0.3
                     }
                     Text {
                         text: root.cardDetected ? "Keycard detected"
-                            : (root.keycardState === "waitingForCard" ? "Looking for Keycard"
-                            : "Keycard not found")
+                            : (root.readerConnected
+                                ? (root.keycardState === "waitingForCard" ? "Looking for Keycard"
+                                : "Keycard not found")
+                                : "Looking for Keycard")
                         color: root.cardDetected ? root.successGreen
-                             : (root.keycardState === "waitingForCard" ? root.textSecondary : root.errorColor)
+                             : (root.showCardError ? root.errorColor : root.textSecondary)
+                        opacity: root.readerConnected ? 1.0 : 0.3
                         font.pixelSize: 13
                     }
                 }
@@ -864,6 +903,7 @@ Item {
             onActivated: {
                 if (typeof logos !== "undefined" && logos.callModule)
                     logos.callModule("notes", "lockSession", [])
+                root.restartKeycardDetection()
                 root.currentScreen = "unlock"
             }
         }
@@ -886,21 +926,23 @@ Item {
                 Row {
                     anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
                     spacing: 8
-                    Text {
-                        text: "+"
-                        color: root.primary
-                        font.pixelSize: 16
-                        font.weight: Font.Bold
+                    Image {
+                        source: "Add.svg"
+                        width: 16; height: 16
+                        anchors.verticalCenter: parent.verticalCenter
+                        sourceSize: Qt.size(16, 16)
                     }
                     Text {
                         text: "Ctrl+N"
                         color: root.textColor
                         font.pixelSize: 13
+                        anchors.verticalCenter: parent.verticalCenter
                     }
                 }
 
                 MouseArea {
                     id: newNoteArea
+                    z: 10
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
@@ -915,6 +957,17 @@ Item {
                 model: noteModel
                 clip: true
                 currentIndex: -1
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AlwaysOn
+                    width: 4
+                    opacity: noteList.contentHeight > noteList.height ? 0.4 : 0
+                    contentItem: Rectangle {
+                        implicitWidth: 3
+                        radius: 1.5
+                        color: root.borderColor
+                    }
+                    background: Item {}
+                }
 
                 delegate: Rectangle {
                     width: noteList.width
@@ -1012,18 +1065,22 @@ Item {
                     anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
                     spacing: 8
 
-                    // Lock icon (simple padlock shape)
-                    Text {
-                        text: "🔒"
-                        color: root.primary
-                        font.pixelSize: 14
+                    Item {
+                        width: 16; height: 16
                         anchors.verticalCenter: parent.verticalCenter
-                        MouseArea {
+                        Image {
                             anchors.fill: parent
+                            source: "Lock.svg"
+                            sourceSize: Qt.size(16, 16)
+                        }
+                        MouseArea {
+                            z: 10
+                            anchors { fill: parent; margins: -4 }
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 if (typeof logos !== "undefined" && logos.callModule)
                                     logos.callModule("notes", "lockSession", [])
+                                root.restartKeycardDetection()
                                 root.currentScreen = "unlock"
                             }
                         }
@@ -1040,6 +1097,7 @@ Item {
                             onClicked: {
                                 if (typeof logos !== "undefined" && logos.callModule)
                                     logos.callModule("notes", "lockSession", [])
+                                root.restartKeycardDetection()
                                 root.currentScreen = "unlock"
                             }
                         }
@@ -1047,19 +1105,39 @@ Item {
 
                 }
 
-                Text {
-                    anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
-                    text: {
-                        if (typeof logos !== "undefined" && logos.callModule)
-                            return logos.callModule("notes", "getAccountFingerprint", [])
-                        return ""
+                Rectangle {
+                    anchors { right: parent.right; rightMargin: 8; top: parent.top; bottom: parent.bottom }
+                    width: Math.max(fpSidebarText.width + 16, 48)
+                    color: "transparent"
+
+                    Text {
+                        id: fpSidebarText
+                        anchors.centerIn: parent
+                        property string fp: ""
+                        text: fp || "Settings"
+                        color: fpHoverArea.containsMouse ? root.primary : root.textSecondary
+                        font.pixelSize: 11
+                        font.family: "Courier New, monospace"
+
+                        Timer {
+                            interval: 500
+                            running: noteScreen.visible
+                            repeat: true
+                            onTriggered: {
+                                if (typeof logos !== "undefined" && logos.callModule) {
+                                    var v = logos.callModule("notes", "getAccountFingerprint", [])
+                                    if (v && v.length > 0) {
+                                        fpSidebarText.fp = v
+                                        running = false
+                                    }
+                                }
+                            }
+                        }
                     }
-                    color: fpHoverArea.containsMouse ? root.primary : root.textSecondary
-                    font.pixelSize: 11
-                    font.family: "Courier New, monospace"
+
                     MouseArea {
                         id: fpHoverArea
-                        anchors { fill: parent; margins: -8 }
+                        anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: noteScreen.showSettings = true
@@ -1075,7 +1153,7 @@ Item {
             anchors {
                 top: parent.top; topMargin: 24
                 left: sidebar.right; leftMargin: 24
-                right: parent.right; rightMargin: 24
+                right: parent.right; rightMargin: 4
                 bottom: parent.bottom; bottomMargin: 24
             }
             contentWidth: width
@@ -1118,10 +1196,13 @@ Item {
             }
 
             ScrollBar.vertical: ScrollBar {
-                policy: ScrollBar.AsNeeded
+                id: editorScrollBar
+                policy: ScrollBar.AlwaysOn
+                width: 6
+                opacity: editorFlick.contentHeight > editorFlick.height ? 0.4 : 0
                 contentItem: Rectangle {
-                    implicitWidth: 6
-                    radius: 3
+                    implicitWidth: 3
+                    radius: 1.5
                     color: root.borderColor
                 }
                 background: Item {}
@@ -1174,17 +1255,20 @@ Item {
             // Close button (X)
             Rectangle {
                 anchors { top: parent.top; right: parent.right; topMargin: 12; rightMargin: 16 }
-                width: 24; height: 24; radius: 12
-                color: root.primary
-                Text {
+                width: 24; height: 24
+                color: "transparent"
+                Image {
                     anchors.centerIn: parent
-                    text: "✕"
-                    color: root.textColor
-                    font.pixelSize: 12
-                    font.weight: Font.Bold
+                    source: "close.svg"
+                    width: 20; height: 20
+                    sourceSize: Qt.size(20, 20)
+                    opacity: closeHoverArea.containsMouse ? 0.6 : 1.0
                 }
                 MouseArea {
+                    id: closeHoverArea
+                    z: 10
                     anchors.fill: parent
+                    hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: noteScreen.showSettings = false
                 }
@@ -1230,16 +1314,7 @@ Item {
                             Text { text: "Encryption:"; color: root.textSecondary; font.pixelSize: 12 }
                             Text {
                                 text: {
-                                    if (root.keySource === "keycard") {
-                                        var uid = ""
-                                        if (typeof logos !== "undefined" && logos.callModule) {
-                                            var json = logos.callModule("notes", "getKeycardState", [])
-                                            try {
-                                                // Try to get UID from state, fallback to short display
-                                            } catch(e) {}
-                                        }
-                                        return "Keycard"
-                                    }
+                                    if (root.keySource === "keycard") return "Keycard"
                                     return root.keySource === "wallet" ? "Logos Wallet" : "Recovery Phrase"
                                 }
                                 color: root.textColor
@@ -1249,13 +1324,18 @@ Item {
 
                         Row {
                             spacing: 8
-                            Text { text: "Fingerprint:"; color: root.textSecondary; font.pixelSize: 12 }
+                            Text {
+                                text: "Fingerprint:"
+                                color: root.textSecondary
+                                font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                             Text {
                                 id: fpText
                                 property string fingerprint: ""
                                 text: fingerprint
-                                font.family: "Courier New, monospace"
                                 font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
                                 color: root.textColor
                                 Component.onCompleted: refreshFp()
                                 function refreshFp() {
@@ -1265,7 +1345,10 @@ Item {
                                 Connections {
                                     target: noteScreen
                                     function onShowSettingsChanged() {
-                                        if (noteScreen.showSettings) fpText.refreshFp()
+                                        fpText.refreshFp()
+                                    }
+                                    function onVisibleChanged() {
+                                        if (noteScreen.visible) fpText.refreshFp()
                                     }
                                 }
                             }
@@ -1273,6 +1356,7 @@ Item {
                                 text: pluginCopyTimer.running ? "Copied!" : "Copy"
                                 color: root.primary
                                 font.pixelSize: 12
+                                anchors.verticalCenter: parent.verticalCenter
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
@@ -1327,6 +1411,7 @@ Item {
 
                         Button {
                             text: "Export Backup"
+                            leftPadding: 24; rightPadding: 24
                             onClicked: {
                                 if (typeof logos === "undefined" || !logos.callModule) return
                                 var result = logos.callModule("notes", "exportBackupAuto", [])
@@ -1337,7 +1422,8 @@ Item {
                             }
                             contentItem: Text {
                                 text: parent.text
-                                font.pixelSize: 12
+                                font.pixelSize: 14
+                                font.weight: Font.Medium
                                 color: "#FFFFFF"
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
@@ -1345,7 +1431,7 @@ Item {
                             background: Rectangle {
                                 color: parent.pressed ? root.primaryHover : root.primary
                                 radius: 16
-                                implicitHeight: 32
+                                implicitHeight: 36
                             }
                         }
                     }
@@ -1422,10 +1508,11 @@ Item {
                         Button {
                             text: "Reset the app"
                             enabled: pluginConfirmCheck.checked
-                            opacity: pluginConfirmCheck.checked ? 1.0 : 0.35
+                            opacity: pluginConfirmCheck.checked ? 1.0 : 0.4
+                            leftPadding: 24; rightPadding: 24
                             contentItem: Text {
                                 text: parent.text
-                                font.pixelSize: 13
+                                font.pixelSize: 14
                                 font.weight: Font.Medium
                                 color: root.textColor
                                 horizontalAlignment: Text.AlignHCenter
@@ -1434,13 +1521,14 @@ Item {
                             background: Rectangle {
                                 color: root.dangerBtnBg
                                 radius: 16
-                                implicitHeight: 32
+                                implicitHeight: 36
                             }
                             onClicked: {
                                 if (typeof logos !== "undefined" && logos.callModule)
                                     logos.callModule("notes", "resetAndWipe", [])
                                 noteScreen.showSettings = false
                                 root.errorMessage = ""
+                                root.restartKeycardDetection()
                                 root.currentScreen = "import"
                             }
                         }

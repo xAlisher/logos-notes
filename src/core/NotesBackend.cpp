@@ -655,7 +655,8 @@ static QString deriveFingerprintFromKey(const QByteArray &masterKey)
                       crypto_sign_PUBLICKEYBYTES).toHex().left(16);
 }
 
-void NotesBackend::importFromKeycard(const QString &keycardPin)
+void NotesBackend::importFromKeycard(const QString &keycardPin,
+                                      const QString &backupPath)
 {
     // Ensure detection is running
     if (!m_keycard.isRunning())
@@ -697,6 +698,25 @@ void NotesBackend::importFromKeycard(const QString &keycardPin)
 
     // 5. Hold master key in memory
     m_keys.setMasterKey(masterKey.toByteArray());
+
+    // 6. Restore backup if provided
+    if (!backupPath.isEmpty()) {
+        QString result = importBackup(backupPath);
+        QJsonObject parsed = QJsonDocument::fromJson(result.toUtf8()).object();
+        if (!parsed.value("ok").toBool()) {
+            m_keys.lock();
+            m_db.wipe();
+            m_db.init();
+            setError(parsed.value("error").toString("Backup restore failed."));
+            setScreen("import");
+            return;
+        }
+        int failedCount = parsed.value("failed").toInt(0);
+        if (failedCount > 0) {
+            int restoredCount = parsed.value("imported").toInt();
+            setError(QString("Restored %1 note(s), %2 failed.").arg(restoredCount).arg(failedCount));
+        }
+    }
 
     m_db.setInitialized();
     setError({});

@@ -167,9 +167,10 @@ QString NotesPlugin::keycardExportKey()
     return m_backend.keycardExportKey();
 }
 
-QString NotesPlugin::importFromKeycard(const QString& keycardPin)
+QString NotesPlugin::importFromKeycard(const QString& keycardPin,
+                                        const QString& backupPath)
 {
-    m_backend.importFromKeycard(keycardPin);
+    m_backend.importFromKeycard(keycardPin, backupPath);
 
     if (m_backend.currentScreen() == QStringLiteral("note"))
         return successJson();

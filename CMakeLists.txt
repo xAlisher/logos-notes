@@ -275,5 +275,11 @@ install(FILES
     plugins/notes_ui/manifest.json
     plugins/notes_ui/metadata.json
     plugins/notes_ui/Main.qml
+    assets/icons/Add.svg
+    assets/icons/Lock.svg
+    assets/icons/close.svg
     DESTINATION "${NOTES_UI_DIR}"
+)
+install(FILES assets/icons/app_icon.png
+    DESTINATION "${NOTES_UI_DIR}/icons"
 )
