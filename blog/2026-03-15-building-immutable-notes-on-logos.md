@@ -2,8 +2,6 @@
 
 *Originally drafted March 15, 2026. Updated March 17 with v1.0.0 Keycard release.*
 
-*Originally drafted March 15, 2026. Updated March 17 with v1.0.0 Keycard release.*
-
 ## Why This Should Exist on Logos
 
 Most note-taking apps are surveillance by default. Your thoughts live on someone else's server, readable by the company, accessible to governments, vulnerable to breaches. Even "encrypted" apps often hold the keys themselves.
