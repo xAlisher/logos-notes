@@ -2,7 +2,7 @@
 
 *Originally drafted March 15, 2026. Updated March 17 with v1.0.0 Keycard release.*
 
-*Note: We submitted this post to Logos Press Engine before v0.6.0. By the time it's published, the app shipped Keycard hardware key derivation, a full UI redesign, and went through live demos with real community reactions. We ship faster than we write about it — consider this a snapshot of the journey, not the destination.*
+*Originally drafted March 15, 2026. Updated March 17 with v1.0.0 Keycard release.*
 
 ## Why This Should Exist on Logos
 
