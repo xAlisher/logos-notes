@@ -4,6 +4,7 @@ Development posts from building an encrypted notes app for the Logos ecosystem.
 
 | Date | Post |
 |------|------|
+| 2026-03-17 | [Keycard Integration: Hardware Keys for Encrypted Notes](2026-03-17-keycard-integration.md) |
 | 2026-03-15 | [Shared Memory: How Two AIs Stay in Sync Without a Human Relay](2026-03-15-shared-memory.md) |
 | 2026-03-15 | [Hotfixes and the Sandbox You Don't See](2026-03-15-hotfixes-and-sandbox-lessons.md) |
 | 2026-03-14 | [Settings, Backup, and the Identity Question](2026-03-14-settings-backup-identity.md) |
