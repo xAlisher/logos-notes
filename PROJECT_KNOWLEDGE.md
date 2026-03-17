@@ -269,6 +269,9 @@ Loading SVG icons via `Image { source: "file.svg" }` works in the Logos App QML 
 ### 33. Logos App loads old module versions from backup directories
 During development, backup directories like `notes.bak`, `notes.old`, etc. can persist in `~/.local/share/Logos/LogosApp/modules/`. The shell may load these stale versions instead of the current build from `notes/`, causing confusing failures (e.g. Keycard detection working in tests but not in the app). **Solution**: CMake install target now removes all `notes.*` directories before installing the current build. This prevents version conflicts and ensures only one module version exists at a time.
 
+### 34. install(CODE) blocks must honor DESTDIR for staged installs
+Custom `install(CODE)` blocks that manipulate filesystem paths must prefix those paths with `$ENV{DESTDIR}` to support staged/packaged installs. Example: `set(_path "\$ENV{DESTDIR}${INSTALL_DIR}/file")`. Without this, `DESTDIR=/tmp/stage cmake --install` would still operate on the live system paths instead of the staged tree. This is the same pattern required for post-install scripts like `patchelf`. Caught by Senty in #47 review.
+
 ---
 
 ## Logos Developer Tools
