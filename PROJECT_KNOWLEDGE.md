@@ -40,7 +40,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 |---------|-------------|--------|
 | v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
-| v1.0.0 | Keycard hardware key derivation | Sub-1/2/3 merged — v1.0.0 ready for release |
+| v1.0.0 | Keycard hardware key derivation + UI polish | Complete — all merged to master |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
