@@ -168,18 +168,19 @@ Item {
             spacing: 24
             width: 420
 
-            // Title — left aligned
-            Text {
-                text: "Create new database"
-                font.pixelSize: 28
-                font.weight: Font.Bold
-                color: root.textColor
-            }
-
-            Text {
-                text: "Import keys to encrypt your notes"
-                color: root.textPlaceholder
-                font.pixelSize: 14
+            Column {
+                spacing: 4
+                Text {
+                    text: "Create new database"
+                    font.pixelSize: 28
+                    font.weight: Font.Bold
+                    color: root.textColor
+                }
+                Text {
+                    text: "Import keys to encrypt your notes"
+                    color: root.textPlaceholder
+                    font.pixelSize: 14
+                }
             }
 
             // ── Two-line status indicators ──────────────────────────
@@ -351,20 +352,17 @@ Item {
                 horizontalAlignment: Text.AlignHCenter
             }
 
-            // ── Legacy recovery phrase link ──────────────────────────
-            Item { Layout.fillHeight: true } // spacer
+        }
 
-            Text {
-                Layout.fillWidth: true
-                text: "Create new database with recovery phrase (legacy)"
-                color: root.textPlaceholder
-                font.pixelSize: 12
-                horizontalAlignment: Text.AlignHCenter
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.currentScreen = "import_mnemonic"
-                }
+        Text {
+            anchors { bottom: parent.bottom; bottomMargin: 24; horizontalCenter: parent.horizontalCenter }
+            text: "Create new database with recovery phrase (legacy)"
+            color: root.textPlaceholder
+            font.pixelSize: 12
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.currentScreen = "import_mnemonic"
             }
         }
     }
@@ -551,22 +549,24 @@ Item {
             spacing: 24
             width: 420
 
-            Text {
-                text: "Unlock notes"
-                font.pixelSize: 28
-                font.weight: Font.Bold
-                color: root.textColor
-            }
-
-            Text {
-                text: {
-                    var fp = ""
-                    if (typeof logos !== "undefined" && logos.callModule)
-                        fp = logos.callModule("notes", "getAccountFingerprint", [])
-                    return "Decrypt database. Fingerprint: " + fp
+            Column {
+                spacing: 4
+                Text {
+                    text: "Unlock notes"
+                    font.pixelSize: 28
+                    font.weight: Font.Bold
+                    color: root.textColor
                 }
-                color: root.textPlaceholder
-                font.pixelSize: 14
+                Text {
+                    text: {
+                        var fp = ""
+                        if (typeof logos !== "undefined" && logos.callModule)
+                            fp = logos.callModule("notes", "getAccountFingerprint", [])
+                        return "Decrypt database. Fingerprint: " + fp
+                    }
+                    color: root.textPlaceholder
+                    font.pixelSize: 14
+                }
             }
 
             // ── Keycard two-line status (keycard accounts only) ─────
@@ -1032,7 +1032,7 @@ Item {
                     Text {
                         text: "Ctrl+L"
                         color: root.textColor
-                        font.pixelSize: 12
+                        font.pixelSize: 13
                         anchors.verticalCenter: parent.verticalCenter
                         MouseArea {
                             anchors.fill: parent
@@ -1045,29 +1045,22 @@ Item {
                         }
                     }
 
-                    Item { width: 16; height: 1 } // spacer
-
-                    Text {
-                        text: {
-                            if (typeof logos !== "undefined" && logos.callModule)
-                                return logos.callModule("notes", "getAccountFingerprint", [])
-                            return ""
-                        }
-                        color: root.textSecondary
-                        font.pixelSize: 11
-                        font.family: "Courier New, monospace"
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
                 }
 
-                // Settings gear (right side)
                 Text {
                     anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
-                    text: "⚙"
-                    color: root.textSecondary
-                    font.pixelSize: 16
+                    text: {
+                        if (typeof logos !== "undefined" && logos.callModule)
+                            return logos.callModule("notes", "getAccountFingerprint", [])
+                        return ""
+                    }
+                    color: fpHoverArea.containsMouse ? root.primary : root.textSecondary
+                    font.pixelSize: 11
+                    font.family: "Courier New, monospace"
                     MouseArea {
-                        anchors.fill: parent
+                        id: fpHoverArea
+                        anchors { fill: parent; margins: -8 }
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: noteScreen.showSettings = true
                     }
@@ -1263,7 +1256,6 @@ Item {
                                 text: fingerprint
                                 font.family: "Courier New, monospace"
                                 font.pixelSize: 12
-                                font.weight: Font.Bold
                                 color: root.textColor
                                 Component.onCompleted: refreshFp()
                                 function refreshFp() {
