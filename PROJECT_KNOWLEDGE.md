@@ -253,6 +253,12 @@ Neither Session API signals (`KeycardSetSignalEventCallback`) nor Flow API signa
 ### 30. Keycard accounts don't store wrapped keys
 Mnemonic accounts wrap the master key with a PIN-derived key and store it in `wrapped_key` table. Keycard accounts derive the key from the card on every unlock — no wrapped key stored. The `key_source` meta field ("keycard" or "mnemonic") determines which unlock flow to use.
 
+### 31. AppImage wraps processes via ld-linux — pkill must match .elf names
+`pkill -9 -f logos` doesn't work because AppImage runs binaries as `/lib64/ld-linux-x86-64.so.2 /tmp/.mount_logos-XXX/usr/bin/.LogosApp.elf`. Must use `pkill -9 -f "LogosApp.elf"; pkill -9 -f "logos_host.elf"` to kill reliably. Two instances fighting over the same DB causes data loss.
+
+### 32. SVG Image elements in QML sandbox need z-order for MouseArea
+Loading SVG icons via `Image { source: "file.svg" }` works in the Logos App QML sandbox, but the Image can block mouse events. Always put `MouseArea { z: 10 }` to ensure clicks pass through. Also set `sourceSize: Qt.size(w, h)` for proper SVG rendering.
+
 ---
 
 ## Logos Developer Tools

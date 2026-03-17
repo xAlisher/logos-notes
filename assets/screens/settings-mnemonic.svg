@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="700" viewBox="0 0 800 700">
+  <rect width="800" height="700" fill="#171717"/>
+
+  <!-- Back link -->
+  <text x="40" y="40" font-family="Inter, sans-serif" font-size="12" fill="#ED7B58">&lt; Back</text>
+
+  <!-- Title -->
+  <text x="40" y="85" font-family="Inter, sans-serif" font-size="30" font-weight="700" fill="#FFFFFF">Settings</text>
+
+  <!-- Account section -->
+  <rect x="40" y="110" width="480" height="110" rx="8" fill="#262626"/>
+
+  <text x="56" y="138" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Account</text>
+
+  <!-- Encryption source -->
+  <text x="56" y="168" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Encryption:</text>
+  <text x="130" y="168" font-family="Inter, sans-serif" font-size="12" font-weight="500" fill="#FFFFFF">Recovery Phrase</text>
+
+  <!-- Public key -->
+  <text x="56" y="195" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Public Key:</text>
+  <text x="130" y="195" font-family="Courier New, monospace" font-size="12" fill="#FFFFFF">a3f2c891b7e04d56</text>
+  <text x="285" y="195" font-family="Inter, sans-serif" font-size="12" fill="#ED7B58">Copy</text>
+
+  <!-- Backup section -->
+  <rect x="40" y="240" width="480" height="120" rx="8" fill="#262626"/>
+
+  <text x="56" y="268" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#FFFFFF">Backup</text>
+
+  <text x="56" y="295" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Export your encrypted notes as a .imnotes file</text>
+
+  <!-- Export button -->
+  <rect x="56" y="315" width="140" height="36" rx="16" fill="#ED7B58"/>
+  <text x="126" y="338" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#FFFFFF">Export Backup</text>
+
+  <!-- Danger Zone -->
+  <rect x="40" y="380" width="480" height="170" rx="8" fill="#262626" stroke="#FB3748" stroke-width="1"/>
+
+  <text x="56" y="410" font-family="Inter, sans-serif" font-size="14" font-weight="700" fill="#FB3748">Danger Zone</text>
+
+  <text x="56" y="438" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">Removing your account will permanently delete all notes</text>
+  <text x="56" y="456" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">from this device. This cannot be undone.</text>
+
+  <!-- Confirm checkbox -->
+  <rect x="56" y="475" width="20" height="20" rx="4" fill="transparent" stroke="#3a3a3a" stroke-width="2"/>
+  <text x="84" y="490" font-family="Inter, sans-serif" font-size="12" fill="#A4A4A4">I understand all notes will be permanently deleted</text>
+
+  <!-- Remove Account button (disabled) -->
+  <rect x="56" y="510" width="160" height="40" rx="16" fill="#FB3748" opacity="0.35"/>
+  <text x="136" y="535" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" font-weight="500" fill="#FFFFFF" opacity="0.35">Remove Account</text>
+</svg>

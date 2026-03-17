@@ -38,7 +38,8 @@ public:
 
     // Keycard import: authorize card with PIN, export key, create account.
     // No separate app PIN — Keycard PIN is the only auth. Card must be present to unlock.
-    Q_INVOKABLE void importFromKeycard(const QString &keycardPin);
+    Q_INVOKABLE void importFromKeycard(const QString &keycardPin,
+                                        const QString &backupPath = {});
 
     // Keycard unlock: authorize card, re-derive key, decrypt notes.
     Q_INVOKABLE void unlockWithKeycard(const QString &keycardPin);

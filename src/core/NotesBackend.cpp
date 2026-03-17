@@ -655,7 +655,8 @@ static QString deriveFingerprintFromKey(const QByteArray &masterKey)
                       crypto_sign_PUBLICKEYBYTES).toHex().left(16);
 }
 
-void NotesBackend::importFromKeycard(const QString &keycardPin)
+void NotesBackend::importFromKeycard(const QString &keycardPin,
+                                      const QString &backupPath)
 {
     // Ensure detection is running
     if (!m_keycard.isRunning())
@@ -668,7 +669,7 @@ void NotesBackend::importFromKeycard(const QString &keycardPin)
         if (remaining == 0)
             setError("PIN blocked — use PUK to unblock");
         else if (remaining > 0)
-            setError(QString("Wrong PIN — %1 attempts remaining").arg(remaining));
+            setError(QString("Wrong PIN. %1 attempts left").arg(remaining));
         else
             setError(authResult["error"].toString("Keycard authorization failed"));
         return;
@@ -698,8 +699,27 @@ void NotesBackend::importFromKeycard(const QString &keycardPin)
     // 5. Hold master key in memory
     m_keys.setMasterKey(masterKey.toByteArray());
 
+    // 6. Restore backup if provided
+    if (!backupPath.isEmpty()) {
+        QString result = importBackup(backupPath);
+        QJsonObject parsed = QJsonDocument::fromJson(result.toUtf8()).object();
+        if (!parsed.value("ok").toBool()) {
+            m_keys.lock();
+            m_db.wipe();
+            m_db.init();
+            setError(parsed.value("error").toString("Backup restore failed."));
+            setScreen("import");
+            return;
+        }
+        int failedCount = parsed.value("failed").toInt(0);
+        if (failedCount > 0) {
+            int restoredCount = parsed.value("imported").toInt();
+            // Set warning — don't clear it, plugin will pass it through
+            setError(QString("Restored %1 note(s), %2 failed to restore.").arg(restoredCount).arg(failedCount));
+        }
+    }
+
     m_db.setInitialized();
-    setError({});
     setScreen("note");
 }
 
@@ -716,7 +736,7 @@ void NotesBackend::unlockWithKeycard(const QString &keycardPin)
         if (remaining == 0)
             setError("PIN blocked — use PUK to unblock");
         else if (remaining > 0)
-            setError(QString("Wrong PIN — %1 attempts remaining").arg(remaining));
+            setError(QString("Wrong PIN. %1 attempts left").arg(remaining));
         else
             setError(authResult["error"].toString("Keycard authorization failed"));
         return;
@@ -742,7 +762,7 @@ void NotesBackend::unlockWithKeycard(const QString &keycardPin)
     QString derivedFp = deriveFingerprintFromKey(masterKey.ref());
     QString storedFp = m_db.loadMeta("account_fingerprint", "");
     if (!storedFp.isEmpty() && derivedFp != storedFp) {
-        setError("Wrong Keycard. This account was created with a different card.");
+        setError("Wrong keys. Try different Keycard.");
         sodium_memzero(cardKey.data(), cardKey.size());
         return;
     }

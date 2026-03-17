@@ -60,7 +60,8 @@ public:
     // Keycard PIN + key export + import
     Q_INVOKABLE QString keycardAuthorize(const QString& pin);
     Q_INVOKABLE QString keycardExportKey();
-    Q_INVOKABLE QString importFromKeycard(const QString& keycardPin);
+    Q_INVOKABLE QString importFromKeycard(const QString& keycardPin,
+                                           const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithKeycard(const QString& keycardPin);
 
 signals:
