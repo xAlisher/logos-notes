@@ -1,5 +1,5 @@
 # Immutable Notes — Project Knowledge
-*Last updated: 2026-03-15*
+*Last updated: 2026-03-17*
 
 > **This file is the project's shared memory.**
 > It lives in the repo root and is committed like any other file.
