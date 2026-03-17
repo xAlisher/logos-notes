@@ -1,61 +1,77 @@
 # Building Immutable Notes on Logos
 
+*Originally drafted March 15, 2026. Updated March 17 with v1.0.0 Keycard release.*
+
+*Note: We submitted this post to Logos Press Engine before v0.6.0. By the time it's published, the app shipped Keycard hardware key derivation, a full UI redesign, and went through live demos with real community reactions. We ship faster than we write about it — consider this a snapshot of the journey, not the destination.*
+
 ## Why This Should Exist on Logos
 
 Most note-taking apps are surveillance by default. Your thoughts live on someone else's server, readable by the company, accessible to governments, vulnerable to breaches. Even "encrypted" apps often hold the keys themselves.
 
 Logos is built around a different premise entirely. No central servers. No company holding your keys. No permission required to participate. A notes app on Logos is an act of thought sovereignty. Your notes exist only for you, encrypted by a key that only you hold, with no intermediary ever seeing the plaintext.
 
-The full vision is an encrypted notes manager with Keycard hardware key protection and sync across devices via Logos Messaging and Logos Storage. No accounts. No servers. Your recovery phrase is your identity.
+But the bigger idea is what this shows for the ecosystem. **Any Logos app can be unlocked by a Keycard.** Notes, wallet, chat — one card, one PIN, keys never leave the chip. Pull it out and the session ends. No passwords, no keys on disk. This is what hardware means for the ecosystem.
+
+The full vision is an encrypted notes manager with Keycard hardware key protection and sync across devices via Logos Messaging and Logos Storage. No accounts. No servers. Your Keycard is your identity.
 
 More about the idea and all development phases is [here](https://github.com/logos-co/ideas/issues/13).
 
-I started building this four days ago. It now has multi-note support, a full security audit, encrypted backups, and runs both as a standalone desktop app and inside Logos App. This post covers how it all fits together and what I learned building for the Logos platform.
+I started building this on March 12. Five days and seven versions later, it has Keycard hardware encryption, multi-note support, a two-AI security audit, encrypted backups, and runs inside Logos App with a live demo getting real reactions from the community.
 
-![Inside Logos App](../Assets/Screenshots/0.5.1/insidelogosapp.png)
-
----
-
-## Getting Started
-
-After the [Logos ideas repo](https://github.com/logos-co/ideas) opened for community contributions, I looked for something lean enough to actually build but meaningful enough to matter. Encrypted notes with Keycard + Logos sync felt right — personal sovereignty, hardware security, decentralized infrastructure, all in one small app.
-
-I started by cloning everything relevant:
-
-- [logos-app-poc](https://github.com/logos-co/logos-app-poc) — the Logos App shell, the Qt6/C++ host that loads modules
-- [logos-chat-ui](https://github.com/logos-co/logos-chat-ui) — primary reference dapp, same C++/QML pattern
-- [logos-template-module](https://github.com/logos-co/logos-template-module) — scaffold starting point
-- [logos-design-system](https://github.com/logos-co/logos-design-system) — QML components and theme tokens
-- [status-desktop](https://github.com/status-im/status-desktop) — the most mature app on this stack, invaluable for QML patterns
-
-Environment: Ubuntu 24.04, Qt 6.9.3, CMake 3.28, libsodium 1.0.18, Nix.
-
-For building and research I used Claude Code. The collaboration felt like a hackathon — I brought the roadmap, the UX direction, and the architectural decisions. Claude Code brought speed and the ability to read fifty source files and write correct C++ in the time it takes to make coffee. The discipline that made it work: explore first, understand the contracts, then implement. For security review I used a two-AI loop — Claude writes code, Codex reviews the diffs. More on that below.
+| Create with Keycard | Note editor |
+|---------------------|-------------|
+| ![Create](../Assets/Screenshots/1.0.0/create.png) | ![Notes](../Assets/Screenshots/1.0.0/notes.png) |
 
 ---
 
-## What It Does Today
+## The Journey: v0.1.0 to v1.0.0 in Five Days
 
-![Import screen](../Assets/Screenshots/0.5.1/import.png)
+| Version | What shipped | Days in |
+|---------|-------------|---------|
+| v0.1.0 | Single encrypted note, Logos App module | Day 1 |
+| v0.2.0 | Multiple notes, sidebar | Day 1 |
+| v0.3.0 | Security hardening (BIP39, salt, PIN lockout) | Day 2 |
+| v0.4.0 | P2 security, AES-NI fail-fast | Day 2 |
+| v0.5.0 | Settings, backup, stable identity | Day 3 |
+| v0.6.0 | LGX packaging, 95-case test suite | Day 3 |
+| **v1.0.0** | **Keycard hardware key derivation + UI polish** | **Day 5** |
 
-**Import once.** Enter your BIP39 recovery phrase and set a PIN. The app validates your phrase against the full 2048-word BIP39 wordlist with checksum verification. It derives your encryption key, wraps it with your PIN, and forgets the phrase forever. It never touches disk.
+For building and research I used Claude Code. The collaboration felt like a hackathon — I brought the roadmap, the UX direction, and the architectural decisions. Claude Code brought speed and the ability to read fifty source files and write correct C++ in the time it takes to make coffee. For security review I used a two-AI loop — Claude writes code, Codex reviews the diffs. More on that below.
 
-**Write freely.** Create as many notes as you want. Each one is AES-256-GCM encrypted before hitting the database. Titles are encrypted too — not just the body. A sidebar shows your notes with relative timestamps. Auto-save every 1.5 seconds.
+---
 
-![Multi-note sidebar](../Assets/Screenshots/0.5.1/notes.png)
+## What It Does Today (v1.0.0)
 
-**Lock and unlock.** When you lock, `sodium_memzero` wipes the master key from memory. When you unlock, your PIN re-derives the wrapping key and decrypts. Wrong PIN? AES-GCM authentication tag fails. No partial results, no hints.
+### Keycard-first encryption
 
-**PIN protection.** Five wrong attempts and you're locked out with an exponential backoff timer — 30 seconds, then 60, 120, 5 minutes, 10 minutes. The countdown ticks live in the UI. The counter persists across app restarts.
+Plug in a USB smart card reader. Insert your Status Keycard. Enter your PIN. Done. Your notes are encrypted with a key derived from the card's hardware — a secp256k1 private key at the EIP-1581 encryption path, domain-separated into a 256-bit AES-256-GCM key.
 
-![Unlock screen](../Assets/Screenshots/0.5.1/unlock.png)
+The card must be present every time you unlock. Pull it out — session locks instantly. Insert a different card — "Wrong keys. Try different Keycard."
 
-**Your identity is your phrase.** The app derives an Ed25519 public key from your mnemonic — deterministic, same key on any device, with any PIN. This is your identity in Logos Notes. Visible in Settings, shown on the unlock screen.
+Recovery phrase import still works as a legacy option — one link at the bottom of the screen.
 
-![Settings](../Assets/Screenshots/0.5.1/settings.png)
+### Honest UI
 
-**Encrypted backups.** Export all your notes as a single `.imnotes` file — encrypted with your master key, portable to any device. Import on a new machine by entering the same recovery phrase. Different PIN is fine. The backup includes the KDF salt so the key can be re-derived.
+We obsessed over the copy. Every label tells you exactly what's happening:
 
+- **"Create new database"** — not "Sign up" or "Create account"
+- **"Unlock notes"** — not "Login"
+- **"Decrypt database. Fingerprint: ..."** — tells you what the PIN does and whose data you're unlocking
+- **"Reset the app"** — not "Delete account" (there is no account)
+
+Two-line status indicators show reader and card state with colored dots. Green means connected. Gray with a slow blink means searching. Red means error. No ambiguity.
+
+| Unlock notes | Settings |
+|--------------|----------|
+| ![Unlock](../Assets/Screenshots/1.0.0/unlock.png) | ![Settings](../Assets/Screenshots/1.0.0/settings.png) |
+
+### Everything else
+
+- **Multiple encrypted notes** with sidebar, auto-save, Ctrl+N/Ctrl+L shortcuts
+- **Encrypted titles** — even metadata never touches disk as plaintext
+- **Encrypted backup/restore** — `.imnotes` files, portable across devices
+- **95+ test cases** across 6 test suites
+- **PIN brute-force protection** — 5 attempts, exponential lockout
 
 ---
 
@@ -64,149 +80,101 @@ For building and research I used Claude Code. The collaboration felt like a hack
 One principle: **nothing sensitive ever touches disk in plaintext.**
 
 ```
-BIP39 mnemonic
-    └─ normalize (NFKD, lowercase, whitespace)
-    └─ Argon2id (random persisted salt, OPSLIMIT_MODERATE)
-           └─ 256-bit master key (never stored)
+Keycard (v1.0.0):
+    secp256k1 key at m/43'/60'/1581'/1'/0
+        → SHA256(key || "logos-notes-encryption")   [domain separation]
+            → 256-bit AES-256-GCM master key
 
-PIN (min 6 characters)
-    └─ Argon2id (random salt, OPSLIMIT_MODERATE)
-           └─ 256-bit wrapping key
-                  └─ AES-256-GCM(master key) → stored in DB
+Recovery Phrase (legacy):
+    BIP39 mnemonic → Argon2id (random salt) → 256-bit master key
+    PIN → Argon2id → wrapping key → AES-256-GCM(master key) → stored in DB
 
-Note content + title
-    └─ AES-256-GCM(plaintext, master key, random nonce) → stored in DB
-
-Identity
-    └─ SHA-256(normalized mnemonic) → Ed25519 seed
-           └─ Public key (deterministic, same phrase = same key always)
+Note content + title:
+    → AES-256-GCM(plaintext, master key, random nonce) → stored in DB
 ```
 
-An attacker with full disk access finds no plaintext notes or mnemonic — only encrypted blobs, the PIN-wrapped master key, and KDF salts. The database has `PRAGMA secure_delete=ON` and `0600` file permissions.
+Domain separation ensures different apps derive different keys from the same Keycard. If Logos Wallet uses the same card, it gets a different key. Same card, same PIN, completely isolated encryption domains.
 
-All temporary key material (PIN-derived keys, intermediate buffers, mnemonic UTF-8 bytes) is wrapped in a [SecureBuffer](https://github.com/xAlisher/logos-notes/blob/master/src/core/SecureBuffer.h) RAII class that calls `sodium_memzero` on destruction.
+All temporary key material is wrapped in a [SecureBuffer](https://github.com/xAlisher/logos-notes/blob/master/src/core/SecureBuffer.h) RAII class that calls `sodium_memzero` on destruction.
 
 ---
 
 ## How Logos App Modules Work
 
-This was the most valuable discovery. The Logos App is a microkernel that loads modules dynamically. Three types:
+The Logos App is a microkernel that loads modules dynamically:
 
 | Type | Mechanism | Use case |
 |------|-----------|----------|
 | `core` | C++ `.so` implementing `PluginInterface` | Backend logic, crypto, storage |
-| `ui` | C++ `.so` implementing `IComponent` | Full UI with push events |
-| `ui_qml` | Plain `.qml` file, no C++ needed | Simple UI, synchronous calls only |
+| `ui_qml` | Plain `.qml` file, no C++ needed | UI via `logos.callModule()` bridge |
 
 We built two modules:
-- `notes` (type: `core`) — [NotesPlugin.cpp](https://github.com/xAlisher/logos-notes/blob/master/src/plugin/NotesPlugin.cpp) wraps the backend
-- `notes_ui` (type: `ui_qml`) — [Main.qml](https://github.com/xAlisher/logos-notes/blob/master/plugins/notes_ui/Main.qml), all screens in one file
+- `notes` (core) — C++ backend with Keycard bridge, crypto, SQLite
+- `notes_ui` (ui_qml) — single QML file with all screens
 
-**The QML bridge is synchronous-only.** `logos.callModule("notes", "methodName", [args])` blocks, returns a JSON string, done. No signals, no push events for `ui_qml` type. For notes this is sufficient — everything is user-initiated.
-
-**Installation layout:**
-```
-~/.local/share/Logos/LogosApp/modules/notes/
-├── manifest.json
-└── notes_plugin.so
-
-~/.local/share/Logos/LogosApp/plugins/notes_ui/
-├── manifest.json
-└── Main.qml
-```
+The QML bridge is synchronous: `logos.callModule("notes", "method", [args])` returns a JSON string. For notes, everything is user-initiated, so this is sufficient.
 
 ---
 
 ## Lessons for Other Builders
 
-Four days of building taught me more about the Logos platform than any documentation could. Here are the things I wish I'd known on day one.
+Five days of building taught me more about the Logos platform than any documentation could.
 
 ### The plugin surface rule
 
-`NotesPlugin` is the **only** surface QML can see. If you add a method to your backend but don't expose it as `Q_INVOKABLE` on the plugin class, `logos.callModule` silently returns null. No error, no warning. You'll spend an hour debugging a typo.
-
-**Rule:** every backend method that QML needs must be explicitly exposed on the plugin. Check twice.
+`NotesPlugin` is the **only** surface QML can see. If you add a method to your backend but don't expose it as `Q_INVOKABLE` on the plugin class, `logos.callModule` silently returns null. No error. You'll spend an hour debugging a typo.
 
 ### The sandbox is real
 
-`ui_qml` plugins run in a sandboxed `QQuickWidget`. Things that work in standalone don't work inside:
+`ui_qml` plugins run sandboxed. `FileDialog` does nothing. `import Logos.Theme` fails silently. Hardcode your palette, move file I/O to C++, build custom controls.
 
-- **`FileDialog`** — silently does nothing. Use fixed well-known paths or move file I/O to C++ plugin.
-- **`import Logos.Theme`** — fails silently. Hardcode the dark palette hex values.
-- **`CheckBox`** — renders as an unstyled white square. Build a custom one.
-- **`StandardPaths`** — may not resolve correctly. Get paths from C++ side.
+### Go shared libraries work, but callbacks don't
 
-The `storage_ui` module avoids all of this by being a compiled C++ `.so` plugin with QML embedded. If you need native dialogs or full Qt access, go `type: "ui"` instead of `ui_qml`.
-
-### QML syntax errors are invisible
-
-If your plugin QML has a syntax error, Logos App silently fails to load it. No error message in the UI. The journal log shows the error, but you have to know to look. A dangling brace cost me an hour.
-
-**Rule:** run `qmllint` on every QML change before installing:
-```bash
-~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
-```
+We wrap `status-keycard-go` as `libkeycard.so` via CGO. RPC calls work perfectly inside the Logos App plugin host. But Go signal callbacks (push notifications from goroutines) never fire — the Go thread can't reach the Qt plugin process. Use RPC polling instead. Full technical details in the [Keycard integration blog post](2026-03-17-keycard-integration.md).
 
 ### Kill everything between tests
 
-Logos App spawns a `logos_host` child process per module. These survive the parent process being killed and hold stale `.so` files. If Load does nothing, it's probably a zombie from a previous session.
-
-```bash
-kill -9 $(ps aux | grep logos | grep -v grep | awk '{print $2}')
-```
+Logos App spawns `logos_host` child processes per module. They survive the parent being killed and hold stale `.so` files. AppImage wraps processes via `ld-linux`, so `pkill -f logos` misses them. Kill by `.elf` binary name.
 
 ### Always test in both environments
 
-Standalone testing covers about 60% of bugs. The other 40% only appear inside Logos App — different QML engine, different available components, different file system access. Test both before every merge.
-
-### Normalize everything before crypto
-
-BIP39 validation normalizes the mnemonic (NFKD, whitespace, lowercase). But if your key derivation and fingerprint code use the raw string, the same twelve words entered with different spacing produce different keys. Backup becomes unrestorable. One shared `normalizeMnemonic()` function, called before every crypto operation.
+Standalone testing covers about 60% of bugs. The other 40% only appear inside Logos App — different QML engine, different library paths, different available components.
 
 ---
 
 ## The Two-AI Security Review
 
-After shipping the core features, I ran a full security audit using two AI systems against each other. Claude Code (Opus) wrote the fixes. OpenAI Codex reviewed the diffs. I sat in the middle deciding what to act on.
+After shipping the core features, I ran a full security audit using two AI systems against each other. Claude Code (Opus) wrote the fixes. OpenAI Codex reviewed the diffs.
 
-The workflow:
-1. Claude implements a security fix
-2. Git diff is piped to Codex via a [review script](https://github.com/xAlisher/logos-notes/blob/master/scripts/security-review-loop.sh)
-3. Codex reviews for crypto correctness, memory safety, input validation
-4. Findings go back to Claude for fixes
-5. Repeat until clean
+This caught real bugs. The most serious: a cipher fallback (AES-GCM to XChaCha20) that wasn't persisted with the encrypted data — move your DB to a different machine and your notes become unreadable. Codex flagged it as High severity. We stripped the fallback entirely.
 
-This caught real bugs. The most serious: a cipher fallback (AES-GCM → XChaCha20) that wasn't persisted with the encrypted data. If you encrypted on a machine with AES-NI and moved the database to one without it, your data became unreadable. Codex flagged it as High severity. We stripped the fallback entirely — AES-NI has been standard since 2010, dual-cipher complexity wasn't worth the edge case.
+The same loop ran for Keycard integration: every branch got pushed, Codex reviewed, findings addressed, re-reviewed until LGTM. Four rounds on the Keycard branch alone — catching things like wrong-card acceptance at unlock and incomplete install artifacts.
 
-Four review rounds, ten findings, all resolved or documented as known limitations. Full audit in [SECURITY_REVIEW.md](https://github.com/xAlisher/logos-notes/blob/master/SECURITY_REVIEW.md).
+Four review rounds per feature, dozens of findings, all resolved. Full audit in [SECURITY_REVIEW.md](https://github.com/xAlisher/logos-notes/blob/master/SECURITY_REVIEW.md).
 
 ---
 
 ## What's Next
 
-**Keycard hardware key.** Swap Argon2id software key derivation for Keycard hardware key. Same PIN UX, same SQLite schema, no data migration.
+**v1.1.0 — Shared Keycard module.** This is the real payoff. Extract `KeycardBridge` into a standalone ecosystem module. Wallet, chat, notes, any future Logos app — one card, one PIN, all unlocked. The card becomes your identity across the entire platform. No passwords anywhere. Pure hardware.
 
-**Trust Network.** Automatic encrypted backup with redundancy through trusted peers. Export your encrypted blob to Logos Storage, broadcast the CID via Logos Messaging to peers who opted in. Reciprocal by design — both sides must add each other. No central server, no managed storage. [Design spec here.](https://github.com/xAlisher/logos-notes/issues/15)
+**Trust Network.** Encrypted backup with redundancy through trusted peers. Export to Logos Storage, broadcast CID via Waku to peers who opted in. Reciprocal by design.
 
-**LGX package.** Package as a proper `.lgx` module for installation via the Logos App Package Manager — so anyone can install it with one click.
-
-**AppImage packaging.** Currently blocked on a Qt QML AOT compilation issue. The Nix-based approach matching Logos App's own packaging is the likely path.
+**Card initialization wizard.** Set up a blank Keycard from within the app — currently requires Keycard Shell or Status Desktop.
 
 ---
 
 ## Try It
 
-The app is open source and runs today — both standalone and inside Logos App.
-
 ```bash
 git clone https://github.com/xAlisher/logos-notes
 cd logos-notes
+./scripts/build-libkeycard.sh              # Build Keycard library
 cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=~/Qt/6.9.3/gcc_64
-cmake --build build
-./build/logos-notes
+cmake --build build -j4 && cmake --install build
 ```
 
-Twenty-five tests. Five versions shipped. Six blog posts. Zero plaintext on disk.
+Seven versions. 95 tests. Six blog posts. Zero plaintext on disk. One Keycard.
 
 Clone it, break it, build on top of it. Find me on [Status](https://status.app/u/CwmAChEKD0FsaXNoZXIgU2hlcmFsaQM=#zQ3shWBWbQjMhpevjRT3KifqunFR8F81hbwzRMs7193PgWrhf) or in the Logos Discord.
 
