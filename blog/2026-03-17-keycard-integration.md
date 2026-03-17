@@ -6,6 +6,14 @@ This post is for the builders. If you're working with Status Keycard, `status-ke
 
 ## What we shipped
 
+| Create new database | Unlock notes |
+|---------------------|--------------|
+| ![Create](../Assets/Screenshots/1.0.0/create.png) | ![Unlock](../Assets/Screenshots/1.0.0/unlock.png) |
+
+| Note editor | Settings |
+|-------------|----------|
+| ![Notes](../Assets/Screenshots/1.0.0/notes.png) | ![Settings](../Assets/Screenshots/1.0.0/settings.png) |
+
 Immutable Notes v1.0.0 adds Keycard hardware key derivation. Your notes are encrypted with a key that lives on a physical smart card. No card, no notes. The card must be present every time you unlock.
 
 The user experience is intentionally simple: plug in reader, insert card, enter PIN, done. Behind that simplicity is a stack of lessons about Go shared libraries, QML sandboxes, AppImage packaging, and PC/SC daemon wrangling.

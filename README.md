@@ -2,97 +2,84 @@
 
 Encrypted, local-first notes app for the [Logos](https://logos.co) ecosystem.
 
-Built as a Qt6/QML desktop application targeting the Logos App (Basecamp) module host. Phase 0 ships as a standalone app; later phases integrate with Logos Messaging and Logos Storage.
+Hardware-secured encryption via [Status Keycard](https://keycard.tech). No accounts. No servers. Your card is the key.
 
 **Approved idea & detailed roadmap**: [logos-co/ideas#13](https://github.com/logos-co/ideas/issues/13)
 
 ---
 
+## Screenshots (v1.0.0)
+
+| Create new database | Unlock notes |
+|---------------------|--------------|
+| ![Create](Assets/Screenshots/1.0.0/create.png) | ![Unlock](Assets/Screenshots/1.0.0/unlock.png) |
+
+| Note editor | Settings |
+|-------------|----------|
+| ![Notes](Assets/Screenshots/1.0.0/notes.png) | ![Settings](Assets/Screenshots/1.0.0/settings.png) |
+
+---
+
 ## What it does
 
-- **Multiple encrypted notes** with a sidebar for navigation
-- Enter a BIP39 recovery phrase once to derive your encryption key
-- **Full BIP39 validation** — wordlist membership, checksum verification, NFKD normalization
-- Set a PIN (min 6 characters) that protects access across sessions — the mnemonic is never stored
-- **PIN brute-force protection** — 5 attempts, then exponential lockout (30s → 600s) with live countdown
-- Create, edit, and delete notes — each is AES-256-GCM encrypted before hitting disk
-- **Encrypted note titles** — even metadata never touches disk as plaintext
-- Auto-save per note on a 1.5s timer
-- Sidebar shows decrypted note title (first line) and relative timestamp
-- Lock/unlock flow wipes the master key from memory on lock
-- **Secure key zeroization** — temporary key buffers wiped via `sodium_memzero` after use
-- **Settings screen** — account public key (Ed25519, deterministic per mnemonic), Remove Account with confirmation
-- **Encrypted backup/restore** — export all notes as `.imnotes` file, restore on any device with the same mnemonic
-- **Deterministic public key** — same mnemonic = same Ed25519 public key, always, on any device
-- Single encrypted SQLite database — no plaintext on disk
+### Keycard (v1.0.0)
+- **Import with Keycard**: plug in USB reader, insert card, enter PIN — notes encrypted
+- **Unlock with Keycard**: card must be present every time — PIN verifies, key derives, notes decrypt
+- **Auto-lock on removal**: pull the card out, session locks instantly
+- **Wrong card rejection**: different card = different key = "Wrong keys. Try different Keycard."
+- **Domain separation**: `SHA256(secp256k1_key || "logos-notes-encryption")` — same card, different apps, different keys
 
-No accounts, no servers, no plaintext on disk.
+### Notes
+- **Multiple encrypted notes** with sidebar navigation
+- Create, edit, delete — each encrypted with AES-256-GCM before hitting disk
+- **Encrypted titles** — even metadata never touches disk as plaintext
+- Auto-save per note (1.5s timer)
+- Keyboard shortcuts: **Ctrl+N** (new note), **Ctrl+L** (lock)
+- **Encrypted backup/restore** — export `.imnotes` file, restore on any device with same key source
 
----
-## Phase 0 Screencast
-https://github.com/user-attachments/assets/59ef5b7b-d02e-4a77-97e0-a629ba17ec28
+### Legacy: Recovery Phrase
+- Enter a BIP39 recovery phrase to derive your encryption key
+- Set a PIN that wraps the master key across sessions
+- PIN brute-force protection: 5 attempts, then exponential lockout (30s → 600s)
 
----
-## Screenshots
-
-| Import | Unlock |
-|--------|--------|
-| ![Import](Assets/Screenshots/0.5.1/import.png) | ![Unlock](Assets/Screenshots/0.5.1/unlock.png) |
-
-| Multi-note sidebar | Settings |
-|---------------------|----------|
-| ![Notes](Assets/Screenshots/0.5.1/notes.png) | ![Settings](Assets/Screenshots/0.5.1/settings.png) |
-
-Running inside [Logos App](https://github.com/logos-co/logos-app) (Basecamp):
-
-| Inside Logos App |
-|------------------|
-| ![Inside Logos App](Assets/Screenshots/0.5.1/insidelogosapp.png) |
+No plaintext on disk. No accounts. No servers.
 
 ---
 
 ## Security model
 
-Your recovery phrase is the root of everything. When you first import it, the app derives a master encryption key from it using Argon2id with a random persisted salt, then forgets the phrase entirely. It is never written to disk, never stored in a database, never logged. The recovery phrase is fully validated against the BIP39 English wordlist with checksum verification — invalid phrases are rejected before any key derivation occurs. If you lose your recovery phrase, there is no way to recover your notes on a new device.
+### Keycard mode
+Your encryption key lives on a physical smart card. The Keycard derives a secp256k1 private key at the EIP-1581 encryption path (`m/43'/60'/1581'/1'/0`). We apply domain separation to produce a 256-bit AES key. The key exists in memory only while the card is present — remove the card, key is wiped via `sodium_memzero`.
 
-The PIN exists to protect day-to-day access. During import, the app encrypts your master key with a key derived from your PIN (Argon2id, OPSLIMIT_MODERATE) and stores that encrypted bundle in the local database. On every subsequent launch, you enter your PIN to unwrap the master key back into memory. A wrong PIN fails the AES-256-GCM authentication tag check. After 5 failed attempts, the app enforces exponential lockout (30s, 60s, 120s, 5m, 10m) with a live countdown timer. The lockout counter persists across app restarts.
+### Recovery Phrase mode (legacy)
+Your recovery phrase derives a master key via Argon2id with a random persisted salt. The key is wrapped with your PIN (also Argon2id) and stored encrypted in SQLite. Wrong PIN fails the AES-256-GCM auth tag. The phrase is entered once and never stored.
 
-When you lock the app, the master key is wiped from memory immediately via `sodium_memzero`. Temporary key buffers (PIN-derived keys, intermediate derived keys) are wrapped in a SecureBuffer RAII class that zeroizes on destruction. Nothing sensitive lives in memory while the app is locked.
+### Both modes
+- AES-256-GCM for all encryption (notes, titles, key wrapping)
+- `SecureBuffer` RAII class wipes all key material on scope exit
+- Single encrypted SQLite database — only ciphertext on disk
 
-An attacker with access to your device would find only encrypted blobs in the SQLite database — both note content and note titles are encrypted. To read your notes, they would need your PIN to unwrap the master key, or your original recovery phrase to re-derive it. Without either, the AES-256-GCM ciphertext is computationally infeasible to break.
-
-See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full security audit and known limitations.
+See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for the full audit.
 
 ---
 
 ## Encryption
 
 ```
-BIP39 mnemonic
-    └─ Argon2id (random persisted salt, OPSLIMIT_MODERATE)
-           └─ 256-bit master key  (never stored)
+Keycard:
+    secp256k1 key at m/43'/60'/1581'/1'/0
+        → SHA256(key || "logos-notes-encryption")
+            → 256-bit AES-256-GCM master key
 
-PIN
-    └─ Argon2id (random salt, OPSLIMIT_MODERATE, stored in DB)
-           └─ 256-bit wrapping key
-                  └─ AES-256-GCM(master key)  → stored in DB
+Recovery Phrase (legacy):
+    BIP39 mnemonic
+        → Argon2id (random salt, OPSLIMIT_MODERATE)
+            → 256-bit master key (never stored)
+    PIN → Argon2id → wrapping key → AES-256-GCM(master key) → stored in DB
 
-Note content + title
-    └─ AES-256-GCM(plaintext, master key, random nonce)  → stored in DB
+Note content + title:
+    → AES-256-GCM(plaintext, master key, random nonce) → stored in DB
 ```
-
-Wrong PIN → GCM authentication tag fails → access denied.
-The mnemonic is only entered once (import). All subsequent unlocks use the PIN alone.
-
----
-
-## Screens
-
-| Screen | Shown when |
-|--------|-----------|
-| **Import** | First launch — enter recovery phrase + set PIN (min 6 chars) |
-| **Unlock** | Every subsequent launch — enter PIN (with lockout countdown on failure) |
-| **Notes** | After unlock — sidebar with note list + auto-saving editor |
 
 ---
 
@@ -101,11 +88,13 @@ The mnemonic is only entered once (import). All subsequent unlocks use the PIN a
 | Component | Technology |
 |-----------|-----------|
 | Language | C++17 |
-| UI | Qt 6.9.3 / QML / QtQuick Controls |
-| Crypto | libsodium 1.0.18 (AES-256-GCM, Argon2id) |
+| UI | Qt 6.9.3 / QML |
+| Crypto | libsodium 1.0.18 (AES-256-GCM, Argon2id, Ed25519) |
+| Keycard | status-keycard-go (CGO → libkeycard.so) |
+| Smart card | libpcsclite (PC/SC daemon) |
 | Storage | SQLite via Qt SQL |
 | Build | CMake 3.28 + Ninja |
-| Nix | flake.nix for reproducible builds and dev shell |
+| Packaging | Nix flake + LGX |
 
 ---
 
@@ -113,13 +102,22 @@ The mnemonic is only entered once (import). All subsequent unlocks use the PIN a
 
 ### Prerequisites
 
-- Qt 6.6+ (tested with 6.9.3) — install via Qt online installer or system packages
-- `libsodium-dev`, `cmake`, `ninja-build`, `pkg-config`
-
 ```bash
 # Ubuntu
-sudo apt install libsodium-dev cmake ninja-build pkg-config
+sudo apt install libsodium-dev cmake ninja-build pkg-config pcscd libpcsclite-dev
 ```
+
+- Qt 6.6+ (tested with 6.9.3) — install via Qt online installer
+- Go toolchain (for building libkeycard.so)
+- USB smart card reader + Status Keycard
+
+### Build libkeycard.so
+
+```bash
+./scripts/build-libkeycard.sh
+```
+
+This compiles `status-keycard-go` as a C shared library into `lib/keycard/libkeycard.so`.
 
 ### Configure and build
 
@@ -128,20 +126,13 @@ cmake -B build -G Ninja \
   -DCMAKE_PREFIX_PATH=~/Qt/6.9.3/gcc_64 \
   -DCMAKE_BUILD_TYPE=Debug
 
-cmake --build build
+cmake --build build -j4
 ```
 
 ### Run tests
 
 ```bash
-./build/test_multi_note    # 9 tests — multi-note CRUD
-./build/test_security      # 14 tests — BIP39, salt, PIN brute-force
-```
-
-### Run standalone
-
-```bash
-./build/logos-notes
+cd build && ctest --output-on-failure   # 6 suites, 95+ test cases
 ```
 
 ### Install as Logos App module
@@ -150,16 +141,15 @@ cmake --build build
 cmake --install build
 ```
 
-This installs:
-- `notes_plugin.so` → `~/.local/share/Logos/LogosApp/modules/notes/`
-- `notes_ui` QML plugin → `~/.local/share/Logos/LogosApp/plugins/notes_ui/`
+Installs:
+- `notes_plugin.so` + `libkeycard.so` + `libpcsclite.so.1` → `~/.local/share/Logos/LogosApp/modules/notes/`
+- `Main.qml` + icons + metadata → `~/.local/share/Logos/LogosApp/plugins/notes_ui/`
 
-Then launch the Logos App and click **Load** on `notes_ui` in the UI Modules tab.
-
-### Nix dev shell
+### Run in Logos App
 
 ```bash
-nix develop   # drops into a shell with Qt6, libsodium, cmake, ninja, clangd
+pkill -9 -f "LogosApp.elf"; pkill -9 -f "logos_host.elf"
+~/logos-app/logos-app.AppImage
 ```
 
 ---
@@ -170,34 +160,27 @@ nix develop   # drops into a shell with Qt6, libsodium, cmake, ninja, clangd
 logos-notes/
 ├── CMakeLists.txt
 ├── flake.nix
-├── SECURITY_REVIEW.md                # Security audit + known limitations
-├── modules/notes/manifest.json        # Core module manifest
-├── plugins/notes_ui/
-│   ├── manifest.json                  # UI plugin manifest
-│   ├── metadata.json                  # QML plugin metadata
-│   └── Main.qml                      # Module UI (all 3 screens)
+├── SECURITY_REVIEW.md
+├── PROJECT_KNOWLEDGE.md          # Shared project memory
+├── lib/keycard/                  # libkeycard.so (built from status-keycard-go)
 ├── scripts/
-│   └── security-review-loop.sh        # Diff → Codex security review
+│   └── build-libkeycard.sh      # CGO build script
+├── modules/notes/manifest.json
+├── plugins/notes_ui/
+│   ├── Main.qml                 # All screens (create, unlock, editor, settings)
+│   └── metadata.json
+├── assets/icons/                 # SVG icons (Add, Lock, close, app_icon)
 └── src/
-    ├── main.cpp                       # Standalone app entry point
     ├── core/
-    │   ├── Bip39Wordlist.h            # Embedded 2048-word BIP39 English wordlist
-    │   ├── CryptoManager.h/cpp        # AES-256-GCM + Argon2id (libsodium)
-    │   ├── DatabaseManager.h/cpp      # SQLite: notes, wrapped_key, meta
-    │   ├── KeyManager.h/cpp           # BIP39 validation + checksum, key lifecycle
-    │   ├── NotesBackend.h/cpp         # Screen navigation, note persistence, PIN lockout
-    │   └── SecureBuffer.h             # RAII key zeroization wrapper
+    │   ├── NotesBackend.h/cpp    # Screen nav, note CRUD, keycard import/unlock
+    │   ├── KeycardBridge.h/cpp   # C++ wrapper for libkeycard.so JSON-RPC
+    │   ├── CryptoManager.h/cpp   # AES-256-GCM + Argon2id
+    │   ├── DatabaseManager.h/cpp # SQLite
+    │   ├── KeyManager.h/cpp      # BIP39 validation, key lifecycle
+    │   └── SecureBuffer.h        # RAII key zeroization
     ├── plugin/
-    │   ├── NotesPlugin.h/cpp          # PluginInterface for Logos App
-    │   └── plugin_metadata.json       # Embedded Qt plugin metadata
-    └── ui/
-        ├── main.qml
-        ├── screens/
-        │   ├── ImportScreen.qml
-        │   ├── UnlockScreen.qml       # Live lockout countdown timer
-        │   └── NoteScreen.qml
-        └── components/
-            └── PinInput.qml
+    │   └── NotesPlugin.h/cpp     # Logos App PluginInterface
+    └── ui/                       # Standalone app screens
 ```
 
 ---
@@ -206,43 +189,37 @@ logos-notes/
 
 | Version | Goal | Status |
 |---------|------|--------|
-| **v0.1.0** | Standalone encrypted notes app + Logos App module | ✅ Complete |
-| **v0.2.0** | Multiple notes with sidebar UI, CRUD, auto-save | ✅ Complete |
-| **v0.3.0** | P0+P1 security hardening: BIP39 validation, random salt, PIN lockout, encrypted titles, SecureBuffer | ✅ Complete |
-| **v0.4.0** | P2 security fixes, AES-NI fail-fast, SQLite hardening | ✅ Complete |
-| **v0.5.0** | Settings screen, account public key, encrypted backup export/import, Remove Account | ✅ Complete |
-| **v0.6.0** | LGX package for Logos App Package Manager | Planned |
-| **v0.6.0** | AppImage standalone installer | Parked — blocked on Qt QML AOT |
-| **v1.0.0** | Keycard hardware key derivation (same PIN UX, same DB schema) | Planned |
-| **v2.0** | Logos Storage auto-backup + CID tracking | Research |
-| **v3.0** | Trust Network — social backup via web of trust | Proposal |
-
-### Security issues tracker
-
-| Issue | Severity | Status |
-|-------|----------|--------|
-| [#3](../../issues/3) BIP39 wordlist validation + checksum | P0 | ✅ Fixed |
-| [#4](../../issues/4) Random persisted salt | P0 | ✅ Fixed |
-| [#2](../../issues/2) PIN brute-force protection | P0 | ✅ Fixed |
-| [#5](../../issues/5) Encrypt note titles | P1 | ✅ Fixed |
-| [#6](../../issues/6) Zeroize key buffers | P1 | ✅ Fixed |
-| [#10](../../issues/10) PIN lockout integrity | P1 | ⚠️ Documented limitation |
-| [#11](../../issues/11) saveMeta() error handling | P2 | ✅ Fixed |
-| [#7](../../issues/7) AES-NI fail-fast check | P1 | ✅ Fixed |
-| [#8](../../issues/8) AEAD nonce validation | P2 | ✅ Partial (nonce check done, AAD open) |
-| [#9](../../issues/9) SQLite hardening | P2 | ✅ Fixed |
-
-See [SECURITY_REVIEW.md](SECURITY_REVIEW.md) for full audit details.
-
-See [logos-co/ideas#13](https://github.com/logos-co/ideas/issues/13) for the detailed roadmap and phase definitions.
+| **v0.1.0** | Standalone encrypted notes + Logos App module | ✅ |
+| **v0.2.0** | Multiple notes with sidebar | ✅ |
+| **v0.3.0** | Security hardening (P0+P1) | ✅ |
+| **v0.4.0** | P2 security fixes, AES-NI fail-fast | ✅ |
+| **v0.5.0** | Settings, backup, stable identity | ✅ |
+| **v0.6.0** | LGX packaging | ✅ |
+| **v1.0.0** | **Keycard hardware key derivation + UI polish** | ✅ |
+| **v1.1.0** | Shared keycard-module for ecosystem | Planned |
+| **v2.0** | Logos Storage auto-backup | Research |
+| **v3.0** | Trust Network — social backup | Proposal |
 
 ---
 
-## Related repositories
+## Blog
+
+| Date | Post |
+|------|------|
+| 2026-03-17 | [Keycard Integration: Hardware Keys for Encrypted Notes](blog/2026-03-17-keycard-integration.md) |
+| 2026-03-15 | [Shared Memory: How Two AIs Stay in Sync](blog/2026-03-15-shared-memory.md) |
+| 2026-03-14 | [Settings, Backup, and the Identity Question](blog/2026-03-14-settings-backup-identity.md) |
+| 2026-03-14 | [Security Hardening: Two AIs Reviewing Each Other's Work](blog/2026-03-14-security-hardening.md) |
+| 2026-03-12 | [Building Immutable Notes on Logos: Phase 0](blog/2026-03-12-phase-0.md) |
+
+---
+
+## Related
 
 | Repo | Purpose |
 |------|---------|
 | [logos-app-poc](https://github.com/logos-co/logos-app-poc) | Shell host that loads this module |
-| [logos-chat-ui](https://github.com/logos-co/logos-chat-ui) | Reference dapp (same C++/QML pattern) |
+| [status-keycard-go](https://github.com/status-im/keycard-go) | Go Keycard library we wrap |
 | [logos-cpp-sdk](https://github.com/logos-co/logos-cpp-sdk) | C++ SDK for Logos modules |
-| [logos-docs](https://github.com/logos-co/logos-docs) | Ecosystem documentation |
+| [logos-tutorial](https://github.com/logos-co/logos-tutorial) | Developer guide for building modules |
+| [keycard.tech](https://keycard.tech/en/developers/overview) | Keycard developer docs |
