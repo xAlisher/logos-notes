@@ -1,7 +1,7 @@
 # Security, Privacy, and Cryptography Review
 
-Date: 2026-03-15
-Scope: `src/core/*`, `src/plugin/*`, backup import/export flows, and security claims in `README.md`.
+Date: 2026-03-17
+Scope: `src/core/*`, `src/plugin/*`, backup import/export flows, keycard auth flows, and security claims in `README.md`.
 
 ## Executive summary
 
@@ -13,6 +13,7 @@ Current top residual risks:
 3. **Backup restore can report false success** because per-note re-encryption / DB writes are not checked before incrementing the imported count.
 4. **AEAD hardening opportunities** remain open: no AAD is used to bind record context.
 5. **Legacy phase-0 save API can report success on failed writes**, creating silent data-loss behavior for any remaining callers.
+6. **Keycard removal/churn behavior is only lightly stress-tested**; manual real-device validation now covers card removal and wrong-card rejection, but not repeated rapid reader/card flapping.
 
 ## What is implemented well
 
@@ -212,6 +213,23 @@ significantly.
   offline PIN brute-force entirely
 
 ## Review History
+
+### Round 6 — 2026-03-17 (Codex review of keycard auth and UI follow-up branches)
+
+**Reported by:** Codex
+**Role:** reviewer
+**Scope:** `feature/keycard-pin-auth` and `feature/ui-polish` review branches, with focus on keycard-backed account auth, wrong-card handling, card-removal behavior, and keycard import restore reporting
+**Branches/commits reviewed:** `feature/keycard-pin-auth` through `d23404e`, `feature/ui-polish` through `c5b488a`
+
+**Security-relevant outcomes:**
+
+- **Resolved before LGTM:** keycard-backed unlock originally accepted the wrong card because `unlockWithKeycard()` did not compare the exported-key fingerprint against the stored account fingerprint. This was fixed by rejecting mismatched cards before entering the note screen.
+- **Resolved before LGTM:** keycard import with backup restore originally discarded partial-restore warnings on success. This was fixed so warnings are preserved through plugin JSON and surfaced in the UI warning banner.
+- **Manually validated after review:** physical card removal during an active keycard-backed session and wrong/different-card behavior were both exercised successfully in the real app flow.
+
+**Residual gap:**
+
+- Rapid reader/card churn stress remains unverified. This is currently treated as low coverage debt rather than an open blocking security finding.
 
 ### Round 5 — 2026-03-15 (Codex audit of current master)
 

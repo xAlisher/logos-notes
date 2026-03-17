@@ -266,6 +266,9 @@ Mnemonic accounts wrap the master key with a PIN-derived key and store it in `wr
 ### 32. SVG Image elements in QML sandbox need z-order for MouseArea
 Loading SVG icons via `Image { source: "file.svg" }` works in the Logos App QML sandbox, but the Image can block mouse events. Always put `MouseArea { z: 10 }` to ensure clicks pass through. Also set `sourceSize: Qt.size(w, h)` for proper SVG rendering.
 
+### 33. Logos App loads old module versions from backup directories
+During development, backup directories like `notes.bak`, `notes.old`, etc. can persist in `~/.local/share/Logos/LogosApp/modules/`. The shell may load these stale versions instead of the current build from `notes/`, causing confusing failures (e.g. Keycard detection working in tests but not in the app). **Solution**: CMake install target now removes all `notes.*` directories before installing the current build. This prevents version conflicts and ensures only one module version exists at a time.
+
 ---
 
 ## Logos Developer Tools
