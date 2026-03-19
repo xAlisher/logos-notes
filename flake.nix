@@ -115,6 +115,14 @@
             # Bundle libkeycard.so for LGX packaging
             cp ${libkeycard}/lib/libkeycard.so $out/lib/
           '';
+
+          # IMPORTANT: The portable bundler includes libpcsclite.so.1 because
+          # libkeycard.so depends on it. However, the bundled libpcsclite cannot
+          # connect to the system pcscd daemon socket, breaking smart card detection.
+          # After LGX installation, remove libpcsclite.so.1 from the modules/notes/
+          # directory to force usage of the system libpcsclite, which properly
+          # connects to pcscd. This is a known limitation of portable bundling
+          # for libraries that interact with system services.
         };
 
         # UI plugin for nix-bundle-lgx: lib/Main.qml + lib/metadata.json
@@ -151,8 +159,11 @@
             echo "  ./build/logos-notes"
             echo ""
             echo "LGX packaging:"
-            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib"
-            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx .#ui"
+            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib"
+            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui"
+            echo ""
+            echo "Note: Use #portable bundler for correct platform (linux-amd64)."
+            echo "After install, remove libpcsclite.so.1 from modules/notes/ for pcscd."
           '';
         };
       });
