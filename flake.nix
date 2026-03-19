@@ -116,18 +116,17 @@
             cp ${libkeycard}/lib/libkeycard.so $out/lib/
           '';
 
-          # IMPORTANT: libpcsclite bundling issue
+          # IMPORTANT: libpcsclite bundling limitation
           # The portable bundler automatically includes libpcsclite.so.1 because
           # libkeycard.so depends on it. However, bundled libpcsclite cannot connect
           # to the system pcscd daemon socket, breaking smart card detection.
           #
-          # Solution: Use scripts/fix-lgx.sh after bundling to remove libpcsclite
-          # from the LGX, forcing runtime to use system libpcsclite which properly
-          # connects to pcscd.
+          # Canonical packaging command (single-step, produces working LGX):
+          #   nix run .#package-lgx
           #
-          # Workflow:
-          #   nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib
-          #   nix run .#fix-lgx logos-notes-core-lgx-1.0.0/logos-notes-core.lgx
+          # This command bundles with portable bundler, then automatically removes
+          # libpcsclite from the LGX, producing a shippable artifact that uses
+          # system libpcsclite for proper pcscd connectivity.
           #
           # This is a known limitation of portable bundling for libraries that
           # interact with system services via local sockets.
@@ -149,7 +148,15 @@
           '';
         };
 
-        # App to post-process LGX and remove libpcsclite for pcscd compatibility
+        # Canonical LGX packaging command (single-step, produces working artifacts)
+        apps.package-lgx = {
+          type = "app";
+          program = "${pkgs.writeShellScript "package-lgx" ''
+            ${builtins.readFile ./scripts/package-lgx.sh}
+          ''}";
+        };
+
+        # Manual fix tool for existing LGX files
         apps.fix-lgx = {
           type = "app";
           program = "${pkgs.writeShellScript "fix-lgx" ''
@@ -175,12 +182,10 @@
             echo "  cmake --build build"
             echo "  ./build/logos-notes"
             echo ""
-            echo "LGX packaging:"
-            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib"
-            echo "  nix run .#fix-lgx logos-notes-core-lgx-1.0.0/logos-notes-core.lgx"
-            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui"
+            echo "LGX packaging (canonical):"
+            echo "  nix run .#package-lgx"
             echo ""
-            echo "Note: fix-lgx removes bundled libpcsclite for system pcscd compatibility."
+            echo "Produces working LGX artifacts with libpcsclite fix applied automatically."
           '';
         };
       });
