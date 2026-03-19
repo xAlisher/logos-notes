@@ -21,7 +21,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 
 ---
 
-## Current Phase: v1.1.0 released — production ready with reproducible builds
+## Current Phase: v1.2.0 released — Logos Basecamp compatible
 
 ### Completed phases
 
@@ -35,6 +35,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 | v0.6.0 | LGX packaging, 95-case test suite (backup, account, note API, plugin) |
 | v1.0.0 | Keycard hardware key derivation + UI polish |
 | v1.1.0 | Build libkeycard from source + portable LGX packaging (issue #44) |
+| v1.2.0 | Logos Basecamp compatibility (app rename, path updates) |
 
 ### Roadmap
 
@@ -43,7 +44,8 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 | v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
 | v1.0.0 | Keycard hardware key derivation + UI polish | ✅ Complete |
-| v1.1.0 | Build libkeycard from source + portable LGX packaging | ✅ Released — issue #44 complete |
+| v1.1.0 | Build libkeycard from source + portable LGX packaging | ✅ Released |
+| v1.2.0 | Logos Basecamp compatibility | ✅ Released — issue #55 complete |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
