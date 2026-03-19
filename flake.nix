@@ -145,6 +145,10 @@
             mkdir -p $out/lib
             cp Main.qml $out/lib/
             cp metadata.json $out/lib/
+            # Copy icon assets
+            cp ${./assets/icons/Add.svg} $out/lib/Add.svg
+            cp ${./assets/icons/Lock.svg} $out/lib/Lock.svg
+            cp ${./assets/icons/close.svg} $out/lib/close.svg
           '';
         };
 
