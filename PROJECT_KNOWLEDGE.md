@@ -1,5 +1,5 @@
 # Immutable Notes — Project Knowledge
-*Last updated: 2026-03-17*
+*Last updated: 2026-03-19*
 
 > **This file is the project's shared memory.**
 > It lives in the repo root and is committed like any other file.
@@ -21,7 +21,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 
 ---
 
-## Current Phase: v0.6.0 complete — next is v1.0.0
+## Current Phase: v1.0.0 complete — ready for production
 
 ### Completed phases
 
@@ -33,6 +33,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 | v0.4.0 | P2 security fixes, AES-NI fail-fast |
 | v0.5.0 | Settings, backup export/import, stable identity |
 | v0.6.0 | LGX packaging, 95-case test suite (backup, account, note API, plugin) |
+| v1.0.0 | Keycard hardware key derivation + UI polish + LGX portable packaging |
 
 ### Roadmap
 
@@ -40,7 +41,8 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 |---------|-------------|--------|
 | v0.6.0 | LGX package for Logos App Package Manager | ✅ Complete |
 | v0.6.0 | AppImage standalone installer | Parked — blocked on Qt QML AOT |
-| v1.0.0 | Keycard hardware key derivation + UI polish | Complete — all merged to master |
+| v1.0.0 | Keycard hardware key derivation + UI polish | ✅ Complete — all merged to master |
+| v1.0.0 | Build libkeycard from source + LGX portable packaging | ✅ Complete — issue #44 |
 | v2.0 | Logos Storage auto-backup + CID tracking | Research |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
@@ -272,6 +274,12 @@ During development, backup directories like `notes.bak`, `notes.old`, etc. can p
 ### 34. install(CODE) blocks must honor DESTDIR for staged installs
 Custom `install(CODE)` blocks that manipulate filesystem paths must prefix those paths with `$ENV{DESTDIR}` to support staged/packaged installs. Example: `set(_path "\$ENV{DESTDIR}${INSTALL_DIR}/file")`. Without this, `DESTDIR=/tmp/stage cmake --install` would still operate on the live system paths instead of the staged tree. This is the same pattern required for post-install scripts like `patchelf`. Caught by Senty in #47 review.
 
+### 35. nix-bundle-lgx platform naming: default vs portable
+The default bundler (`nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib`) generates `linux-amd64-dev` variant names. The Logos App Package Manager expects `linux-amd64` without the `-dev` suffix. Use the portable bundler (`#portable`) for correct platform recognition: `nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib`. This bundles all dependencies (including system libraries) for true portability but see lesson #36 for caveats.
+
+### 36. Bundled libpcsclite breaks pcscd socket connection
+The portable bundler includes all transitive dependencies, including `libpcsclite.so.1` for smart card support. However, the bundled version cannot connect to the system `pcscd` daemon socket (looks for socket in wrong location). Smart card detection fails. **Solution**: Use the `nix run .#package-lgx` command, which bundles with the portable bundler then automatically removes libpcsclite, producing a shippable LGX that uses the system libpcsclite for proper pcscd connectivity. This applies to any library that interacts with system services via local sockets.
+
 ---
 
 ## Logos Developer Tools
@@ -353,6 +361,38 @@ Keycard (#33) and wallet (#32) are independent features — neither blocks the o
 - C API: `KeycardInitializeRPC()`, `KeycardCallRPC()`, `KeycardSetSignalEventCallback()`, `Free()`
 - JSON-RPC methods: `keycard.Start`, `keycard.Stop`, `keycard.GetStatus`, `keycard.Authorize`, `keycard.ExportRecoverKeys`
 
+#### Issue #44: Build libkeycard from source (2026-03-19)
+
+**Problem**: Pre-built `libkeycard.so` binary committed to repo (14MB, commit 76c8804)
+
+**Solution**: Build from source in Nix flake using `pkgs.buildGoModule`:
+```nix
+libkeycard = pkgs.buildGoModule {
+  src = pkgs.fetchFromGitHub {
+    owner = "status-im";
+    repo = "status-keycard-go";
+    rev = "76c880480c62dbf0ee67ee342f87ab80a928ed73";
+  };
+  buildPhase = ''
+    cd shared
+    export CGO_ENABLED=1
+    go build -buildmode=c-shared -o libkeycard.so .
+  '';
+};
+```
+
+**Backup strategy**: Keep committed binary at `lib/keycard/libkeycard.so` as fallback for several months until Nix builds proven stable.
+
+**LGX Packaging findings**:
+1. **Platform mismatch**: Default bundler generates `linux-amd64-dev`, Logos App expects `linux-amd64`
+   - Solution: Use `nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib`
+2. **libpcsclite issue**: Portable bundler includes `libpcsclite.so.1` (libkeycard dependency), but bundled version cannot connect to system pcscd daemon socket
+   - Root cause: Bundled library looks for pcscd socket in wrong location
+   - Workaround: Remove `libpcsclite.so.1` from `modules/notes/` after LGX installation to force system version
+   - Documented in `flake.nix` with inline comment
+
+**Testing**: ✅ Full LGX workflow validated with both core and UI modules, smart card detection working after libpcsclite workaround.
+
 #### Sub-issue tracker
 | # | Title | Branch | Status |
 |---|-------|--------|--------|
@@ -360,6 +400,7 @@ Keycard (#33) and wallet (#32) are independent features — neither blocks the o
 | #35 | PIN authorization + key export | merged to master | ✅ Complete — Codex LGTM, hardware verified |
 | #36 | Wire key into NotesBackend encryption | merged to master | ✅ Complete — same merge as #35 |
 | #37 | Keycard ↔ mnemonic migration path | — | Postponed — not needed for v1.0.0 |
+| #44 | Build libkeycard from source + LGX packaging | feature/shared-keycard-module | ✅ Complete — ready for merge after review |
 
 ### Wallet integration (v0.7.0+)
 
@@ -478,22 +519,38 @@ LGX files are `tar.gz` archives containing platform-specific module variants. Bu
 ### Build command
 
 ```bash
-# Portable (self-contained, no /nix/store dependency at runtime)
-nix bundle --bundler github:logos-co/nix-bundle-lgx#portable github:xAlisher/logos-notes#lib
+# IMPORTANT: Use #portable bundler for correct platform (linux-amd64 not linux-amd64-dev)
+nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib
+nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui
+
+# Default bundler generates linux-amd64-dev which Package Manager rejects
+# nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib  # WRONG
 ```
 
 ### What goes in the LGX
 
 | Module | Type | Contents |
 |--------|------|----------|
-| `notes.lgx` | core | `manifest.json` + `variants/linux-amd64/notes_plugin.so` |
+| `notes.lgx` | core | `manifest.json` + `variants/linux-amd64/notes_plugin.so` + bundled deps (libkeycard, libsodium) |
 | `notes_ui.lgx` | ui_qml | `manifest.json` + `variants/linux-amd64/Main.qml` + `metadata.json` |
+
+### Post-install workaround
+
+**Smart card detection fix**: After installing `notes.lgx`, remove the bundled `libpcsclite.so.1`:
+```bash
+rm ~/.local/share/Logos/LogosApp/modules/notes/libpcsclite.so.1
+```
+This forces usage of system libpcsclite which properly connects to the pcscd daemon socket.
 
 ### Current state
 
-`cmake --install` copies raw `.so` files — only works with AppImage builds.
-Real LGX packaging needed for Package Manager installation.
-Issue: #30. Upstream: https://github.com/logos-co/logos-app/issues/60
+✅ **LGX packaging complete** (issue #44, 2026-03-19)
+- Core and UI modules install via Package Manager
+- Portable bundler generates correct `linux-amd64` platform
+- libpcsclite workaround documented in flake.nix
+- Full workflow tested with smart card detection
+
+`cmake --install` still works for AppImage-based testing.
 
 ---
 

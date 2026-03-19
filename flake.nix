@@ -24,6 +24,39 @@
         logosSdk = logos-cpp-sdk.packages.${system}.default;
         logosHeaders = logos-liblogos.packages.${system}.default;
         designSystem = logos-design-system.packages.${system}.default;
+
+        # Build libkeycard.so from status-keycard-go (Issue #44)
+        libkeycard = pkgs.buildGoModule {
+          pname = "libkeycard";
+          version = "unstable-2024-03-31";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "status-im";
+            repo = "status-keycard-go";
+            rev = "76c880480c62dbf0ee67ee342f87ab80a928ed73";
+            hash = "sha256-AcTMJm7aGSuh0emH+3Vun/BOdtC7ntwQVbakbKkrbFA=";
+          };
+
+          # Disable vendorHash since we're building a CGO shared library
+          vendorHash = null;
+
+          buildInputs = [ pkgs.pcsclite ];
+          nativeBuildInputs = [ pkgs.pkg-config ];
+
+          # Build only the shared library from the shared/ directory
+          buildPhase = ''
+            cd shared
+            export CGO_ENABLED=1
+            go build -buildmode=c-shared -o libkeycard.so .
+          '';
+
+          installPhase = ''
+            mkdir -p $out/lib
+            cp libkeycard.so $out/lib/
+            cp libkeycard.h $out/lib/
+          '';
+        };
+
         nativeBuildInputs = with pkgs; [
           cmake
           ninja
@@ -35,6 +68,7 @@
           qt6.qtdeclarative
           qt6.qtremoteobjects
           libsodium
+          libkeycard
         ];
       in
       {
@@ -78,8 +112,26 @@
             mkdir -p $out/lib
             cp notes_plugin.so $out/lib/
             cp ${./metadata.json} $out/lib/metadata.json
+            # Bundle libkeycard.so for LGX packaging
+            cp ${libkeycard}/lib/libkeycard.so $out/lib/
           '';
+
+          # IMPORTANT: libpcsclite bundling limitation
+          # The portable bundler automatically includes libpcsclite.so.1 because
+          # libkeycard.so depends on it. However, bundled libpcsclite cannot connect
+          # to the system pcscd daemon socket, breaking smart card detection.
+          #
+          # Canonical packaging command (single-step, produces working LGX):
+          #   nix run .#package-lgx
+          #
+          # This command bundles with portable bundler, then automatically removes
+          # libpcsclite from the LGX, producing a shippable artifact that uses
+          # system libpcsclite for proper pcscd connectivity.
+          #
+          # This is a known limitation of portable bundling for libraries that
+          # interact with system services via local sockets.
         };
+
 
         # UI plugin for nix-bundle-lgx: lib/Main.qml + lib/metadata.json
         # src points to plugins/notes_ui/ so the bundler finds metadata.json there.
@@ -93,7 +145,27 @@
             mkdir -p $out/lib
             cp Main.qml $out/lib/
             cp metadata.json $out/lib/
+            # Copy icon assets
+            cp ${./assets/icons/Add.svg} $out/lib/Add.svg
+            cp ${./assets/icons/Lock.svg} $out/lib/Lock.svg
+            cp ${./assets/icons/close.svg} $out/lib/close.svg
           '';
+        };
+
+        # Canonical LGX packaging command (single-step, produces working artifacts)
+        apps.package-lgx = {
+          type = "app";
+          program = "${pkgs.writeShellScript "package-lgx" ''
+            ${builtins.readFile ./scripts/package-lgx.sh}
+          ''}";
+        };
+
+        # Manual fix tool for existing LGX files
+        apps.fix-lgx = {
+          type = "app";
+          program = "${pkgs.writeShellScript "fix-lgx" ''
+            ${builtins.readFile ./scripts/fix-lgx.sh}
+          ''}";
         };
 
         devShells.default = pkgs.mkShell {
@@ -114,9 +186,10 @@
             echo "  cmake --build build"
             echo "  ./build/logos-notes"
             echo ""
-            echo "LGX packaging:"
-            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib"
-            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx .#ui"
+            echo "LGX packaging (canonical):"
+            echo "  nix run .#package-lgx"
+            echo ""
+            echo "Produces working LGX artifacts with libpcsclite fix applied automatically."
           '';
         };
       });
