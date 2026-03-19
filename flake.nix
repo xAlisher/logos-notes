@@ -116,14 +116,23 @@
             cp ${libkeycard}/lib/libkeycard.so $out/lib/
           '';
 
-          # IMPORTANT: The portable bundler includes libpcsclite.so.1 because
-          # libkeycard.so depends on it. However, the bundled libpcsclite cannot
-          # connect to the system pcscd daemon socket, breaking smart card detection.
-          # After LGX installation, remove libpcsclite.so.1 from the modules/notes/
-          # directory to force usage of the system libpcsclite, which properly
-          # connects to pcscd. This is a known limitation of portable bundling
-          # for libraries that interact with system services.
+          # IMPORTANT: libpcsclite bundling issue
+          # The portable bundler automatically includes libpcsclite.so.1 because
+          # libkeycard.so depends on it. However, bundled libpcsclite cannot connect
+          # to the system pcscd daemon socket, breaking smart card detection.
+          #
+          # Solution: Use scripts/fix-lgx.sh after bundling to remove libpcsclite
+          # from the LGX, forcing runtime to use system libpcsclite which properly
+          # connects to pcscd.
+          #
+          # Workflow:
+          #   nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib
+          #   nix run .#fix-lgx logos-notes-core-lgx-1.0.0/logos-notes-core.lgx
+          #
+          # This is a known limitation of portable bundling for libraries that
+          # interact with system services via local sockets.
         };
+
 
         # UI plugin for nix-bundle-lgx: lib/Main.qml + lib/metadata.json
         # src points to plugins/notes_ui/ so the bundler finds metadata.json there.
@@ -138,6 +147,14 @@
             cp Main.qml $out/lib/
             cp metadata.json $out/lib/
           '';
+        };
+
+        # App to post-process LGX and remove libpcsclite for pcscd compatibility
+        apps.fix-lgx = {
+          type = "app";
+          program = "${pkgs.writeShellScript "fix-lgx" ''
+            ${builtins.readFile ./scripts/fix-lgx.sh}
+          ''}";
         };
 
         devShells.default = pkgs.mkShell {
@@ -160,10 +177,10 @@
             echo ""
             echo "LGX packaging:"
             echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib"
+            echo "  nix run .#fix-lgx logos-notes-core-lgx-1.0.0/logos-notes-core.lgx"
             echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui"
             echo ""
-            echo "Note: Use #portable bundler for correct platform (linux-amd64)."
-            echo "After install, remove libpcsclite.so.1 from modules/notes/ for pcscd."
+            echo "Note: fix-lgx removes bundled libpcsclite for system pcscd compatibility."
           '';
         };
       });
