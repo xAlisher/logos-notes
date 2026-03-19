@@ -112,6 +112,8 @@
             mkdir -p $out/lib
             cp notes_plugin.so $out/lib/
             cp ${./metadata.json} $out/lib/metadata.json
+            # Bundle libkeycard.so for LGX packaging
+            cp ${libkeycard}/lib/libkeycard.so $out/lib/
           '';
         };
 
