@@ -135,21 +135,21 @@ cmake --build build -j4
 cd build && ctest --output-on-failure   # 6 suites, 95+ test cases
 ```
 
-### Install as Logos App module
+### Install as Logos Basecamp module
 
 ```bash
 cmake --install build
 ```
 
 Installs:
-- `notes_plugin.so` + `libkeycard.so` + `libpcsclite.so.1` → `~/.local/share/Logos/LogosApp/modules/notes/`
-- `Main.qml` + icons + metadata → `~/.local/share/Logos/LogosApp/plugins/notes_ui/`
+- `notes_plugin.so` + `libkeycard.so` + `libpcsclite.so.1` → `~/.local/share/Logos/LogosBasecampDev/modules/notes/`
+- `Main.qml` + icons + metadata → `~/.local/share/Logos/LogosBasecampDev/plugins/notes_ui/`
 
-### Run in Logos App
+### Run in Logos Basecamp
 
 ```bash
-pkill -9 -f "LogosApp.elf"; pkill -9 -f "logos_host.elf"
-~/logos-app/logos-app.AppImage
+pkill -9 -f "LogosBasecamp.elf"; pkill -9 -f "logos_host.elf"
+~/logos-app/result/logos-basecamp.AppImage
 ```
 
 ---
@@ -218,7 +218,7 @@ logos-notes/
 
 | Repo | Purpose |
 |------|---------|
-| [logos-app-poc](https://github.com/logos-co/logos-app-poc) | Shell host that loads this module |
+| [logos-app](https://github.com/logos-co/logos-app) | Logos Basecamp — shell host that loads this module |
 | [status-keycard-go](https://github.com/status-im/keycard-go) | Go Keycard library we wrap |
 | [logos-cpp-sdk](https://github.com/logos-co/logos-cpp-sdk) | C++ SDK for Logos modules |
 | [logos-tutorial](https://github.com/logos-co/logos-tutorial) | Developer guide for building modules |

@@ -175,7 +175,7 @@ Overall: LGTM / N findings above need addressing before merge
 ```
 
 For new findings not on an existing issue, create a new issue with:
-- Labels: `security` or `bug` + env label (`env:logos-app`, `env:standalone`, `env:both`)
+- Labels: `security` or `bug` + env label (`env:logos-basecamp`, `env:standalone`, `env:both`)
 - Body: Evidence, Risk, Recommendation
 
 ### On SECURITY_REVIEW.md
