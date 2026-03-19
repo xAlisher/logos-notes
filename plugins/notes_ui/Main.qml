@@ -787,7 +787,7 @@ Item {
         property int activeNoteId: -1
         property bool loading: false
         property bool showSettings: false
-        property bool initialLoadComplete: false  // Guard against auto-save during initial load
+        property string lastLoadedContent: ""  // Track loaded content to prevent saving unchanged data
 
         // Warning banner
         Rectangle {
@@ -812,8 +812,10 @@ Item {
 
         onVisibleChanged: {
             if (visible) {
+                saveTimer.stop()
                 activeNoteId = -1
-                initialLoadComplete = false  // Reset flag on visibility change
+                lastLoadedContent = ""
+                editor.text = ""  // Clear editor - no note selected
                 deferredRefresh.start()
             }
         }
@@ -831,11 +833,8 @@ Item {
             noteModel.clear()
             for (var i = 0; i < arr.length; i++)
                 noteModel.append(arr[i])
-            if (noteModel.count === 0) {
-                createNewNote()
-            } else if (activeNoteId === -1) {
-                selectNote(noteModel.get(0).id)
-            }
+            // Don't auto-select notes - user must click to open
+            // This prevents the race condition where auto-selection triggers a bad save
         }
 
         function saveCurrentNote() {
@@ -865,9 +864,9 @@ Item {
                     } catch(e) {}
                 }
                 editor.text = result || ""
+                lastLoadedContent = editor.text  // Track what we loaded
             }
             loading = false
-            initialLoadComplete = true  // Mark initial load as complete
             editor.forceActiveFocus()
         }
 
@@ -890,6 +889,7 @@ Item {
             activeNoteId = obj.id
             loading = true
             editor.text = ""
+            lastLoadedContent = ""  // New note starts empty
             loading = false
             refreshList()
             selectNote(obj.id)
@@ -1153,7 +1153,7 @@ Item {
         // ── Editor area ─────────────────────────────────────────────
         Flickable {
             id: editorFlick
-            visible: !noteScreen.showSettings
+            visible: !noteScreen.showSettings && noteScreen.activeNoteId !== -1
             anchors {
                 top: parent.top; topMargin: 24
                 left: sidebar.right; leftMargin: 24
@@ -1178,9 +1178,8 @@ Item {
                 selectedTextColor: root.textColor
 
                 onTextChanged: {
-                    // Only trigger auto-save if not loading AND initial load is complete
-                    // This prevents saving empty content during unlock or tab reopen
-                    if (!noteScreen.loading && noteScreen.initialLoadComplete)
+                    // Only trigger auto-save if not currently loading a note
+                    if (!noteScreen.loading)
                         saveTimer.restart()
                 }
                 onCursorRectangleChanged: {
@@ -1215,12 +1214,35 @@ Item {
             }
         }
 
+        // ── Empty state message ─────────────────────────────────────
+        Item {
+            visible: !noteScreen.showSettings && noteScreen.activeNoteId === -1
+            anchors {
+                top: parent.top
+                left: sidebar.right
+                right: parent.right
+                bottom: parent.bottom
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: noteModel.count > 0 ? "Select or create new note" : "Create new note"
+                color: root.textPlaceholder
+                font.pixelSize: 16
+                opacity: 0.6
+            }
+        }
+
         Timer {
             id: saveTimer
-            interval: 1500
+            interval: 200  // Save after 200ms of no typing (feels instant)
             onTriggered: {
-                if (typeof logos !== "undefined" && logos.callModule && noteScreen.activeNoteId !== -1) {
+                // Only save if we have a valid note and content has changed from what was loaded
+                if (typeof logos !== "undefined" && logos.callModule
+                    && noteScreen.activeNoteId !== -1
+                    && editor.text !== noteScreen.lastLoadedContent) {
                     logos.callModule("notes", "saveNote", [noteScreen.activeNoteId, editor.text])
+                    noteScreen.lastLoadedContent = editor.text  // Update tracked content
                     noteScreen.refreshList()
                 }
             }
