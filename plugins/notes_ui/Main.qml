@@ -787,6 +787,7 @@ Item {
         property int activeNoteId: -1
         property bool loading: false
         property bool showSettings: false
+        property bool initialLoadComplete: false  // Guard against auto-save during initial load
 
         // Warning banner
         Rectangle {
@@ -812,6 +813,7 @@ Item {
         onVisibleChanged: {
             if (visible) {
                 activeNoteId = -1
+                initialLoadComplete = false  // Reset flag on visibility change
                 deferredRefresh.start()
             }
         }
@@ -865,6 +867,7 @@ Item {
                 editor.text = result || ""
             }
             loading = false
+            initialLoadComplete = true  // Mark initial load as complete
             editor.forceActiveFocus()
         }
 
@@ -1175,7 +1178,9 @@ Item {
                 selectedTextColor: root.textColor
 
                 onTextChanged: {
-                    if (!noteScreen.loading)
+                    // Only trigger auto-save if not loading AND initial load is complete
+                    // This prevents saving empty content during unlock or tab reopen
+                    if (!noteScreen.loading && noteScreen.initialLoadComplete)
                         saveTimer.restart()
                 }
                 onCursorRectangleChanged: {
