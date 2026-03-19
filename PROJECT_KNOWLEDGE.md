@@ -294,6 +294,9 @@ The `logos-co/logos-app` repository was renamed to "Logos Basecamp" (commit 17ef
 - **Dev builds** (cmake install): `~/.local/share/Logos/LogosBasecampDev/{modules,plugins}/`
 The app now discriminates between dev and portable package variants at build time (`LOGOS_PORTABLE_BUILD` flag). Binary names changed: `LogosApp.elf` → `LogosBasecamp.elf`, `logos-app.AppImage` → `logos-basecamp.AppImage`. Update all install paths and documentation.
 
+### 38. QML properties persist across visibility changes causing race conditions (#56)
+When a QML component becomes invisible (e.g., module tab closed), properties like `TextEdit.text` retain their values. When the component becomes visible again, those stale values persist while IDs are reset, creating a mismatch window. **Root cause**: `editor.text` contained content from note A, but `activeNoteId` was reset to -1 then changed to note B during auto-selection. If auto-save triggered in this window, it saved wrong content to wrong note. **Solution**: (1) Clear `editor.text = ""` in `onVisibleChanged` to remove stale content. (2) Remove automatic note selection after `refreshList()` — require manual user click. (3) Track `lastLoadedContent` and only save if `editor.text !== lastLoadedContent` (prevents saving unchanged data). **Result**: Eliminated race condition. Lock/unlock worked fine because it's a fast transition; module reopen had a longer window for the race. Reduced auto-save interval from 1000ms to 200ms (feels instant). Added empty state UX when no note selected.
+
 ---
 
 ## Logos Developer Tools
