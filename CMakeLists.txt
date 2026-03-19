@@ -228,7 +228,10 @@ add_test(NAME test_plugin COMMAND test_plugin)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 
-set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
+# Logos Basecamp paths (renamed from LogosApp in March 2026)
+# Dev builds (cmake install) use LogosBasecampDev
+# Portable builds (AppImage/LGX) use LogosBasecamp
+set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosBasecampDev")
 set(NOTES_MODULE_DIR "${LOGOS_APP_DATA}/modules/notes")
 set(NOTES_UI_DIR     "${LOGOS_APP_DATA}/plugins/notes_ui")
 

@@ -87,21 +87,26 @@ meta(key, value)
 ### DB paths
 | Context | Path |
 |---------|------|
-| Logos App plugin | `~/.local/share/logos_host/notes.db` |
+| Logos Basecamp plugin | `~/.local/share/logos_host/notes.db` |
 | Standalone app | `~/.local/share/logos-co/logos-notes/notes.db` |
 
 When wiping for tests, delete both. When verifying DB contents, check which context you're in.
 
-### Logos App module structure
+### Logos Basecamp module structure
 ```
-~/.local/share/Logos/LogosApp/modules/notes/
+# Portable builds (AppImage/LGX)
+~/.local/share/Logos/LogosBasecamp/modules/notes/
 ├── manifest.json          (type: "core")
 └── notes_plugin.so
 
-~/.local/share/Logos/LogosApp/plugins/notes_ui/
+~/.local/share/Logos/LogosBasecamp/plugins/notes_ui/
 ├── manifest.json          (type: "ui_qml")
 ├── metadata.json
 └── Main.qml
+
+# Dev builds (cmake install)
+~/.local/share/Logos/LogosBasecampDev/modules/notes/
+~/.local/share/Logos/LogosBasecampDev/plugins/notes_ui/
 ```
 
 ### Plugin contract (Q_INVOKABLE surface)
@@ -140,7 +145,7 @@ Q_INVOKABLE QString deleteNote(int id);
 
 ## Open Questions
 
-1. **New Logos App repo**: `logos-co/logos-app` vs `logos-co/logos-app-poc` — is the new repo the successor? Need to check PluginInterface compatibility before v0.6.0 LGX work.
+1. **New Logos App repo**: ✅ Resolved. `logos-co/logos-app` (now "Logos Basecamp") is the official successor. The repo is active, receiving updates, and introduced dev/portable build discrimination. `logos-app-poc` remains for reference.
 2. **initLogos signature**: current code passes `LogosAPI*` but SDK headers may expect `QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
 3. **Social backup CID discovery**: ✅ Resolved with depth. Giuliano (2026-03-17) provided detailed guidance:
    - **Permissioned groups required** — can't be permissionless or you get abuse. Trust group members by construction.
@@ -188,11 +193,11 @@ Fingerprint derived from master key + random salt = unstable (changes per device
 ### 6. Mnemonic normalization must be shared
 BIP39 validation normalizes (NFKD, lowercase, trim) but key derivation was using raw string. Same phrase typed slightly differently = different key. Single shared `normalizeMnemonic()` function, called before every crypto operation.
 
-### 7. Logos App testing requires AppImage build
+### 7. Logos Basecamp testing requires AppImage build
 `nix build '.#app'` (local build) expects .lgx packages, not raw .so files. `cmake --install` copies raw files which only work with portable/AppImage builds.
 
 ### 8. Kill ALL Logos processes before relaunching
-logos_host child processes survive parent LogosApp being killed. They hold stale .so files and block new module loads: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core`.
+logos_host child processes survive parent LogosBasecamp being killed. They hold stale .so files and block new module loads: `pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"`.
 
 ### 9. QML sandbox restrictions in ui_qml plugins
 - No access to Logos.Theme or Logos.Controls imports
@@ -264,13 +269,13 @@ Neither Session API signals (`KeycardSetSignalEventCallback`) nor Flow API signa
 Mnemonic accounts wrap the master key with a PIN-derived key and store it in `wrapped_key` table. Keycard accounts derive the key from the card on every unlock — no wrapped key stored. The `key_source` meta field ("keycard" or "mnemonic") determines which unlock flow to use.
 
 ### 31. AppImage wraps processes via ld-linux — pkill must match .elf names
-`pkill -9 -f logos` doesn't work because AppImage runs binaries as `/lib64/ld-linux-x86-64.so.2 /tmp/.mount_logos-XXX/usr/bin/.LogosApp.elf`. Must use `pkill -9 -f "LogosApp.elf"; pkill -9 -f "logos_host.elf"` to kill reliably. Two instances fighting over the same DB causes data loss.
+`pkill -9 -f logos` doesn't work because AppImage runs binaries as `/lib64/ld-linux-x86-64.so.2 /tmp/.mount_logos-XXX/usr/bin/.LogosBasecamp.elf`. Must use `pkill -9 -f "LogosBasecamp.elf"; pkill -9 -f "logos_host.elf"` to kill reliably. Two instances fighting over the same DB causes data loss.
 
 ### 32. SVG Image elements in QML sandbox need z-order for MouseArea
 Loading SVG icons via `Image { source: "file.svg" }` works in the Logos App QML sandbox, but the Image can block mouse events. Always put `MouseArea { z: 10 }` to ensure clicks pass through. Also set `sourceSize: Qt.size(w, h)` for proper SVG rendering.
 
-### 33. Logos App loads old module versions from backup directories
-During development, backup directories like `notes.bak`, `notes.old`, etc. can persist in `~/.local/share/Logos/LogosApp/modules/`. The shell may load these stale versions instead of the current build from `notes/`, causing confusing failures (e.g. Keycard detection working in tests but not in the app). **Solution**: CMake install target now removes all `notes.*` directories before installing the current build. This prevents version conflicts and ensures only one module version exists at a time.
+### 33. Logos Basecamp loads old module versions from backup directories
+During development, backup directories like `notes.bak`, `notes.old`, etc. can persist in `~/.local/share/Logos/LogosBasecamp{Dev}/modules/`. The shell may load these stale versions instead of the current build from `notes/`, causing confusing failures (e.g. Keycard detection working in tests but not in the app). **Solution**: CMake install target now removes all `notes.*` directories before installing the current build. This prevents version conflicts and ensures only one module version exists at a time.
 
 ### 34. install(CODE) blocks must honor DESTDIR for staged installs
 Custom `install(CODE)` blocks that manipulate filesystem paths must prefix those paths with `$ENV{DESTDIR}` to support staged/packaged installs. Example: `set(_path "\$ENV{DESTDIR}${INSTALL_DIR}/file")`. Without this, `DESTDIR=/tmp/stage cmake --install` would still operate on the live system paths instead of the staged tree. This is the same pattern required for post-install scripts like `patchelf`. Caught by Senty in #47 review.
@@ -280,6 +285,12 @@ The default bundler (`nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib`
 
 ### 36. Bundled libpcsclite breaks pcscd socket connection
 The portable bundler includes all transitive dependencies, including `libpcsclite.so.1` for smart card support. However, the bundled version cannot connect to the system `pcscd` daemon socket (looks for socket in wrong location). Smart card detection fails. **Solution**: Use the `nix run .#package-lgx` command, which bundles with the portable bundler then automatically removes libpcsclite, producing a shippable LGX that uses the system libpcsclite for proper pcscd connectivity. This applies to any library that interacts with system services via local sockets.
+
+### 37. Logos App renamed to Logos Basecamp (March 2026)
+The `logos-co/logos-app` repository was renamed to "Logos Basecamp" (commit 17ef99c). Module paths changed:
+- **Portable builds** (AppImage/LGX): `~/.local/share/Logos/LogosBasecamp/{modules,plugins}/`
+- **Dev builds** (cmake install): `~/.local/share/Logos/LogosBasecampDev/{modules,plugins}/`
+The app now discriminates between dev and portable package variants at build time (`LOGOS_PORTABLE_BUILD` flag). Binary names changed: `LogosApp.elf` → `LogosBasecamp.elf`, `logos-app.AppImage` → `logos-basecamp.AppImage`. Update all install paths and documentation.
 
 ---
 
@@ -451,7 +462,7 @@ Backup CID:        zDvZ...  [Copy]
 
 | Repo | Local path |
 |------|-----------|
-| logos-app-poc (built, AppImage runs) | `~/logos-app/` |
+| logos-app (Logos Basecamp, built AppImage runs) | `~/logos-app/` |
 | status-desktop (QML/Nim reference) | `~/status-desktop/` |
 
 ---
@@ -539,7 +550,7 @@ nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui
 
 **Smart card detection fix**: After installing `notes.lgx`, remove the bundled `libpcsclite.so.1`:
 ```bash
-rm ~/.local/share/Logos/LogosApp/modules/notes/libpcsclite.so.1
+rm ~/.local/share/Logos/LogosBasecamp/modules/notes/libpcsclite.so.1
 ```
 This forces usage of system libpcsclite which properly connects to the pcscd daemon socket.
 
@@ -555,9 +566,9 @@ This forces usage of system libpcsclite which properly connects to the pcscd dae
 
 ---
 
-## Installed Modules in Running Logos App
+## Installed Modules in Running Logos Basecamp
 
-Verified by inspecting `~/.local/share/Logos/LogosApp/` after Downloads AppImage installs them.
+Verified by inspecting `~/.local/share/Logos/LogosBasecamp/` after Downloads AppImage installs them.
 
 | Module | Type | Description |
 |--------|------|-------------|
@@ -589,8 +600,8 @@ getRooms()
 |----------|-----|
 | Ideas issue | https://github.com/logos-co/ideas/issues/13 |
 | Project repo | https://github.com/xAlisher/logos-notes |
-| Logos App | https://github.com/logos-co/logos-app |
-| Logos App PoC | https://github.com/logos-co/logos-app-poc |
+| Logos Basecamp (app) | https://github.com/logos-co/logos-app |
+| Logos App PoC (legacy) | https://github.com/logos-co/logos-app-poc |
 | Chat UI reference | https://github.com/logos-co/logos-chat-ui |
 | Chat module reference | https://github.com/logos-co/logos-chat-module |
 | Template module | https://github.com/logos-co/logos-template-module |

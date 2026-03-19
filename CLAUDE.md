@@ -62,9 +62,9 @@ cd build && ctest --output-on-failure
 # Lint QML before installing
 ~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
 
-# Launch Logos App for testing
-pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core
-~/logos-app/result/logos-app.AppImage
+# Launch Logos Basecamp for testing
+pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"
+~/logos-app/result/bin/logos-basecamp.AppImage
 ```
 
 ---
@@ -97,9 +97,9 @@ which only work with the portable/AppImage build.
 **Rule**: always test with AppImage, never with local Nix build.
 
 ### Kill all processes before relaunch
-logos_host child processes survive LogosApp being killed and hold stale `.so` files.
+logos_host child processes survive LogosBasecamp being killed and hold stale `.so` files.
 
-**Rule**: `pkill -9 logos_host; pkill -9 LogosApp; pkill -9 logos_core` before every test.
+**Rule**: `pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"` before every test.
 
 ---
 
@@ -251,7 +251,7 @@ Before ending any session:
 
 **Labels**: every issue gets one type + one env label
 - Type: `bug`, `feature`, `security`
-- Env: `env:logos-app`, `env:standalone`, `env:both`
+- Env: `env:logos-basecamp`, `env:standalone`, `env:both`
 
 **Bug body**: Symptom, Steps to reproduce, Expected, Actual, Suspected cause.
 
@@ -259,7 +259,7 @@ Before ending any session:
 
 ---
 
-## Logos App Updates Routine
+## Logos Basecamp Updates Routine
 
 Check weekly:
 ```bash
@@ -271,7 +271,7 @@ If updates exist:
 git pull && nix build '.#bin-appimage'
 ```
 
-Re-run full UI/UX checklist after every Logos App update. Watch specifically for:
+Re-run full UI/UX checklist after every Logos Basecamp update. Watch specifically for:
 - `PluginInterface` changes — update `NotesPlugin` immediately if broken
 - `LogosQmlBridge` new methods or behavior changes
 - `logos-design-system` token changes affecting hardcoded colors
@@ -288,7 +288,7 @@ Prefer simple and correct over clever and broken.
 
 | What | Where |
 |------|-------|
-| Shell integration patterns | `~/logos-app/src/` |
+| Shell integration patterns | `~/logos-app/src/` (Logos Basecamp repo) |
 | Seed phrase UX patterns | `~/status-desktop/ui/imports/shared/popups/addaccount/` |
 | Logos design system | `~/Qt/6.9.3/gcc_64/` (installed) |
 | Plugin QML | `plugins/notes_ui/Main.qml` |
