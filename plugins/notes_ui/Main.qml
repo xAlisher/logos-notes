@@ -286,8 +286,10 @@ Item {
                         var json = logos.callModule("notes", "listBackups", [])
                         try {
                             var parsed = JSON.parse(json)
-                            if (parsed.backups && parsed.backups.length > 0) {
-                                root.pendingBackupPath = parsed.backups[0].path
+                            // listBackups returns a raw array, not {backups: [...]}
+                            var backups = Array.isArray(parsed) ? parsed : (parsed.backups || [])
+                            if (backups.length > 0) {
+                                root.pendingBackupPath = backups[0].path
                             } else {
                                 root.errorMessage = "No backups found"
                             }
