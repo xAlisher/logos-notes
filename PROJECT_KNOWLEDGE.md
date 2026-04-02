@@ -7,6 +7,23 @@
 > It lives in the repo root and is committed like any other file.
 > GitHub issues are ephemeral. This file is not.
 
+## Epic #62 Lessons — Keycard Module Integration
+
+### Lesson: card secure channel state persists across sessions
+After `authorizeRequest` completes and session auto-closes, the card's secure channel is stale. The next `openSecureChannel` fails. Fix: retry with fresh `select()`.
+
+### Lesson: bridge state names must match QML state checks
+`getState()` returns `"AUTHORIZED"` after auth, but QML only checked `"CARD_PRESENT"`, `"READY"`, `"SESSION_ACTIVE"`. Must include all card-present states.
+
+### Lesson: always check backend response shape before writing QML
+`listBackups()` returns raw array but QML expected `{backups:[...]}`. Always inspect actual response before writing the parser.
+
+### Lesson: rewrite large QML files from scratch instead of patching
+Patching 50+ references in 1500-line QML was error-prone. Rewriting from scratch (850 lines) was faster and cleaner.
+
+### Lesson: install paths differ between repos — verify before testing
+logos-notes installs to `LogosBasecampDev/`, keycard-basecamp to `LogosBasecamp/`. Basecamp loads from `LogosBasecamp/`. Must copy or adjust paths.
+
 ---
 
 ## What We're Building
