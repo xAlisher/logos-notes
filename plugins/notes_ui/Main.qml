@@ -33,44 +33,64 @@ Item {
     property string restoreStatus: ""
     property string restoreWarning: ""
 
-    // ── Keycard state ────────────────────────────────────────────────────
-    property string keycardState: "unknown"
-    property string keycardStatus: ""
-    property bool keycardDetecting: false
+    // ── Keycard module integration ────────────────────────────────────
     property string keySource: "mnemonic"
+    property string keycardAuthId: ""
+    property string keycardAuthStatus: "disconnected"  // "disconnected", "pending", "connected"
+    property string keycardDerivedKey: ""
 
-    // ── Derived state for two-line status ────────────────────────────────
-    property bool readerConnected: keycardState !== "unknown" && keycardState !== "noPCSC"
-                                   && keycardState !== "waitingForReader"
-    property bool cardDetected: keycardState === "ready" || keycardState === "authorized"
-    property bool keycardReady: cardDetected
-
-    // Suppress brief error flashes during card connection transitions
-    property bool showCardError: false
+    // Poll keycard module for auth status
     Timer {
-        id: cardErrorDelay
-        interval: 1500
-        onTriggered: root.showCardError = true
+        id: keycardStatusPoller
+        interval: 1000
+        running: root.keycardAuthStatus === "pending"
+        repeat: true
+        onTriggered: root.checkKeycardAuthStatus()
     }
-    onKeycardStateChanged: {
-        if (cardDetected || keycardState === "waitingForCard" || !readerConnected) {
-            root.showCardError = false
-            cardErrorDelay.stop()
-        } else if (readerConnected && !cardDetected) {
-            // Start delay before showing error (skip transient states)
-            if (!cardErrorDelay.running)
-                cardErrorDelay.start()
+
+    function requestKeycardAuth() {
+        if (typeof logos === "undefined" || !logos.callModule) return
+        var result = logos.callModule("keycard", "requestAuth", ["notes_encryption", "notes"])
+        try {
+            var response = JSON.parse(result)
+            if (response.authId) {
+                root.keycardAuthId = response.authId
+                root.keycardAuthStatus = "pending"
+                root.errorMessage = ""
+            } else if (response.error) {
+                root.errorMessage = response.error
+            }
+        } catch (e) {
+            root.errorMessage = "Failed to request keycard auth"
         }
     }
 
-    function restartKeycardDetection() {
-        root.keycardState = "unknown"
-        root.keycardStatus = ""
-        root.keycardDetecting = false
-        if (typeof logos !== "undefined" && logos.callModule) {
-            logos.callModule("notes", "startKeycardDetection", [])
-            root.keycardDetecting = true
+    function checkKeycardAuthStatus() {
+        if (!root.keycardAuthId) return
+        var result = logos.callModule("keycard", "checkAuthStatus", [root.keycardAuthId])
+        try {
+            var response = JSON.parse(result)
+            if (response.status === "complete" && response.key) {
+                root.keycardAuthStatus = "connected"
+                root.keycardDerivedKey = response.key
+            } else if (response.status === "failed") {
+                root.keycardAuthStatus = "disconnected"
+                root.keycardAuthId = ""
+                root.errorMessage = response.error || "Authorization failed"
+            } else if (response.status === "rejected") {
+                root.keycardAuthStatus = "disconnected"
+                root.keycardAuthId = ""
+                root.errorMessage = "Authorization rejected"
+            }
+        } catch (e) {
+            console.error("Failed to check keycard auth status:", e)
         }
+    }
+
+    function resetKeycardAuth() {
+        root.keycardAuthId = ""
+        root.keycardAuthStatus = "disconnected"
+        root.keycardDerivedKey = ""
     }
 
     function parseLockoutSeconds(msg) {
@@ -92,46 +112,41 @@ Item {
         }
     }
 
-    // Poll Keycard state
-    Timer {
-        id: keycardPollTimer
-        interval: 500
-        repeat: true
-        running: root.keycardDetecting
-        onTriggered: {
-            if (typeof logos === "undefined" || !logos.callModule) return
-            var json = logos.callModule("notes", "getKeycardState", [])
-            try {
-                var obj = JSON.parse(json)
-                root.keycardState = obj.state || "unknown"
-                root.keycardStatus = obj.status || ""
-            } catch(e) {}
-        }
-    }
-
-    // Auto-lock on card/reader removal
-    Timer {
-        id: keycardGuardTimer
-        interval: 2000
-        repeat: true
-        running: root.keySource === "keycard" && root.currentScreen === "note"
-        onTriggered: {
-            if (typeof logos === "undefined" || !logos.callModule) return
-            var json = logos.callModule("notes", "getKeycardState", [])
-            try {
-                var obj = JSON.parse(json)
-                var st = obj.state || "unknown"
-                if (st === "waitingForCard" || st === "waitingForReader"
-                    || st === "unknown" || st === "noPCSC") {
-                    logos.callModule("notes", "lockSession", [])
-                    var msg = st === "waitingForReader"
-                        ? "Card reader disconnected — session locked"
-                        : "Keycard removed — session locked"
-                    root.restartKeycardDetection()
-                    root.currentScreen = "unlock"
-                    root.errorMessage = msg
+    // Auto-complete: when keycard auth completes during import, process the key
+    onKeycardAuthStatusChanged: {
+        if (keycardAuthStatus === "connected" && keycardDerivedKey) {
+            if (currentScreen === "import") {
+                var result = logos.callModule("notes", "importWithKeycardKey",
+                                              [keycardDerivedKey, root.pendingBackupPath])
+                try {
+                    var obj = JSON.parse(result)
+                    if (obj.success) {
+                        root.keySource = "keycard"
+                        root.currentScreen = "note"
+                        if (obj.warning) root.restoreWarning = obj.warning
+                    } else {
+                        root.errorMessage = obj.error || "Import failed"
+                    }
+                } catch (e) {
+                    root.errorMessage = "Import failed"
                 }
-            } catch(e) {}
+                resetKeycardAuth()
+            } else if (currentScreen === "unlock") {
+                var unlockResult = logos.callModule("notes", "unlockWithKeycardKey",
+                                                     [keycardDerivedKey])
+                try {
+                    var unlockObj = JSON.parse(unlockResult)
+                    if (unlockObj.success) {
+                        root.currentScreen = "note"
+                        root.errorMessage = ""
+                    } else {
+                        root.errorMessage = unlockObj.error || "Unlock failed"
+                    }
+                } catch (e) {
+                    root.errorMessage = "Unlock failed"
+                }
+                resetKeycardAuth()
+            }
         }
     }
 
@@ -142,15 +157,8 @@ Item {
             var ks = logos.callModule("notes", "getKeySource", [])
             root.keySource = ks ? ks.trim() : "mnemonic"
             root.currentScreen = "unlock"
-            if (root.keySource === "keycard") {
-                logos.callModule("notes", "startKeycardDetection", [])
-                root.keycardDetecting = true
-            }
         } else {
             root.currentScreen = "import"
-            // Auto-start Keycard detection on import screen
-            logos.callModule("notes", "startKeycardDetection", [])
-            root.keycardDetecting = true
         }
     }
 
