@@ -5,7 +5,7 @@ import QtQuick.Controls
 Item {
     id: root
 
-    // ── Design System (#43) ─────────────────────────────────────────────────
+    // ── Design System ─────────────────────────────────────────────────
     readonly property color bgColor:          "#171717"
     readonly property color bgSecondary:      "#262626"
     readonly property color bgActive:         "#332A27"
@@ -19,27 +19,23 @@ Item {
     readonly property color successGreen:     "#22C55E"
     readonly property color errorColor:       "#FB3748"
     readonly property color dangerBtnBg:      "#6C262D"
-    readonly property color statusGray:       "#808080"
     readonly property color inputBorder:      "#383838"
     readonly property color borderColor:      "#3A3A3A"
 
     readonly property string appVersion: "V 1.0.0"
 
-    // ── Screen state ────────────────────────────────────────────────────────
+    // ── Screen state ────────────────────────────────────────────────────
     property string currentScreen: "import"
     property string errorMessage:  ""
-    property int lockoutRemaining: 0
     property string pendingBackupPath: ""
-    property string restoreStatus: ""
     property string restoreWarning: ""
+    property string keySource: "mnemonic"
 
     // ── Keycard module integration ────────────────────────────────────
-    property string keySource: "mnemonic"
     property string keycardAuthId: ""
     property string keycardAuthStatus: "disconnected"  // "disconnected", "pending", "connected"
     property string keycardDerivedKey: ""
 
-    // Poll keycard module for auth status
     Timer {
         id: keycardStatusPoller
         interval: 1000
@@ -73,6 +69,8 @@ Item {
             if (response.status === "complete" && response.key) {
                 root.keycardAuthStatus = "connected"
                 root.keycardDerivedKey = response.key
+                // Auto-complete the current flow
+                processKeycardKey()
             } else if (response.status === "failed") {
                 root.keycardAuthStatus = "disconnected"
                 root.keycardAuthId = ""
@@ -87,17 +85,53 @@ Item {
         }
     }
 
+    function processKeycardKey() {
+        if (!keycardDerivedKey) return
+        if (currentScreen === "import") {
+            var result = logos.callModule("notes", "importWithKeycardKey",
+                                          [keycardDerivedKey, root.pendingBackupPath])
+            try {
+                var obj = JSON.parse(result)
+                if (obj.success) {
+                    root.keySource = "keycard"
+                    root.currentScreen = "note"
+                    if (obj.warning) root.restoreWarning = obj.warning
+                } else {
+                    root.errorMessage = obj.error || "Import failed"
+                }
+            } catch (e) {
+                root.errorMessage = "Import failed"
+            }
+        } else if (currentScreen === "unlock") {
+            var unlockResult = logos.callModule("notes", "unlockWithKeycardKey",
+                                                 [keycardDerivedKey])
+            try {
+                var unlockObj = JSON.parse(unlockResult)
+                if (unlockObj.success) {
+                    root.currentScreen = "note"
+                    root.errorMessage = ""
+                } else {
+                    root.errorMessage = unlockObj.error || "Unlock failed"
+                }
+            } catch (e) {
+                root.errorMessage = "Unlock failed"
+            }
+        }
+        resetKeycardAuth()
+    }
+
     function resetKeycardAuth() {
         root.keycardAuthId = ""
         root.keycardAuthStatus = "disconnected"
         root.keycardDerivedKey = ""
     }
 
+    // ── PIN lockout ────────────────────────────────────────────────────
+    property int lockoutRemaining: 0
     function parseLockoutSeconds(msg) {
         var match = msg.match(/(\d+)\s*seconds/)
         return match ? parseInt(match[1]) : 0
     }
-
     Timer {
         id: lockoutTimer
         interval: 1000
@@ -108,44 +142,6 @@ Item {
                 root.lockoutRemaining = 0
                 lockoutTimer.stop()
                 root.errorMessage = ""
-            }
-        }
-    }
-
-    // Auto-complete: when keycard auth completes during import, process the key
-    onKeycardAuthStatusChanged: {
-        if (keycardAuthStatus === "connected" && keycardDerivedKey) {
-            if (currentScreen === "import") {
-                var result = logos.callModule("notes", "importWithKeycardKey",
-                                              [keycardDerivedKey, root.pendingBackupPath])
-                try {
-                    var obj = JSON.parse(result)
-                    if (obj.success) {
-                        root.keySource = "keycard"
-                        root.currentScreen = "note"
-                        if (obj.warning) root.restoreWarning = obj.warning
-                    } else {
-                        root.errorMessage = obj.error || "Import failed"
-                    }
-                } catch (e) {
-                    root.errorMessage = "Import failed"
-                }
-                resetKeycardAuth()
-            } else if (currentScreen === "unlock") {
-                var unlockResult = logos.callModule("notes", "unlockWithKeycardKey",
-                                                     [keycardDerivedKey])
-                try {
-                    var unlockObj = JSON.parse(unlockResult)
-                    if (unlockObj.success) {
-                        root.currentScreen = "note"
-                        root.errorMessage = ""
-                    } else {
-                        root.errorMessage = unlockObj.error || "Unlock failed"
-                    }
-                } catch (e) {
-                    root.errorMessage = "Unlock failed"
-                }
-                resetKeycardAuth()
             }
         }
     }
@@ -164,33 +160,21 @@ Item {
 
     Rectangle { anchors.fill: parent; color: root.bgColor }
 
-    // ── Blinking dot animation for searching states ─────────────────────
-    SequentialAnimation {
-        id: dotBlink
-        loops: Animation.Infinite
-        running: root.keycardDetecting && (!root.readerConnected || !root.cardDetected)
-        PropertyAnimation { target: dotBlinkTarget; property: "opacity"; from: 1.0; to: 0.3; duration: 750 }
-        PropertyAnimation { target: dotBlinkTarget; property: "opacity"; from: 0.3; to: 1.0; duration: 750 }
-    }
-    QtObject { id: dotBlinkTarget; property real opacity: 1.0 }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // ── CREATE NEW DATABASE screen (#39) ─────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // ── IMPORT SCREEN ──────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
     Item {
         anchors.fill: parent
         visible: root.currentScreen === "import"
 
         onVisibleChanged: {
             if (visible) {
-                keycardPinField.text = ""
                 root.pendingBackupPath = ""
-                root.restoreStatus = ""
                 root.errorMessage = ""
+                resetKeycardAuth()
             }
         }
 
-        // Version label
         Text {
             x: 24; y: 16
             text: root.appVersion
@@ -200,82 +184,219 @@ Item {
 
         ColumnLayout {
             anchors.centerIn: parent
-            spacing: 24
-            width: 420
+            width: 320
+            spacing: 16
 
-            Column {
-                spacing: 4
+            Text {
+                text: "Immutable Notes"
+                font.pixelSize: 28
+                font.weight: Font.Bold
+                color: root.textColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Text {
+                text: "Encrypt your notes with Keycard"
+                color: root.textPlaceholder
+                font.pixelSize: 14
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            // Status text
+            Text {
+                Layout.fillWidth: true
+                text: {
+                    if (root.keycardAuthStatus === "pending") return "Switch to Keycard module to approve..."
+                    return ""
+                }
+                color: "#ff9800"
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+                visible: text.length > 0
+            }
+
+            // Error message
+            Text {
+                Layout.fillWidth: true
+                text: root.errorMessage
+                color: root.errorColor
+                font.pixelSize: 12
+                visible: root.currentScreen === "import" && root.errorMessage.length > 0
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            // Connect with Keycard button
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: 22
+                color: {
+                    if (root.keycardAuthStatus === "pending") return "#ff9800"
+                    return connectImportArea.containsMouse ? root.primaryHover : root.primary
+                }
+                opacity: root.keycardAuthStatus === "disconnected" ? 1.0 : 0.8
+
                 Text {
-                    text: "Create new database"
-                    font.pixelSize: 28
-                    font.weight: Font.Bold
+                    anchors.centerIn: parent
+                    text: {
+                        if (root.keycardAuthStatus === "pending") return "Waiting for approval..."
+                        return "Connect with Keycard"
+                    }
                     color: root.textColor
-                }
-                Text {
-                    text: "Import keys to encrypt your notes"
-                    color: root.textPlaceholder
                     font.pixelSize: 14
+                    font.weight: Font.Medium
+                }
+
+                MouseArea {
+                    id: connectImportArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    enabled: root.keycardAuthStatus === "disconnected"
+                    onClicked: {
+                        root.errorMessage = ""
+                        root.requestKeycardAuth()
+                    }
                 }
             }
 
-            // ── Two-line status indicators (always reserve space for both) ──
-            Column {
-                spacing: 8
+            // Restore backup link
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: root.pendingBackupPath ? "Backup: " + root.pendingBackupPath.split("/").pop()
+                                              : "Decrypt backup"
+                color: root.primary
+                font.pixelSize: 12
+                visible: true
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof logos === "undefined" || !logos.callModule) return
+                        var json = logos.callModule("notes", "listBackups", [])
+                        try {
+                            var parsed = JSON.parse(json)
+                            if (parsed.backups && parsed.backups.length > 0) {
+                                root.pendingBackupPath = parsed.backups[0].path
+                            } else {
+                                root.errorMessage = "No backups found"
+                            }
+                        } catch (e) {}
+                    }
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ── UNLOCK SCREEN ──────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    Item {
+        anchors.fill: parent
+        visible: root.currentScreen === "unlock"
+
+        onVisibleChanged: {
+            if (visible) {
+                root.errorMessage = ""
+                resetKeycardAuth()
+                unlockPinField.text = ""
+            }
+        }
+
+        Text {
+            x: 24; y: 16
+            text: root.appVersion
+            color: root.textPlaceholder
+            font.pixelSize: 11
+        }
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            width: 320
+            spacing: 16
+
+            Image {
+                source: "Lock.svg"
+                Layout.alignment: Qt.AlignHCenter
+                width: 32; height: 32
+                sourceSize: Qt.size(32, 32)
+            }
+
+            Text {
+                text: "Unlock Notes"
+                font.pixelSize: 28
+                font.weight: Font.Bold
+                color: root.textColor
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            // Status text for keycard mode
+            Text {
                 Layout.fillWidth: true
+                visible: root.keySource === "keycard"
+                text: {
+                    if (root.keycardAuthStatus === "pending") return "Switch to Keycard module to approve..."
+                    return ""
+                }
+                color: "#ff9800"
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+            }
 
-                Row {
-                    spacing: 8
-                    Rectangle {
-                        width: 8; height: 8; radius: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: root.readerConnected ? root.successGreen
-                             : (root.keycardState === "noPCSC" ? root.errorColor : root.statusGray)
-                        opacity: (!root.readerConnected && root.keycardDetecting
-                                  && root.keycardState !== "noPCSC") ? dotBlinkTarget.opacity : 1.0
+            // Error message
+            Text {
+                Layout.fillWidth: true
+                text: root.errorMessage
+                color: root.errorColor
+                font.pixelSize: 12
+                visible: root.errorMessage.length > 0
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+
+            // Keycard unlock button
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 44
+                radius: 22
+                visible: root.keySource === "keycard"
+                color: {
+                    if (root.keycardAuthStatus === "pending") return "#ff9800"
+                    return unlockKeycardArea.containsMouse ? root.primaryHover : root.primary
+                }
+                opacity: root.keycardAuthStatus === "disconnected" ? 1.0 : 0.8
+
+                Text {
+                    anchors.centerIn: parent
+                    text: {
+                        if (root.keycardAuthStatus === "pending") return "Waiting for approval..."
+                        return "Unlock with Keycard"
                     }
-                    Text {
-                        text: root.readerConnected ? "Smart card reader connected"
-                            : (root.keycardState === "noPCSC" ? "Smart card reader not found"
-                            : "Looking for smart card reader")
-                        color: root.readerConnected ? root.successGreen
-                             : (root.keycardState === "noPCSC" ? root.errorColor : root.textSecondary)
-                        font.pixelSize: 13
-                    }
+                    color: root.textColor
+                    font.pixelSize: 14
+                    font.weight: Font.Medium
                 }
 
-                Row {
-                    spacing: 8
-                    Rectangle {
-                        width: 8; height: 8; radius: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: root.cardDetected ? root.successGreen
-                             : (root.showCardError ? root.errorColor : root.statusGray)
-                        opacity: root.readerConnected
-                                 ? ((!root.cardDetected && root.keycardState === "waitingForCard")
-                                    ? dotBlinkTarget.opacity : 1.0)
-                                 : 0.3
-                    }
-                    Text {
-                        text: root.cardDetected ? "Keycard detected"
-                            : (root.readerConnected
-                                ? (root.keycardState === "notKeycard" ? "Not a Keycard"
-                                : (root.keycardState === "emptyKeycard" ? "Keycard not initialized"
-                                : (root.keycardState === "connectionError" ? "Connection error"
-                                : "Looking for Keycard")))
-                                : "Looking for Keycard")
-                        color: root.cardDetected ? root.successGreen
-                             : (root.showCardError ? root.errorColor : root.textSecondary)
-                        opacity: root.readerConnected ? 1.0 : 0.3
-                        font.pixelSize: 13
+                MouseArea {
+                    id: unlockKeycardArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    enabled: root.keycardAuthStatus === "disconnected"
+                    onClicked: {
+                        root.errorMessage = ""
+                        root.requestKeycardAuth()
                     }
                 }
             }
 
-            // ── PIN field ───────────────────────────────────────────
+            // Mnemonic PIN unlock (legacy mode)
             TextField {
-                id: keycardPinField
+                id: unlockPinField
                 Layout.fillWidth: true
-                placeholderText: "Enter Keycard PIN"
+                visible: root.keySource !== "keycard"
+                placeholderText: "Enter PIN"
                 echoMode: TextInput.Password
                 color: root.textColor
                 font.pixelSize: 14
@@ -284,554 +405,91 @@ Item {
                     color: root.bgSecondary
                     radius: 3
                     border.width: 1
-                    border.color: keycardPinField.activeFocus ? root.primary : root.inputBorder
-                }
-                Keys.onReturnPressed: {
-                    if (root.keycardReady) createBtn.clicked()
-                }
-            }
-
-            // ── Error message ───────────────────────────────────────
-            Text {
-                Layout.fillWidth: true
-                text: root.errorMessage
-                color: root.errorColor
-                font.pixelSize: 12
-                visible: root.currentScreen === "import" && root.errorMessage.length > 0
-                wrapMode: Text.WordWrap
-            }
-
-            // ── Create button ───────────────────────────────────────
-            Button {
-                id: createBtn
-                Layout.fillWidth: true
-                enabled: root.keycardReady
-                text: "Create"
-                contentItem: Text {
-                    text: parent.text
-                    font.pixelSize: 14
-                    font.weight: Font.Medium
-                    color: root.keycardReady ? root.textColor : root.textDisabled
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    color: root.keycardReady
-                           ? (parent.pressed ? root.primaryHover : root.primary)
-                           : root.bgSecondary
-                    radius: 16
-                    implicitHeight: 40
-                }
-                onClicked: {
-                    if (typeof logos === "undefined" || !logos.callModule) return
-                    root.errorMessage = ""
-                    root.keycardDetecting = false
-                    var result = logos.callModule("notes", "importFromKeycard",
-                                                  [keycardPinField.text, root.pendingBackupPath])
-                    var parsed = JSON.parse(result)
-                    if (parsed.success) {
-                        root.keySource = "keycard"
-                        root.restoreWarning = parsed.warning || ""
-                        root.currentScreen = "note"
-                    } else {
-                        root.errorMessage = parsed.error || "Failed to create database"
-                        root.keycardDetecting = true
-                    }
-                    keycardPinField.text = ""
-                }
-            }
-
-            // ── Decrypt backup link ──────────────────────────────────
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                visible: root.pendingBackupPath.length === 0
-                text: "Decrypt existing .imnotes backup"
-                color: root.primary
-                font.pixelSize: 12
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (typeof logos === "undefined" || !logos.callModule) return
-                        var json = logos.callModule("notes", "listBackups", [])
-                        var backups = JSON.parse(json)
-                        if (backups.length === 0) { root.errorMessage = "No backups found"; return }
-                        root.pendingBackupPath = backups[0].path
-                    }
-                }
-            }
-
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                visible: root.pendingBackupPath.length > 0
-                text: root.pendingBackupPath.split("/").pop()
-                color: root.textColor
-                font.pixelSize: 12
-            }
-
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                visible: root.pendingBackupPath.length > 0
-                text: "Change backup"
-                color: root.primary
-                font.pixelSize: 12
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (typeof logos === "undefined" || !logos.callModule) return
-                        var json = logos.callModule("notes", "listBackups", [])
-                        var backups = JSON.parse(json)
-                        if (backups.length === 0) return
-                        var currentIdx = -1
-                        for (var i = 0; i < backups.length; i++) {
-                            if (backups[i].path === root.pendingBackupPath) { currentIdx = i; break }
-                        }
-                        var nextIdx = (currentIdx + 1) % backups.length
-                        root.pendingBackupPath = backups[nextIdx].path
-                    }
-                }
-            }
-
-        }
-
-        Text {
-            anchors { bottom: parent.bottom; bottomMargin: 24; horizontalCenter: parent.horizontalCenter }
-            text: "Create new database with recovery phrase (legacy)"
-            color: root.textPlaceholder
-            font.pixelSize: 12
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.currentScreen = "import_mnemonic"
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // ── LEGACY MNEMONIC IMPORT screen ────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════════
-    Item {
-        anchors.fill: parent
-        visible: root.currentScreen === "import_mnemonic"
-
-        onVisibleChanged: {
-            if (visible) {
-                mnemonicArea.text = ""
-                importPinField.text = ""
-                importPinConfirmField.text = ""
-                root.errorMessage = ""
-            }
-        }
-
-        Text {
-            x: 24; y: 16
-            text: root.appVersion
-            color: root.textPlaceholder
-            font.pixelSize: 11
-        }
-
-        ColumnLayout {
-            anchors.centerIn: parent
-            spacing: 16
-            width: 420
-
-            Text {
-                text: "Create with recovery phrase"
-                font.pixelSize: 28
-                font.weight: Font.Bold
-                color: root.textColor
-            }
-
-            Text {
-                text: "Recovery phrase"
-                color: root.textSecondary
-                font.pixelSize: 12
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                height: 100
-                radius: 3
-                color: root.bgSecondary
-                border.width: 1
-                border.color: mnemonicArea.activeFocus ? root.primary : root.inputBorder
-
-                TextEdit {
-                    id: mnemonicArea
-                    anchors { fill: parent; margins: 12 }
-                    color: root.textColor
-                    font.pixelSize: 12
-                    wrapMode: TextEdit.Wrap
-                    opacity: activeFocus ? 1.0 : 0.0
-
-                    Text {
-                        visible: mnemonicArea.text.length === 0 && mnemonicArea.activeFocus
-                        text: "Enter 12 or 24 word recovery phrase"
-                        color: root.textPlaceholder
-                        font.pixelSize: 12
-                    }
-                }
-
-                Text {
-                    anchors { fill: parent; margins: 12 }
-                    visible: !mnemonicArea.activeFocus
-                    color: mnemonicArea.text.length > 0 ? root.textColor : root.textPlaceholder
-                    font.pixelSize: 12
-                    text: {
-                        if (mnemonicArea.text.length === 0)
-                            return "Enter 12 or 24 word recovery phrase"
-                        var count = mnemonicArea.text.trim().split(/\s+/).length
-                        return "••• " + count + " words entered •••"
-                    }
-                }
-            }
-
-            Text { text: "PIN"; color: root.textSecondary; font.pixelSize: 12 }
-
-            TextField {
-                id: importPinField
-                Layout.fillWidth: true
-                placeholderText: "PIN (min 6 characters)"
-                echoMode: TextInput.Password
-                color: root.textColor; font.pixelSize: 14
-                placeholderTextColor: root.textDisabled
-                background: Rectangle {
-                    color: root.bgSecondary; radius: 3; border.width: 1
-                    border.color: importPinField.activeFocus ? root.primary : root.inputBorder
-                }
-            }
-
-            Text { text: "Confirm PIN"; color: root.textSecondary; font.pixelSize: 12 }
-
-            TextField {
-                id: importPinConfirmField
-                Layout.fillWidth: true
-                placeholderText: "Confirm PIN"
-                echoMode: TextInput.Password
-                color: root.textColor; font.pixelSize: 14
-                placeholderTextColor: root.textDisabled
-                background: Rectangle {
-                    color: root.bgSecondary; radius: 3; border.width: 1
-                    border.color: importPinConfirmField.activeFocus ? root.primary : root.inputBorder
-                }
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: root.errorMessage
-                color: root.errorColor
-                font.pixelSize: 12
-                visible: root.currentScreen === "import_mnemonic" && root.errorMessage.length > 0
-                wrapMode: Text.WordWrap
-            }
-
-            Button {
-                Layout.fillWidth: true
-                text: "Create"
-                contentItem: Text {
-                    text: parent.text; font.pixelSize: 14; font.weight: Font.Medium
-                    color: root.textColor
-                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                }
-                background: Rectangle {
-                    color: parent.pressed ? root.primaryHover : root.primary
-                    radius: 16; implicitHeight: 40
-                }
-                onClicked: {
-                    root.errorMessage = ""
-                    if (typeof logos === "undefined" || !logos.callModule) return
-                    var result = logos.callModule("notes", "importMnemonic",
-                                                  [mnemonicArea.text,
-                                                   importPinField.text,
-                                                   importPinConfirmField.text,
-                                                   root.pendingBackupPath])
-                    root.pendingBackupPath = ""
-                    var parsed = JSON.parse(result)
-                    if (parsed.success) {
-                        root.restoreWarning = parsed.warning || ""
-                        root.keySource = "mnemonic"
-                        root.currentScreen = "note"
-                    } else {
-                        root.errorMessage = parsed.error || "Import failed"
-                    }
-                }
-            }
-
-            Text {
-                text: "Back to Keycard import"
-                color: root.primary
-                font.pixelSize: 12
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.currentScreen = "import"
-                }
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // ── UNLOCK NOTES screen (#40) ────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════════
-    Item {
-        anchors.fill: parent
-        visible: root.currentScreen === "unlock"
-
-        Text {
-            x: 24; y: 16
-            text: root.appVersion
-            color: root.textPlaceholder
-            font.pixelSize: 11
-        }
-
-        ColumnLayout {
-            anchors.centerIn: parent
-            spacing: 24
-            width: 420
-
-            Column {
-                spacing: 4
-                Text {
-                    text: "Unlock notes"
-                    font.pixelSize: 28
-                    font.weight: Font.Bold
-                    color: root.textColor
-                }
-                Text {
-                    text: {
-                        var fp = ""
-                        if (typeof logos !== "undefined" && logos.callModule)
-                            fp = logos.callModule("notes", "getAccountFingerprint", [])
-                        return "Decrypt database. Fingerprint: " + fp
-                    }
-                    color: root.textPlaceholder
-                    font.pixelSize: 14
-                }
-            }
-
-            // ── Keycard two-line status (always reserve space for both) ─────
-            Column {
-                spacing: 8
-                Layout.fillWidth: true
-                visible: root.keySource === "keycard"
-
-                Row {
-                    spacing: 8
-                    Rectangle {
-                        width: 8; height: 8; radius: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: root.readerConnected ? root.successGreen
-                             : (root.keycardState === "noPCSC" ? root.errorColor : root.statusGray)
-                        opacity: (!root.readerConnected && root.keycardDetecting
-                                  && root.keycardState !== "noPCSC") ? dotBlinkTarget.opacity : 1.0
-                    }
-                    Text {
-                        text: root.readerConnected ? "Smart card reader connected"
-                            : (root.keycardState === "noPCSC" ? "Smart card reader not found"
-                            : "Looking for smart card reader")
-                        color: root.readerConnected ? root.successGreen
-                             : (root.keycardState === "noPCSC" ? root.errorColor : root.textSecondary)
-                        font.pixelSize: 13
-                    }
-                }
-
-                Row {
-                    spacing: 8
-                    Rectangle {
-                        width: 8; height: 8; radius: 4
-                        anchors.verticalCenter: parent.verticalCenter
-                        color: root.cardDetected ? root.successGreen
-                             : (root.showCardError ? root.errorColor : root.statusGray)
-                        opacity: root.readerConnected
-                                 ? ((!root.cardDetected && root.keycardState === "waitingForCard")
-                                    ? dotBlinkTarget.opacity : 1.0)
-                                 : 0.3
-                    }
-                    Text {
-                        text: root.cardDetected ? "Keycard detected"
-                            : (root.readerConnected
-                                ? (root.keycardState === "waitingForCard" ? "Looking for Keycard"
-                                : "Keycard not found")
-                                : "Looking for Keycard")
-                        color: root.cardDetected ? root.successGreen
-                             : (root.showCardError ? root.errorColor : root.textSecondary)
-                        opacity: root.readerConnected ? 1.0 : 0.3
-                        font.pixelSize: 13
-                    }
-                }
-            }
-
-            // ── Mnemonic PIN field ──────────────────────────────────
-            Text {
-                text: "PIN"
-                color: root.textSecondary
-                font.pixelSize: 12
-                visible: root.keySource !== "keycard"
-            }
-
-            TextField {
-                id: unlockPinField
-                Layout.fillWidth: true
-                placeholderText: "Enter PIN"
-                echoMode: TextInput.Password
-                visible: root.keySource !== "keycard"
-                enabled: root.lockoutRemaining === 0
-                color: root.textColor
-                font.pixelSize: 14
-                placeholderTextColor: root.textDisabled
-                background: Rectangle {
-                    color: root.bgSecondary; radius: 3; border.width: 1
                     border.color: unlockPinField.activeFocus ? root.primary : root.inputBorder
                 }
-                Keys.onReturnPressed: {
-                    if (root.lockoutRemaining === 0) unlockButton.clicked()
-                }
+                Keys.onReturnPressed: unlockBtn.clicked()
             }
 
-            // ── Keycard PIN field ───────────────────────────────────
-            TextField {
-                id: unlockKeycardPinField
-                Layout.fillWidth: true
-                placeholderText: "Enter Keycard PIN"
-                echoMode: TextInput.Password
-                visible: root.keySource === "keycard"
-                color: root.textColor
-                font.pixelSize: 14
-                placeholderTextColor: root.textDisabled
-                background: Rectangle {
-                    color: root.bgSecondary; radius: 3; border.width: 1
-                    border.color: unlockKeycardPinField.activeFocus ? root.primary : root.inputBorder
-                }
-                Keys.onReturnPressed: unlockButton.clicked()
-            }
-
-            // ── Error message ───────────────────────────────────────
-            Text {
-                Layout.fillWidth: true
-                text: root.lockoutRemaining > 0
-                      ? "Locked out. Try again in " + root.lockoutRemaining + "s"
-                      : root.errorMessage
-                color: root.errorColor
-                font.pixelSize: 12
-                visible: root.lockoutRemaining > 0
-                         || (root.currentScreen === "unlock" && root.errorMessage.length > 0)
-                wrapMode: Text.WordWrap
-            }
-
-            // ── Unlock button ───────────────────────────────────────
             Button {
-                id: unlockButton
+                id: unlockBtn
                 Layout.fillWidth: true
-                enabled: root.keySource === "keycard" ? root.keycardReady : root.lockoutRemaining === 0
-                text: root.lockoutRemaining > 0
-                      ? "Locked (" + root.lockoutRemaining + "s)"
-                      : "Unlock"
+                visible: root.keySource !== "keycard"
+                enabled: root.lockoutRemaining === 0
+                text: root.lockoutRemaining > 0 ? "Locked (" + root.lockoutRemaining + "s)" : "Unlock"
                 contentItem: Text {
                     text: parent.text
                     font.pixelSize: 14
                     font.weight: Font.Medium
-                    color: unlockButton.enabled ? root.textColor : root.textDisabled
+                    color: parent.enabled ? root.textColor : root.textDisabled
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
                 background: Rectangle {
-                    color: unlockButton.enabled
+                    color: parent.enabled
                            ? (parent.pressed ? root.primaryHover : root.primary)
                            : root.bgSecondary
                     radius: 16
                     implicitHeight: 40
                 }
                 onClicked: {
-                    root.errorMessage = ""
                     if (typeof logos === "undefined" || !logos.callModule) return
-
-                    if (root.keySource === "keycard") {
-                        root.keycardDetecting = false
-                        var kcResult = logos.callModule("notes", "unlockWithKeycard",
-                                                        [unlockKeycardPinField.text])
-                        var kcParsed = JSON.parse(kcResult)
-                        if (kcParsed.success) {
-                            root.currentScreen = "note"
-                        } else {
-                            root.errorMessage = kcParsed.error || "Unlock failed"
-                            root.keycardDetecting = true
-                        }
-                        unlockKeycardPinField.text = ""
-                        return
-                    }
-
-                    var result = logos.callModule("notes", "unlockWithPin",
-                                                  [unlockPinField.text])
+                    root.errorMessage = ""
+                    var result = logos.callModule("notes", "unlockWithPin", [unlockPinField.text])
                     var parsed = JSON.parse(result)
                     if (parsed.success) {
-                        root.lockoutRemaining = 0
-                        lockoutTimer.stop()
                         root.currentScreen = "note"
                     } else {
-                        root.errorMessage = parsed.error || "Unlock failed"
-                        var secs = root.parseLockoutSeconds(root.errorMessage)
+                        root.errorMessage = parsed.error || "Wrong PIN"
+                        var secs = root.parseLockoutSeconds(parsed.error || "")
                         if (secs > 0) {
                             root.lockoutRemaining = secs
                             lockoutTimer.start()
                         }
                     }
+                    unlockPinField.text = ""
+                }
+            }
+
+            // Back to import
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: "Back to import"
+                color: root.primary
+                font.pixelSize: 12
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (typeof logos !== "undefined" && logos.callModule)
+                            logos.callModule("notes", "resetAndWipe", [])
+                        root.currentScreen = "import"
+                    }
                 }
             }
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // ── NOTE EDITOR screen (#41) ─────────────────────────────────────────
-    // ═══════════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════
+    // ── NOTE EDITOR SCREEN ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
     Item {
         id: noteScreen
         anchors.fill: parent
         visible: root.currentScreen === "note"
 
         property int activeNoteId: -1
-        property bool loading: false
         property bool showSettings: false
-        property string lastLoadedContent: ""  // Track loaded content to prevent saving unchanged data
-
-        // Warning banner
-        Rectangle {
-            id: warningBanner
-            anchors { top: parent.top; left: parent.left; right: parent.right }
-            height: root.restoreWarning.length > 0 ? 36 : 0
-            visible: root.restoreWarning.length > 0
-            color: "#ca8a04"
-            z: 10
-            Text {
-                anchors.centerIn: parent
-                text: root.restoreWarning
-                color: "#FFFFFF"
-                font.pixelSize: 12
-            }
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.restoreWarning = ""
-            }
-        }
+        property bool loading: false
+        property string lastLoadedContent: ""
 
         onVisibleChanged: {
             if (visible) {
-                saveTimer.stop()
-                activeNoteId = -1
-                lastLoadedContent = ""
-                editor.text = ""  // Clear editor - no note selected
-                deferredRefresh.start()
+                refreshList()
+                if (root.restoreWarning) {
+                    root.errorMessage = root.restoreWarning
+                    root.restoreWarning = ""
+                }
             }
-        }
-
-        Timer {
-            id: deferredRefresh
-            interval: 150
-            onTriggered: noteScreen.refreshList()
         }
 
         function refreshList() {
@@ -839,26 +497,21 @@ Item {
             var json = logos.callModule("notes", "loadNotes", [])
             var arr = JSON.parse(json)
             noteModel.clear()
-            for (var i = 0; i < arr.length; i++)
-                noteModel.append(arr[i])
-            // Don't auto-select notes - user must click to open
-            // This prevents the race condition where auto-selection triggers a bad save
-        }
-
-        function saveCurrentNote() {
-            saveTimer.stop()
-            if (activeNoteId > 0 && !loading && typeof logos !== "undefined" && logos.callModule) {
-                var result = logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
-                if (result !== "ok")
-                    root.restoreWarning = "Failed to save note. Your changes may be lost."
+            for (var i = 0; i < arr.length; i++) {
+                noteModel.append({
+                    id: arr[i].id,
+                    title: arr[i].title || "Untitled",
+                    updatedAt: arr[i].updated_at || 0
+                })
             }
         }
 
         function selectNote(id) {
+            if (typeof logos === "undefined" || !logos.callModule) return
             saveCurrentNote()
             activeNoteId = id
             loading = true
-            if (typeof logos !== "undefined" && logos.callModule) {
+            if (id !== -1) {
                 var result = logos.callModule("notes", "loadNote", [id])
                 if (result && result.charAt(0) === '{') {
                     try {
@@ -872,10 +525,19 @@ Item {
                     } catch(e) {}
                 }
                 editor.text = result || ""
-                lastLoadedContent = editor.text  // Track what we loaded
+                lastLoadedContent = editor.text
             }
             loading = false
             editor.forceActiveFocus()
+        }
+
+        function saveCurrentNote() {
+            if (typeof logos !== "undefined" && logos.callModule
+                && activeNoteId !== -1
+                && editor.text !== lastLoadedContent) {
+                logos.callModule("notes", "saveNote", [activeNoteId, editor.text])
+                lastLoadedContent = editor.text
+            }
         }
 
         property int retryNoteId: -1
@@ -897,7 +559,7 @@ Item {
             activeNoteId = obj.id
             loading = true
             editor.text = ""
-            lastLoadedContent = ""  // New note starts empty
+            lastLoadedContent = ""
             loading = false
             refreshList()
             selectNote(obj.id)
@@ -905,7 +567,6 @@ Item {
 
         ListModel { id: noteModel }
 
-        // Keyboard shortcuts
         Shortcut {
             sequence: "Ctrl+N"
             onActivated: noteScreen.createNewNote()
@@ -915,7 +576,6 @@ Item {
             onActivated: {
                 if (typeof logos !== "undefined" && logos.callModule)
                     logos.callModule("notes", "lockSession", [])
-                root.restartKeycardDetection()
                 root.currentScreen = "unlock"
             }
         }
@@ -928,7 +588,6 @@ Item {
             anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
             color: root.bgSecondary
 
-            // New Note button
             Rectangle {
                 id: newNoteBtn
                 anchors { top: parent.top; left: parent.left; right: parent.right }
@@ -962,7 +621,6 @@ Item {
                 }
             }
 
-            // Note list
             ListView {
                 id: noteList
                 anchors { top: newNoteBtn.bottom; bottom: sidebarBottomBar.top; left: parent.left; right: parent.right }
@@ -1000,7 +658,6 @@ Item {
                         onClicked: noteScreen.selectNote(parent.noteId)
                     }
 
-                    // Active indicator bar
                     Rectangle {
                         visible: parent.isActive
                         width: 3
@@ -1092,7 +749,6 @@ Item {
                             onClicked: {
                                 if (typeof logos !== "undefined" && logos.callModule)
                                     logos.callModule("notes", "lockSession", [])
-                                root.restartKeycardDetection()
                                 root.currentScreen = "unlock"
                             }
                         }
@@ -1109,12 +765,10 @@ Item {
                             onClicked: {
                                 if (typeof logos !== "undefined" && logos.callModule)
                                     logos.callModule("notes", "lockSession", [])
-                                root.restartKeycardDetection()
                                 root.currentScreen = "unlock"
                             }
                         }
                     }
-
                 }
 
                 Rectangle {
@@ -1186,7 +840,6 @@ Item {
                 selectedTextColor: root.textColor
 
                 onTextChanged: {
-                    // Only trigger auto-save if not currently loading a note
                     if (!noteScreen.loading)
                         saveTimer.restart()
                 }
@@ -1209,7 +862,6 @@ Item {
             }
 
             ScrollBar.vertical: ScrollBar {
-                id: editorScrollBar
                 policy: ScrollBar.AlwaysOn
                 width: 6
                 opacity: editorFlick.contentHeight > editorFlick.height ? 0.4 : 0
@@ -1222,7 +874,7 @@ Item {
             }
         }
 
-        // ── Empty state message ─────────────────────────────────────
+        // ── Empty state ─────────────────────────────────────────────
         Item {
             visible: !noteScreen.showSettings && noteScreen.activeNoteId === -1
             anchors {
@@ -1243,14 +895,13 @@ Item {
 
         Timer {
             id: saveTimer
-            interval: 200  // Save after 200ms of no typing (feels instant)
+            interval: 200
             onTriggered: {
-                // Only save if we have a valid note and content has changed from what was loaded
                 if (typeof logos !== "undefined" && logos.callModule
                     && noteScreen.activeNoteId !== -1
                     && editor.text !== noteScreen.lastLoadedContent) {
                     logos.callModule("notes", "saveNote", [noteScreen.activeNoteId, editor.text])
-                    noteScreen.lastLoadedContent = editor.text  // Update tracked content
+                    noteScreen.lastLoadedContent = editor.text
                     noteScreen.refreshList()
                 }
             }
@@ -1268,7 +919,7 @@ Item {
         }
 
         // ═════════════════════════════════════════════════════════════
-        // ── SETTINGS panel (#42) ─────────────────────────────────────
+        // ── SETTINGS panel ─────────────────────────────────────────
         // ═════════════════════════════════════════════════════════════
         Item {
             visible: noteScreen.showSettings
@@ -1280,7 +931,6 @@ Item {
             }
             anchors.fill: parent
 
-            // Version
             Text {
                 x: 24; y: 16
                 text: root.appVersion
@@ -1288,7 +938,6 @@ Item {
                 font.pixelSize: 11
             }
 
-            // Close button (X)
             Rectangle {
                 anchors { top: parent.top; right: parent.right; topMargin: 12; rightMargin: 16 }
                 width: 24; height: 24
@@ -1326,7 +975,7 @@ Item {
                     color: root.textColor
                 }
 
-                // ── Current database section ────────────────────────
+                // Current database
                 Rectangle {
                     width: parent.width
                     height: dbCol.height + 40
@@ -1349,10 +998,7 @@ Item {
                             spacing: 8
                             Text { text: "Encryption:"; color: root.textSecondary; font.pixelSize: 12 }
                             Text {
-                                text: {
-                                    if (root.keySource === "keycard") return "Keycard"
-                                    return root.keySource === "wallet" ? "Logos Wallet" : "Recovery Phrase"
-                                }
+                                text: root.keySource === "keycard" ? "Keycard" : "Recovery Phrase"
                                 color: root.textColor
                                 font.pixelSize: 12
                             }
@@ -1380,12 +1026,8 @@ Item {
                                 }
                                 Connections {
                                     target: noteScreen
-                                    function onShowSettingsChanged() {
-                                        fpText.refreshFp()
-                                    }
-                                    function onVisibleChanged() {
-                                        if (noteScreen.visible) fpText.refreshFp()
-                                    }
+                                    function onShowSettingsChanged() { fpText.refreshFp() }
+                                    function onVisibleChanged() { if (noteScreen.visible) fpText.refreshFp() }
                                 }
                             }
                             Text {
@@ -1408,7 +1050,7 @@ Item {
                     }
                 }
 
-                // ── Backup section ──────────────────────────────────
+                // Backup
                 Rectangle {
                     width: parent.width
                     height: backupCol.height + 40
@@ -1428,7 +1070,7 @@ Item {
                         }
 
                         Text {
-                            text: "Export your notes as encrypted {fingerprint}_{datestamp}.imnotes file"
+                            text: "Export your notes as encrypted backup file"
                             color: root.textSecondary
                             font.pixelSize: 12
                             width: parent.width
@@ -1473,7 +1115,7 @@ Item {
                     }
                 }
 
-                // ── Danger Zone ─────────────────────────────────────
+                // Danger Zone
                 Rectangle {
                     width: parent.width
                     height: dangerCol.height + 40
@@ -1495,7 +1137,7 @@ Item {
                         }
 
                         Text {
-                            text: "Resetting the app will wipe all notes from current app database. Make sure you backed up important data."
+                            text: "Resetting the app will wipe all notes. Make sure you backed up important data."
                             color: root.textSecondary
                             font.pixelSize: 12
                             wrapMode: Text.WordWrap
@@ -1529,7 +1171,7 @@ Item {
                             }
 
                             Text {
-                                text: "I understand all notes will be permanently deleted from app database"
+                                text: "I understand all notes will be permanently deleted"
                                 color: root.textSecondary
                                 font.pixelSize: 12
                                 anchors.verticalCenter: parent.verticalCenter
@@ -1564,7 +1206,6 @@ Item {
                                     logos.callModule("notes", "resetAndWipe", [])
                                 noteScreen.showSettings = false
                                 root.errorMessage = ""
-                                root.restartKeycardDetection()
                                 root.currentScreen = "import"
                             }
                         }
