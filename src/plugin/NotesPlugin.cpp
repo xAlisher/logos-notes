@@ -134,67 +134,6 @@ QString NotesPlugin::resetAndWipe()
     return ok();
 }
 
-// ── Keycard ─────────────────────────────────────────────────────────────────
-
-QString NotesPlugin::startKeycardDetection()
-{
-    QString result = m_backend.startKeycardDetection();
-    if (result == "ok")
-        return successJson();
-    return errorJson(result);
-}
-
-QString NotesPlugin::stopKeycardDetection()
-{
-    m_backend.stopKeycardDetection();
-    return ok();
-}
-
-QString NotesPlugin::getKeycardState()
-{
-    return m_backend.getKeycardState();
-}
-
-// ── Keycard PIN + key export ─────────────────────────────────────────────────
-
-QString NotesPlugin::keycardAuthorize(const QString& pin)
-{
-    return m_backend.keycardAuthorize(pin);
-}
-
-QString NotesPlugin::keycardExportKey()
-{
-    return m_backend.keycardExportKey();
-}
-
-QString NotesPlugin::importFromKeycard(const QString& keycardPin,
-                                        const QString& backupPath)
-{
-    m_backend.importFromKeycard(keycardPin, backupPath);
-
-    if (m_backend.currentScreen() == QStringLiteral("note")) {
-        // Surface partial restore warning if any (same pattern as importMnemonic)
-        QString warning = m_backend.errorMessage();
-        if (!warning.isEmpty()) {
-            return QStringLiteral("{\"success\":true,\"warning\":\"")
-                   + warning.replace('"', '\'') + QStringLiteral("\"}");
-        }
-        return successJson();
-    }
-
-    return errorJson(m_backend.errorMessage());
-}
-
-QString NotesPlugin::unlockWithKeycard(const QString& keycardPin)
-{
-    m_backend.unlockWithKeycard(keycardPin);
-
-    if (m_backend.currentScreen() == QStringLiteral("note"))
-        return successJson();
-
-    return errorJson(m_backend.errorMessage());
-}
-
 // ── Keycard Module Integration ───────────────────────────────────────────────
 
 QString NotesPlugin::importWithKeycardKey(const QString& hexKey,

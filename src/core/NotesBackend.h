@@ -6,7 +6,7 @@
 #include "CryptoManager.h"
 #include "DatabaseManager.h"
 #include "KeyManager.h"
-#include "KeycardBridge.h"
+// KeycardBridge removed — using keycard-basecamp module via LogosAPI
 
 // QML-facing backend. Registered as a context property "backend".
 // Drives screen navigation and note persistence.
@@ -16,34 +16,12 @@ class NotesBackend : public QObject
 
     Q_PROPERTY(QString currentScreen READ currentScreen NOTIFY currentScreenChanged)
     Q_PROPERTY(QString errorMessage  READ errorMessage  NOTIFY errorMessageChanged)
-    Q_PROPERTY(QString keycardState  READ keycardState  NOTIFY keycardStateChanged)
-    Q_PROPERTY(QString keycardStatus READ keycardStatusText NOTIFY keycardStateChanged)
 
 public:
     explicit NotesBackend(QObject *parent = nullptr);
 
     QString currentScreen() const;
     QString errorMessage()  const;
-    QString keycardState()  const;
-    QString keycardStatusText() const;
-
-    // Keycard reader detection
-    Q_INVOKABLE QString startKeycardDetection();
-    Q_INVOKABLE QString stopKeycardDetection();
-    Q_INVOKABLE QString getKeycardState();
-
-    // Keycard PIN authorization + key export
-    Q_INVOKABLE QString keycardAuthorize(const QString &pin);
-    Q_INVOKABLE QString keycardExportKey();
-
-    // Keycard import: authorize card with PIN, export key, create account.
-    // No separate app PIN — Keycard PIN is the only auth. Card must be present to unlock.
-    Q_INVOKABLE void importFromKeycard(const QString &keycardPin,
-                                        const QString &backupPath = {});
-
-    // Keycard unlock: authorize card, re-derive key, decrypt notes.
-    Q_INVOKABLE void unlockWithKeycard(const QString &keycardPin);
-
     // Keycard module integration: receive pre-derived key from keycard-basecamp
     Q_INVOKABLE void importWithKeycardKey(const QString &hexKey,
                                            const QString &backupPath = {});
@@ -103,8 +81,6 @@ public:
 signals:
     void currentScreenChanged();
     void errorMessageChanged();
-    void keycardStateChanged();
-
 private:
     void setScreen(const QString &screen);
     void setError(const QString &msg);
@@ -112,8 +88,6 @@ private:
     CryptoManager   m_crypto;
     DatabaseManager m_db;
     KeyManager      m_keys;
-    KeycardBridge   m_keycard;
-
     QString m_currentScreen;
     QString m_errorMessage;
 

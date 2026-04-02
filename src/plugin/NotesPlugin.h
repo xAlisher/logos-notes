@@ -52,19 +52,7 @@ public:
                                       const QString& mnemonic = {});
     Q_INVOKABLE QString resetAndWipe();
 
-    // Keycard detection
-    Q_INVOKABLE QString startKeycardDetection();
-    Q_INVOKABLE QString stopKeycardDetection();
-    Q_INVOKABLE QString getKeycardState();
-
-    // Keycard PIN + key export + import (legacy — internal KeycardBridge)
-    Q_INVOKABLE QString keycardAuthorize(const QString& pin);
-    Q_INVOKABLE QString keycardExportKey();
-    Q_INVOKABLE QString importFromKeycard(const QString& keycardPin,
-                                           const QString& backupPath = {});
-    Q_INVOKABLE QString unlockWithKeycard(const QString& keycardPin);
-
-    // Keycard module integration (new — receives key from keycard-basecamp)
+    // Keycard module integration (receives key from keycard-basecamp)
     Q_INVOKABLE QString importWithKeycardKey(const QString& hexKey,
                                               const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithKeycardKey(const QString& hexKey);
