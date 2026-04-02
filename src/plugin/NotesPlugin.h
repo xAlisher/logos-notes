@@ -57,12 +57,17 @@ public:
     Q_INVOKABLE QString stopKeycardDetection();
     Q_INVOKABLE QString getKeycardState();
 
-    // Keycard PIN + key export + import
+    // Keycard PIN + key export + import (legacy — internal KeycardBridge)
     Q_INVOKABLE QString keycardAuthorize(const QString& pin);
     Q_INVOKABLE QString keycardExportKey();
     Q_INVOKABLE QString importFromKeycard(const QString& keycardPin,
                                            const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithKeycard(const QString& keycardPin);
+
+    // Keycard module integration (new — receives key from keycard-basecamp)
+    Q_INVOKABLE QString importWithKeycardKey(const QString& hexKey,
+                                              const QString& backupPath = {});
+    Q_INVOKABLE QString unlockWithKeycardKey(const QString& hexKey);
 
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);

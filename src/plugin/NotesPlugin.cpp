@@ -195,6 +195,35 @@ QString NotesPlugin::unlockWithKeycard(const QString& keycardPin)
     return errorJson(m_backend.errorMessage());
 }
 
+// ── Keycard Module Integration ───────────────────────────────────────────────
+
+QString NotesPlugin::importWithKeycardKey(const QString& hexKey,
+                                           const QString& backupPath)
+{
+    m_backend.importWithKeycardKey(hexKey, backupPath);
+
+    if (m_backend.currentScreen() == QStringLiteral("note")) {
+        QString warning = m_backend.errorMessage();
+        if (!warning.isEmpty()) {
+            return QStringLiteral("{\"success\":true,\"warning\":\"")
+                   + warning.replace('"', '\'') + QStringLiteral("\"}");
+        }
+        return successJson();
+    }
+
+    return errorJson(m_backend.errorMessage());
+}
+
+QString NotesPlugin::unlockWithKeycardKey(const QString& hexKey)
+{
+    m_backend.unlockWithKeycardKey(hexKey);
+
+    if (m_backend.currentScreen() == QStringLiteral("note"))
+        return successJson();
+
+    return errorJson(m_backend.errorMessage());
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 QString NotesPlugin::ok()
