@@ -1,7 +1,7 @@
 {
   "author": "Logos Notes",
   "category": "notes",
-  "dependencies": [],
+  "dependencies": ["keycard"],
   "description": "Encrypted local-first notes for the Logos ecosystem",
   "main": "notes_plugin",
   "name": "notes",

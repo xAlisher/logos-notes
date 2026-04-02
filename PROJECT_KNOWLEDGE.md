@@ -1,5 +1,7 @@
 # Immutable Notes — Project Knowledge
-*Last updated: 2026-03-19*
+*Last updated: 2026-04-02*
+
+> **Architecture change (2026-04-02):** KeycardBridge, libkeycard.so, and direct PC/SC code have been removed. Notes now uses the keycard-basecamp module via `logos.callModule("keycard", "requestAuth", ...)` for key derivation. Historical references to KeycardBridge/libkeycard below are kept for context but no longer reflect the current codebase.
 
 > **This file is the project's shared memory.**
 > It lives in the repo root and is committed like any other file.

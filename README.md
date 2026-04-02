@@ -90,8 +90,7 @@ Note content + title:
 | Language | C++17 |
 | UI | Qt 6.9.3 / QML |
 | Crypto | libsodium 1.0.18 (AES-256-GCM, Argon2id, Ed25519) |
-| Keycard | status-keycard-go (CGO → libkeycard.so) |
-| Smart card | libpcsclite (PC/SC daemon) |
+| Keycard | keycard-basecamp module (via logos.callModule) |
 | Storage | SQLite via Qt SQL |
 | Build | CMake 3.28 + Ninja |
 | Packaging | Nix flake + LGX |
@@ -104,20 +103,11 @@ Note content + title:
 
 ```bash
 # Ubuntu
-sudo apt install libsodium-dev cmake ninja-build pkg-config pcscd libpcsclite-dev
+sudo apt install libsodium-dev cmake ninja-build pkg-config
 ```
 
 - Qt 6.6+ (tested with 6.9.3) — install via Qt online installer
-- Go toolchain (for building libkeycard.so)
-- USB smart card reader + Status Keycard
-
-### Build libkeycard.so
-
-```bash
-./scripts/build-libkeycard.sh
-```
-
-This compiles `status-keycard-go` as a C shared library into `lib/keycard/libkeycard.so`.
+- keycard-basecamp module installed in Basecamp (handles smart card communication)
 
 ### Configure and build
 
@@ -142,7 +132,7 @@ cmake --install build
 ```
 
 Installs:
-- `notes_plugin.so` + `libkeycard.so` + `libpcsclite.so.1` → `~/.local/share/Logos/LogosBasecampDev/modules/notes/`
+- `notes_plugin.so` → `~/.local/share/Logos/LogosBasecamp/modules/notes/`
 - `Main.qml` + icons + metadata → `~/.local/share/Logos/LogosBasecampDev/plugins/notes_ui/`
 
 ### Run in Logos Basecamp
@@ -162,9 +152,7 @@ logos-notes/
 ├── flake.nix
 ├── SECURITY_REVIEW.md
 ├── PROJECT_KNOWLEDGE.md          # Shared project memory
-├── lib/keycard/                  # libkeycard.so (built from status-keycard-go)
 ├── scripts/
-│   └── build-libkeycard.sh      # CGO build script
 ├── modules/notes/manifest.json
 ├── plugins/notes_ui/
 │   ├── Main.qml                 # All screens (create, unlock, editor, settings)
@@ -173,7 +161,7 @@ logos-notes/
 └── src/
     ├── core/
     │   ├── NotesBackend.h/cpp    # Screen nav, note CRUD, keycard import/unlock
-    │   ├── KeycardBridge.h/cpp   # C++ wrapper for libkeycard.so JSON-RPC
+    │   ├── (KeycardBridge removed — uses keycard-basecamp module)
     │   ├── CryptoManager.h/cpp   # AES-256-GCM + Argon2id
     │   ├── DatabaseManager.h/cpp # SQLite
     │   ├── KeyManager.h/cpp      # BIP39 validation, key lifecycle
@@ -219,7 +207,7 @@ logos-notes/
 | Repo | Purpose |
 |------|---------|
 | [logos-app](https://github.com/logos-co/logos-app) | Logos Basecamp — shell host that loads this module |
-| [status-keycard-go](https://github.com/status-im/keycard-go) | Go Keycard library we wrap |
+| [keycard-basecamp](https://github.com/xAlisher/keycard-basecamp) | Keycard module for key derivation |
 | [logos-cpp-sdk](https://github.com/logos-co/logos-cpp-sdk) | C++ SDK for Logos modules |
 | [logos-tutorial](https://github.com/logos-co/logos-tutorial) | Developer guide for building modules |
 | [keycard.tech](https://keycard.tech/en/developers/overview) | Keycard developer docs |

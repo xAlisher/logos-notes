@@ -79,9 +79,18 @@ Item {
                 root.keycardAuthStatus = "disconnected"
                 root.keycardAuthId = ""
                 root.errorMessage = "Authorization rejected"
+            } else if (response.error) {
+                // Unknown/expired auth ID or other error — stop polling
+                root.keycardAuthStatus = "disconnected"
+                root.keycardAuthId = ""
+                root.errorMessage = response.error
             }
         } catch (e) {
             console.error("Failed to check keycard auth status:", e)
+            // Parse failure — stop polling to avoid infinite loop
+            root.keycardAuthStatus = "disconnected"
+            root.keycardAuthId = ""
+            root.errorMessage = "Keycard communication error"
         }
     }
 
