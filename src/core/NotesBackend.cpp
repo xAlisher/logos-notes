@@ -854,3 +854,78 @@ QString NotesBackend::keycardExportKey()
     obj["keySize"] = key.size();
     return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }
+
+// ── Keycard Module Integration ───────────────────────────────────────────────
+// Receive pre-derived key from keycard-basecamp module (replaces internal KeycardBridge)
+
+void NotesBackend::importWithKeycardKey(const QString &hexKey,
+                                         const QString &backupPath)
+{
+    // Convert hex key to bytes
+    QByteArray keyBytes = QByteArray::fromHex(hexKey.toUtf8());
+    if (keyBytes.isEmpty() || keyBytes.size() < 32) {
+        setError("Invalid key from keycard module");
+        return;
+    }
+
+    // Use first 32 bytes as AES-256 master key
+    SecureBuffer masterKey(keyBytes.left(32));
+    sodium_memzero(keyBytes.data(), keyBytes.size());
+
+    // Store key source metadata
+    m_db.saveMeta("key_source", "keycard");
+    m_db.saveMeta("account_fingerprint", deriveFingerprintFromKey(masterKey.ref()));
+
+    // Hold master key in memory
+    m_keys.setMasterKey(masterKey.toByteArray());
+
+    // Restore backup if provided
+    if (!backupPath.isEmpty()) {
+        QString result = importBackup(backupPath);
+        QJsonObject parsed = QJsonDocument::fromJson(result.toUtf8()).object();
+        if (!parsed.value("ok").toBool()) {
+            m_keys.lock();
+            m_db.wipe();
+            m_db.init();
+            setError(parsed.value("error").toString("Backup restore failed."));
+            setScreen("import");
+            return;
+        }
+        int failedCount = parsed.value("failed").toInt(0);
+        if (failedCount > 0) {
+            int restoredCount = parsed.value("imported").toInt();
+            setError(QString("Restored %1 note(s), %2 failed to restore.").arg(restoredCount).arg(failedCount));
+        }
+    }
+
+    m_db.setInitialized();
+    setScreen("note");
+}
+
+void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
+{
+    // Convert hex key to bytes
+    QByteArray keyBytes = QByteArray::fromHex(hexKey.toUtf8());
+    if (keyBytes.isEmpty() || keyBytes.size() < 32) {
+        setError("Invalid key from keycard module");
+        return;
+    }
+
+    SecureBuffer masterKey(keyBytes.left(32));
+    sodium_memzero(keyBytes.data(), keyBytes.size());
+
+    // Verify fingerprint matches stored account
+    QString storedFp = m_db.loadMeta("account_fingerprint");
+    if (!storedFp.isEmpty()) {
+        QString currentFp = deriveFingerprintFromKey(masterKey.ref());
+        if (currentFp != storedFp) {
+            setError("Key mismatch — wrong card or domain");
+            return;
+        }
+    }
+
+    // Hold in memory and load notes
+    m_keys.setMasterKey(masterKey.toByteArray());
+    migratePlaintextTitles();
+    setScreen("note");
+}

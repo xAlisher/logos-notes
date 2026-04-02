@@ -44,6 +44,11 @@ public:
     // Keycard unlock: authorize card, re-derive key, decrypt notes.
     Q_INVOKABLE void unlockWithKeycard(const QString &keycardPin);
 
+    // Keycard module integration: receive pre-derived key from keycard-basecamp
+    Q_INVOKABLE void importWithKeycardKey(const QString &hexKey,
+                                           const QString &backupPath = {});
+    Q_INVOKABLE void unlockWithKeycardKey(const QString &hexKey);
+
     // Called from ImportScreen: validate mnemonic + PIN, derive key, save state.
     Q_INVOKABLE void importMnemonic(const QString &mnemonic,
                                     const QString &pin,
