@@ -134,46 +134,14 @@ QString NotesPlugin::resetAndWipe()
     return ok();
 }
 
-// ── Keycard ─────────────────────────────────────────────────────────────────
+// ── Keycard Module Integration ───────────────────────────────────────────────
 
-QString NotesPlugin::startKeycardDetection()
+QString NotesPlugin::importWithKeycardKey(const QString& hexKey,
+                                           const QString& backupPath)
 {
-    QString result = m_backend.startKeycardDetection();
-    if (result == "ok")
-        return successJson();
-    return errorJson(result);
-}
-
-QString NotesPlugin::stopKeycardDetection()
-{
-    m_backend.stopKeycardDetection();
-    return ok();
-}
-
-QString NotesPlugin::getKeycardState()
-{
-    return m_backend.getKeycardState();
-}
-
-// ── Keycard PIN + key export ─────────────────────────────────────────────────
-
-QString NotesPlugin::keycardAuthorize(const QString& pin)
-{
-    return m_backend.keycardAuthorize(pin);
-}
-
-QString NotesPlugin::keycardExportKey()
-{
-    return m_backend.keycardExportKey();
-}
-
-QString NotesPlugin::importFromKeycard(const QString& keycardPin,
-                                        const QString& backupPath)
-{
-    m_backend.importFromKeycard(keycardPin, backupPath);
+    m_backend.importWithKeycardKey(hexKey, backupPath);
 
     if (m_backend.currentScreen() == QStringLiteral("note")) {
-        // Surface partial restore warning if any (same pattern as importMnemonic)
         QString warning = m_backend.errorMessage();
         if (!warning.isEmpty()) {
             return QStringLiteral("{\"success\":true,\"warning\":\"")
@@ -185,9 +153,9 @@ QString NotesPlugin::importFromKeycard(const QString& keycardPin,
     return errorJson(m_backend.errorMessage());
 }
 
-QString NotesPlugin::unlockWithKeycard(const QString& keycardPin)
+QString NotesPlugin::unlockWithKeycardKey(const QString& hexKey)
 {
-    m_backend.unlockWithKeycard(keycardPin);
+    m_backend.unlockWithKeycardKey(hexKey);
 
     if (m_backend.currentScreen() == QStringLiteral("note"))
         return successJson();

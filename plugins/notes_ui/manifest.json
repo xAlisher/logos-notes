@@ -1,7 +1,7 @@
 {
   "author": "Logos Notes",
   "category": "notes",
-  "dependencies": ["notes"],
+  "dependencies": ["keycard", "notes"],
   "description": "Encrypted local-first notes — UI",
   "icon": "",
   "main": {
