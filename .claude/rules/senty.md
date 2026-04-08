@@ -1,0 +1,1 @@
+/home/alisher/fieldcraft/agents/senty.md
