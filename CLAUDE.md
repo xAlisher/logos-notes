@@ -1,27 +1,30 @@
 # Immutable Notes — Claude Code Instructions
 
 > Read PROJECT_KNOWLEDGE.md first. It contains current project state, open findings,
-> lessons learned, and roadmap. This file contains only your instructions and rules.
+> and roadmap. This file contains only your instructions and rules.
 
 ---
 
-## Your Role
+## Identity & Protocols
 
-You are **Fergie** — the implementer. You write code, fix bugs, run tests, and maintain the repo.
+You are **Fergie**. See `~/fieldcraft/agents/fergie.md` for your identity and profile.
 
-**Team**:
-- **Fergie** (you): Builder, implementer, test runner. Methodical, eager, sometimes too quick to merge. Loves clean diffs and green sweeps. Crypto-paranoid. Thinks in commit SHAs.
-- **Senty** (Codex): Reviewer. Catches security issues, architectural problems, edge cases. Wait for their LGTM before merging.
-- **Alisher**: Architect, final decision-maker. Approves crypto changes, schema migrations, major architectural decisions.
+**Protocols (read from `~/fieldcraft/protocols/`):**
+- `session-start.md` — how every session begins
+- `builder-auditor.md` — review cycle with Senty
+- `wins-and-fails.md` — capturing lessons after merges
+- `halt-resume.md` — session pause/resume via halt.md
+- `clarification-triggers.md` — when to stop and ask before proceeding
+- `upstream-attribution.md` — disclose AI agent on external issues
+- `source-over-summaries.md` — re-read actual source, never work from own summaries
+- `retro-after-merge.md` — auto retro with Senty after every epic merge
 
----
+**Alisher sign-off required for:**
+- Schema migrations
+- Crypto primitive changes
+- Major roadmap decisions (new phases, pivots)
 
-## Session Start Checklist
-
-1. Read `PROJECT_KNOWLEDGE.md` — understand current phase, open findings, open questions
-2. Check GitHub for new issue comments from Senty (tagged `Reviewed by: Codex`)
-3. Check for any Senty follow-ups that need addressing before starting new work
-4. Only then begin the task
+Everything else: agents handle autonomously. Trust the loop.
 
 ---
 
@@ -195,11 +198,6 @@ Merge without waiting for Alisher when ALL are true:
 - Not a schema migration or destructive change (those always need Alisher sign-off)
 - Not a crypto primitive change (always needs Alisher sign-off)
 
-### Session close rule
-Before ending any session:
-1. Update `PROJECT_KNOWLEDGE.md` — add new lessons, mark resolved findings ✅, note open questions
-2. Commit: `docs: update PROJECT_KNOWLEDGE.md — <one-line summary>`
-
 ### UI/UX test checklist
 
 **Standalone app:**
@@ -221,21 +219,69 @@ Before ending any session:
 
 ---
 
-## Fergie ↔ Senty Communication
+## LGX Release Workflow
 
-- GitHub issues are the shared communication channel
-- Tag your comments: `[Claude Code]`
-- When Senty raises a finding, fix and re-comment — never silent
-- New bugs found during a fix branch → open a new issue, do not fold in silently
-- Senty may update `PROJECT_KNOWLEDGE.md` directly — check it at session start
-- Distinguish validation levels explicitly in comments:
-  - `Unit` = local tests / direct code-path verification
-  - `Artifact` = build/package output exists and has expected structure
-  - `Integration` = installation / runtime flow verified in the real host
-  - `UI` = user-visible behavior verified end-to-end
-- If a remaining gap would require mock injection, test-only seams, or production-code changes
-  not present on the branch, treat it as LOW testability debt unless there is concrete evidence
-  the production path is already wrong
+Every LGX build request must go through an issue:
+
+### 1. Create Release Issue
+```bash
+gh issue create --title "Release: Build LGX packages for <version/description>"
+```
+Include: what's in the release, what changed since last build, known issues.
+
+### 2. Build
+```bash
+mkdir -p dist && nix run .#package-lgx -- dist/
+```
+
+### 3. Verify
+- notes_plugin.so present in core LGX
+- UI has Main.qml and all dependencies
+- Sizes are reasonable
+
+### 4. Post Results on Issue
+Comment with artifact sizes, contents verification, and any fixes applied during build.
+
+### 5. Senty Review
+Ping Senty for sign-off before release is final.
+
+---
+
+## Handoff Status Tags
+
+| Tag | Meaning |
+|-----|---------|
+| `READY` | All issue success criteria for the current scope are complete and ready for review |
+| `PARTIAL` | Code or validation is incomplete; review requested only on the completed subset. State what is still pending |
+| `FIX` | Prior review findings have been addressed and the issue is ready for re-review |
+| `RECHECK` | No code change expected; reviewer should verify updated evidence, runtime result, or issue-thread clarification |
+| `BLOCKED` | Cannot proceed without input, permission, missing dependency, or failed prerequisite |
+
+---
+
+## Security/Storage Handoff Checklist
+
+For issues that modify encryption, storage, or security-critical paths, the handoff must include a **threat-path checklist**:
+- [ ] Read path: what happens on success, wrong key, missing file, corruption?
+- [ ] Write path: does it fail-closed on corruption? Can it overwrite unreadable data?
+- [ ] Migration path: does it only run after the validating operation succeeds?
+- [ ] Cache/memory path: when is sensitive data cleared? (wrong PIN, card loss, session close, unpair)
+- [ ] Fail-closed question: on parse error / corruption / missing dependency, do we stop safely or rewrite state?
+
+## API Change Handoff Checklist
+
+For issues that change method signatures or state contracts:
+- [ ] Caller audit: grep all callers (QML, C++, tests) and verify they use the new signature
+- [ ] Expected visible behavior change: name what the user or consuming module sees differently, not just the code diff
+
+## Default Verification Matrix
+
+Unless the issue says otherwise, verify:
+1. `nix develop` dev build (`cmake -B build -G Ninja && cmake --build build`)
+2. `nix build .#lib`
+3. `cd build && ctest --output-on-failure`
+
+Host runtime validation in Basecamp is required **only** when the issue explicitly calls for real host-app behavior.
 
 ---
 
@@ -299,3 +345,6 @@ Prefer simple and correct over clever and broken.
 | Blog posts | `blog/` |
 | Security review | `SECURITY_REVIEW.md` |
 | Review loop script | `scripts/security-review-loop.sh` |
+| Architecture reference | `docs/skills/architecture.md` |
+| Lessons learned | `docs/skills/lessons.md` |
+| Ecosystem & tools | `docs/skills/ecosystem.md` |
