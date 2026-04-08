@@ -8,7 +8,7 @@
 
 KeyManager::KeyManager()
 {
-    sodium_init();
+    (void)sodium_init();
 }
 
 KeyManager::~KeyManager()

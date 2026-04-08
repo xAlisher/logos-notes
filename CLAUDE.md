@@ -229,7 +229,9 @@ Include: what's in the release, what changed since last build, known issues.
 
 ### 2. Build
 ```bash
-mkdir -p dist && nix run .#package-lgx -- dist/
+# Use #portable bundler for correct platform (linux-amd64 not linux-amd64-dev)
+nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib
+nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui
 ```
 
 ### 3. Verify
