@@ -4,6 +4,31 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## Issue #61 — Cleanup Legacy References (2026-04-09)
+
+### Process wins
+- Builder-auditor loop caught two real MEDIUM regressions before merge (stale docs claiming artifacts removed when they weren't, broken `package-lgx` workflow)
+- Round 2 was clean — fixes were concrete and fully verified
+- Manual Basecamp test confirmed app works end-to-end after cleanup
+
+### Process fails
+- [process] **Fergie committed directly on master.** Alisher caught it. Root cause: skipped the branch creation step in the protocol.
+- [process] **Fergie claimed artifacts were removed without verifying filesystem.** Ran `ls` from `build/` subdirectory, got "not found", assumed files were gone. Senty caught it in Round 1.
+- [process] **Senty's first review only went via tmux, not GitHub.** Alisher corrected — GitHub comment first, then tmux ping.
+- [process] **Fergie used tmux-bridge message without the full read-message-read-Enter cycle.** Message sat unsubmitted until Alisher pointed it out.
+- [project] **CLAUDE.md had wrong AppImage path** (`result/bin/` vs `result/`). Fergie followed it blindly instead of verifying with `ls`.
+
+### Project lessons
+- Cleanup commits need repo-wide search + filesystem verification, not just diff reading
+- Removing a command/script requires updating every workflow doc and help string in the same commit
+- Always `ls` a documented path before executing it — docs go stale
+
+### Feedback for Alisher
+- Catching the master commit early saved a messy rebase
+- Pushing us to follow tmux-bridge protocol properly — agents need the correction to internalize the cycle
+
+---
+
 ## Fieldcraft Retrofit Trial Sprint (2026-04-08)
 
 ### Process wins
