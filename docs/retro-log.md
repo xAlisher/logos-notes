@@ -58,6 +58,20 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## Week of 2026-04-09
+
+### Wins
+- [process] The builder-auditor loop caught two real cleanup regressions before merge: removed flake apps still had live doc/help references, and "artifacts removed" claims did not match the actual filesystem.
+- [process] The second review pass converged cleanly because the fixes were narrow, concrete, and re-verified with build plus test coverage.
+- [project] The repo is now actually rid of the dead keycard bridge leftovers (`lib/keycard/`, `build-libkeycard.sh`, `fix-lgx.sh`, `package-lgx.sh`) instead of merely documenting them as gone.
+
+### Fails
+- [process] Review handoff discipline slipped on the first pass: findings were sent over tmux before they were posted to GitHub. The required order is GitHub comment first, then tmux ping.
+- [process] Cleanup assertions were treated as true before verification. Both implementation and review need repo-wide search plus filesystem checks for "removed" or "unused" claims.
+- [project] User-facing build instructions drifted from the actual flake surface. Removing `package-lgx` without updating `CLAUDE.md` and the flake shell help would have broken the documented release workflow.
+
+---
+
 <!-- Template:
 ## Epic #NN — Title (YYYY-MM-DD)
 
