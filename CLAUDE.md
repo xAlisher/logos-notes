@@ -65,7 +65,7 @@ cd build && ctest --output-on-failure
 
 # Launch Logos Basecamp for testing
 pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"
-~/logos-app/result/bin/logos-basecamp.AppImage
+~/logos-app/result/logos-basecamp.AppImage
 ```
 
 ---
