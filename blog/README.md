@@ -4,6 +4,7 @@ Development posts from building an encrypted notes app for the Logos ecosystem.
 
 | Date | Post |
 |------|------|
+| 2026-04-08 | [From Bundled Library to Shared Module: The Keycard-Basecamp Migration](2026-04-08-keycard-basecamp-migration.md) |
 | 2026-03-19 | [Issue #44: Building libkeycard from Source](2026-03-19-issue-44-libkeycard-from-source.md) |
 | 2026-03-17 | [Keycard Integration: Hardware Keys for Encrypted Notes](2026-03-17-keycard-integration.md) |
 | 2026-03-15 | [Shared Memory: How Two AIs Stay in Sync Without a Human Relay](2026-03-15-shared-memory.md) |
