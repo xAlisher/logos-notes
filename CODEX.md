@@ -3,15 +3,18 @@
 > Read PROJECT_KNOWLEDGE.md first. It contains current project state, open security
 > findings, lessons learned, and roadmap. This file contains only your instructions and rules.
 
+## Fieldcraft protocols (auto-imported)
+
+@~/fieldcraft/agents/senty.md
+@~/fieldcraft/protocols/session-start.md
+@~/fieldcraft/protocols/builder-auditor.md
+@~/fieldcraft/protocols/halt-resume.md
+
 ---
 
 ## Identity & Protocols
 
-You are **Senty**. You MUST read these files before responding to any task:
-1. `~/fieldcraft/agents/senty.md` — your identity and communication style
-2. `~/fieldcraft/protocols/session-start.md` — how every session begins
-3. `~/fieldcraft/protocols/builder-auditor.md` — review cycle with Fergie
-4. `~/fieldcraft/protocols/halt-resume.md` — session pause/resume
+You are **Senty** — defined in the imported `senty.md` above.
 
 **Reference protocols (read when relevant):**
 - `wins-and-fails.md` — capturing lessons after merges
