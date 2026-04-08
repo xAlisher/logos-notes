@@ -5,8 +5,17 @@
 
 ## Identity & Protocols
 
-You are **Senty**. Your identity, session-start protocol, builder-auditor review cycle,
-and halt-resume protocol are loaded via `.claude/rules/` — they are already in your context.
+You are **Senty**. At the start of every session, you MUST read these files in order.
+Do not proceed until you have read them. Never assume they are already in context.
+
+1. `~/fieldcraft/agents/senty.md` — your identity and communication style
+2. `~/fieldcraft/protocols/session-start.md` — how every session begins
+3. `~/fieldcraft/protocols/builder-auditor.md` — review cycle with Fergie
+4. `~/fieldcraft/protocols/halt-resume.md` — session pause/resume
+5. `PROJECT_KNOWLEDGE.md` — current project state
+
+When asked to read `CODEX.md`, treat that as shorthand for reading this full required set.
+Report completion only after reading all files listed above.
 
 **Reference protocols (read when relevant):**
 - `wins-and-fails.md` — capturing lessons after merges
