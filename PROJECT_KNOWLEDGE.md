@@ -1,7 +1,11 @@
 # Immutable Notes — Project Knowledge
 *Last updated: 2026-04-08*
 
-> **Architecture change (2026-04-02):** KeycardBridge, libkeycard.so, and direct PC/SC code have been removed. Notes now uses the keycard-basecamp module via `logos.callModule("keycard", "requestAuth", ...)` for key derivation. Historical references to KeycardBridge/libkeycard below are kept for context but no longer reflect the current codebase.
+> **Architecture change (2026-04-02):** KeycardBridge, libkeycard.so, and direct PC/SC code
+> have been removed. Keycard support now uses the external keycard-basecamp module via
+> `logos.callModule("keycard", "requestAuth", ...)` for key derivation. The mnemonic/PIN
+> path remains fully functional alongside keycard. `key_source` meta field tracks which
+> path is active. See `docs/skills/architecture.md` for the full encryption flow.
 
 > **This file is the project's shared memory.**
 > It lives in the repo root and is committed like any other file.
@@ -82,7 +86,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 ## Open Questions
 
 1. **New Logos App repo**: ✅ Resolved. `logos-co/logos-app` (now "Logos Basecamp") is the official successor. The repo is active, receiving updates, and introduced dev/portable build discrimination. `logos-app-poc` remains for reference.
-2. **initLogos signature**: current code passes `LogosAPI*` but SDK headers may expect `QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
+2. **initLogos signature**: ✅ Resolved. `initLogos(LogosAPI*)` is correct. Called reflectively via `QMetaObject::invokeMethod` (see lesson #19).
 3. **Social backup CID discovery**: ✅ Resolved with depth. Giuliano (2026-03-17) provided detailed guidance:
    - **Permissioned groups required** — can't be permissionless or you get abuse. Trust group members by construction.
    - **Rolling updates** (new blob replaces old) looks like Status' historical message archives. No built-in "latest CID" lookup.

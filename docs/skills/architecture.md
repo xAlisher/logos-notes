@@ -6,27 +6,61 @@
 
 ## Encryption
 
+Two key derivation paths coexist. The `key_source` meta field (`"mnemonic"` or `"keycard"`)
+determines which unlock flow is used.
+
+### Path 1: Mnemonic + PIN (local key derivation)
+
 ```
 BIP39 mnemonic
-  → NFKD normalize
+  → NFKD normalize (normalizeMnemonic())
   → Argon2id (random persisted salt, OPSLIMIT_MODERATE)
-  → 256-bit master key (never stored)
+  → 256-bit master key (never stored raw)
 
 PIN
   → Argon2id (random salt, OPSLIMIT_MODERATE)
   → PIN wrapping key
   → AES-256-GCM(master key) → wrapped key blob stored in SQLite
 
+Unlock: PIN → re-derive wrapping key → decrypt wrapped_key → master key in memory
+```
+
+### Path 2: Keycard module (external key derivation)
+
+```
+keycard-basecamp module (external, via logos.callModule)
+  → QML calls logos.callModule("keycard", "requestAuth", ["notes_encryption", "notes"])
+  → polls logos.callModule("keycard", "checkAuthStatus", [authId])
+  → receives 256-bit hex key from card
+  → passed to importWithKeycardKey() or unlockWithKeycardKey()
+  → master key held in memory (no wrapped_key stored)
+
+Unlock: card re-derives key → fingerprint verified against stored → master key in memory
+```
+
+> **Historical note (pre-v1.2.0):** Keycard integration originally used an internal
+> `KeycardBridge` wrapping `libkeycard.so` (Go `status-keycard-go` compiled as shared lib).
+> Epic #62 replaced this with the external keycard-basecamp module via LogosAPI IPC.
+> All KeycardBridge, libkeycard.so, Go JSON-RPC, and direct PC/SC code were removed.
+
+### Common encryption (both paths)
+
+```
 Note content + title
   → AES-256-GCM(plaintext, master key, random nonce)
   → ciphertext + nonce stored in SQLite
   → plaintext never touches disk
 
-Account identity
+Account identity (mnemonic path)
   → SHA-256(normalized_mnemonic) → Ed25519 seed
   → crypto_sign_seed_keypair() → public key
   → first 16 bytes hex = account fingerprint
   → deterministic, stable across devices and re-imports
+
+Account identity (keycard path)
+  → SHA-256(master_key) → Ed25519 seed
+  → crypto_sign_seed_keypair() → public key
+  → first 16 bytes hex = account fingerprint
 ```
 
 ## SQLite Schema
@@ -36,7 +70,7 @@ notes(id, ciphertext, nonce, title_ciphertext, title_nonce, updated_at)
 wrapped_key(id, ciphertext, nonce, pin_salt)
 meta(key, value)
 -- meta keys: initialized, mnemonic_kdf_salt, account_fingerprint,
---            pin_failed_attempts, pin_lockout_until, backup_cid
+--            pin_failed_attempts, pin_lockout_until, backup_cid, key_source
 ```
 
 ## DB Paths
@@ -69,22 +103,38 @@ When wiping for tests, delete both. When verifying DB contents, check which cont
 ## Plugin Contract (Q_INVOKABLE Surface)
 
 ```cpp
-Q_INVOKABLE void initLogos(LogosAPI* api);
-Q_INVOKABLE bool initialize();
+// Shell lifecycle
+Q_INVOKABLE void    initLogos(LogosAPI* api);
+Q_INVOKABLE QString initialize();
 Q_INVOKABLE QString isInitialized();
-Q_INVOKABLE QString importMnemonic(QString mnemonic, QString pin, QString confirm, QString backupPath);
-Q_INVOKABLE QString unlockWithPin(QString pin);
-Q_INVOKABLE QString lockSession();
-Q_INVOKABLE QString resetAndWipe();
-Q_INVOKABLE QString getAccountFingerprint();
-Q_INVOKABLE QString exportBackup();
-Q_INVOKABLE QString listBackups();
-Q_INVOKABLE QString importBackup(QString path);
+
+// Account management — mnemonic/PIN path
+Q_INVOKABLE QString importMnemonic(const QString& mnemonic, const QString& pin,
+                                   const QString& confirm, const QString& backupPath = {});
+Q_INVOKABLE QString unlockWithPin(const QString& pin);
+
+// Account management — keycard module path
+Q_INVOKABLE QString importWithKeycardKey(const QString& hexKey, const QString& backupPath = {});
+Q_INVOKABLE QString unlockWithKeycardKey(const QString& hexKey);
+
+// Note CRUD
 Q_INVOKABLE QString createNote();
 Q_INVOKABLE QString loadNotes();
 Q_INVOKABLE QString loadNote(int id);
-Q_INVOKABLE QString saveNote(int id, QString text);
+Q_INVOKABLE QString saveNote(int id, const QString& text);
 Q_INVOKABLE QString deleteNote(int id);
+
+// Session & account
+Q_INVOKABLE QString lockSession();
+Q_INVOKABLE QString getKeySource();
+Q_INVOKABLE QString getAccountFingerprint();
+Q_INVOKABLE QString resetAndWipe();
+
+// Backup
+Q_INVOKABLE QString exportBackup(const QString& filePath);
+Q_INVOKABLE QString exportBackupAuto();
+Q_INVOKABLE QString listBackups();
+Q_INVOKABLE QString importBackup(const QString& filePath, const QString& mnemonic = {});
 ```
 
 ## QML Bridge
@@ -109,8 +159,8 @@ Q_DECLARE_INTERFACE(PluginInterface, PluginInterface_iid)
 
 Current IID in use: `"org.logos.NotesModuleInterface"` (verified in plugin_metadata.json).
 
-**Open question**: `initLogos` signature — old code used `LogosAPI*`, SDK headers may expect
-`QVariant`. Needs verification against current logos-cpp-sdk before v0.6.0 LGX work.
+**Resolved**: `initLogos(LogosAPI*)` is the correct signature. It is called reflectively
+via `QMetaObject::invokeMethod`, not through virtual dispatch (see lesson #19).
 
 ## Logos Core C API (How the Shell Loads Modules)
 
@@ -163,24 +213,21 @@ nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui
 
 | Module | Type | Contents |
 |--------|------|----------|
-| `notes.lgx` | core | `manifest.json` + `variants/linux-amd64/notes_plugin.so` + bundled deps (libkeycard, libsodium) |
+| `notes.lgx` | core | `manifest.json` + `variants/linux-amd64/notes_plugin.so` + bundled deps (libsodium) |
 | `notes_ui.lgx` | ui_qml | `manifest.json` + `variants/linux-amd64/Main.qml` + `metadata.json` |
 
 ### Post-install workaround
 
-**Smart card detection fix**: After installing `notes.lgx`, remove the bundled `libpcsclite.so.1`:
-```bash
-rm ~/.local/share/Logos/LogosBasecamp/modules/notes/libpcsclite.so.1
-```
-This forces usage of system libpcsclite which properly connects to the pcscd daemon socket.
+> **Historical (pre-v1.2.0):** When libkeycard.so was bundled in the LGX, the portable bundler
+> also included `libpcsclite.so.1` which broke pcscd socket connectivity. The workaround was
+> to remove it post-install. Since keycard support moved to the external keycard-basecamp module,
+> libkeycard and libpcsclite are no longer bundled. This workaround is no longer needed.
 
 ### Current state
 
 ✅ **LGX packaging complete** (issue #44, 2026-03-19)
 - Core and UI modules install via Package Manager
 - Portable bundler generates correct `linux-amd64` platform
-- libpcsclite workaround documented in flake.nix
-- Full workflow tested with smart card detection
 
 `cmake --install` still works for AppImage-based testing.
 

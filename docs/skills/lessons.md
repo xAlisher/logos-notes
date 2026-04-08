@@ -73,14 +73,14 @@ SDK provides `LogosResult` type with `success`, `getString()`, `getInt()`, `getM
 ### 22. logos-cpp-generator for typed inter-module calls
 Auto-generates typed C++ wrappers from compiled modules. Instead of raw `invokeRemoteMethod("module", "method", args)`, get compile-time checked `logos->module.method(args)`. Important for v1.1.0 when keycard-module talks to notes.
 
-### 23. JSON-RPC null error: check isNull, not contains
-Go JSON-RPC responses include `"error": null` on success. `QJsonObject::contains("error")` returns true for null values. Must check `response.value("error").isNull()` instead.
+### 23. JSON-RPC null error: check isNull, not contains *(historical — libkeycard removed)*
+Go JSON-RPC responses include `"error": null` on success. `QJsonObject::contains("error")` returns true for null values. Must check `response.value("error").isNull()` instead. *(Applied to removed libkeycard Go JSON-RPC bridge. General principle still valid for any JSON-RPC work.)*
 
 ### 24. AppImage sandbox hides system libraries from plugins
 Plugins loaded by `logos_host` inside the AppImage can't find system `.so` files. `LD_LIBRARY_PATH` is set to AppImage paths only. Bundle all transitive dependencies (e.g. `libpcsclite.so.1`) in the module directory and use `$ORIGIN` RPATH.
 
-### 25. Go signal callbacks don't cross logos_host IPC boundaries
-Go goroutine-based callbacks (like `KeycardSetSignalEventCallback`) fire on Go threads. In the logos_host plugin architecture, these don't reliably reach the Qt event loop. Use active RPC polling (`keycard.GetStatus`) instead of relying on push signals.
+### 25. Go signal callbacks don't cross logos_host IPC boundaries *(historical — libkeycard removed)*
+Go goroutine-based callbacks (like `KeycardSetSignalEventCallback`) fire on Go threads. In the logos_host plugin architecture, these don't reliably reach the Qt event loop. Use active RPC polling instead of relying on push signals. *(Applied to removed libkeycard Go bridge. General principle still valid for any Go shared library in logos_host.)*
 
 ### 26. CMake IMPORTED libraries embed full paths in NEEDED
 `add_library(IMPORTED)` with `IMPORTED_LOCATION` embeds the absolute build path as the `NEEDED` entry in the linked binary. Use `link_directories()` + link by name instead, so the binary gets a relative `NEEDED` entry that resolves via RPATH.
@@ -88,11 +88,11 @@ Go goroutine-based callbacks (like `KeycardSetSignalEventCallback`) fire on Go t
 ### 27. install(CODE) must honor DESTDIR for staged builds
 `install(CODE)` blocks run post-install scripts. When referencing installed file paths, prefix with `$ENV{DESTDIR}` so staged installs (`DESTDIR=/tmp/staged cmake --install`) work correctly.
 
-### 28. Go JSON-RPC requires "params" field even for no-arg methods
-`KeycardCallRPC` returns `{"result":null}` when the `"params"` field is omitted from the request JSON. Always include `"params":[{}]` even for methods with empty args (`*struct{}`). This was the root cause of ExportLoginKeys returning null in logos_host.
+### 28. Go JSON-RPC requires "params" field even for no-arg methods *(historical — libkeycard removed)*
+`KeycardCallRPC` returns `{"result":null}` when the `"params"` field is omitted from the request JSON. Always include `"params":[{}]` even for methods with empty args (`*struct{}`). *(Applied to removed libkeycard Go bridge.)*
 
-### 29. Go callbacks (signals) don't work in logos_host
-Neither Session API signals (`KeycardSetSignalEventCallback`) nor Flow API signals (`keycard.flow-result`) fire reliably inside the logos_host process. The Go goroutine thread can't reach the plugin. Use RPC polling (`GetStatus`) instead of push signals. For key export, use synchronous RPC calls, not the Flow API.
+### 29. Go callbacks (signals) don't work in logos_host *(historical — libkeycard removed)*
+Neither Session API signals (`KeycardSetSignalEventCallback`) nor Flow API signals (`keycard.flow-result`) fire reliably inside the logos_host process. The Go goroutine thread can't reach the plugin. *(Applied to removed libkeycard Go bridge. See #25 for the general principle.)*
 
 ### 30. Keycard accounts don't store wrapped keys
 Mnemonic accounts wrap the master key with a PIN-derived key and store it in `wrapped_key` table. Keycard accounts derive the key from the card on every unlock — no wrapped key stored. The `key_source` meta field ("keycard" or "mnemonic") determines which unlock flow to use.
@@ -112,8 +112,8 @@ Custom `install(CODE)` blocks that manipulate filesystem paths must prefix those
 ### 35. nix-bundle-lgx platform naming: default vs portable
 The default bundler (`nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib`) generates `linux-amd64-dev` variant names. The Logos App Package Manager expects `linux-amd64` without the `-dev` suffix. Use the portable bundler (`#portable`) for correct platform recognition: `nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib`. This bundles all dependencies (including system libraries) for true portability but see lesson #36 for caveats.
 
-### 36. Bundled libpcsclite breaks pcscd socket connection
-The portable bundler includes all transitive dependencies, including `libpcsclite.so.1` for smart card support. However, the bundled version cannot connect to the system `pcscd` daemon socket (looks for socket in wrong location). Smart card detection fails. **Solution**: Use the `nix run .#package-lgx` command, which bundles with the portable bundler then automatically removes libpcsclite, producing a shippable LGX that uses the system libpcsclite for proper pcscd connectivity. This applies to any library that interacts with system services via local sockets.
+### 36. Bundled libpcsclite breaks pcscd socket connection *(historical — libkeycard removed)*
+The portable bundler includes all transitive dependencies, including `libpcsclite.so.1` for smart card support. However, the bundled version cannot connect to the system `pcscd` daemon socket (looks for socket in wrong location). *(This was caused by bundling libkeycard.so which depended on libpcsclite. Since keycard support moved to the external keycard-basecamp module, notes no longer bundles either library. General principle still valid: any library that talks to system services via local sockets should use the system version, not a bundled copy.)*
 
 ### 37. Logos App renamed to Logos Basecamp (March 2026)
 The `logos-co/logos-app` repository was renamed to "Logos Basecamp" (commit 17ef99c). Module paths changed:
