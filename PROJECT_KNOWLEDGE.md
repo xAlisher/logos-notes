@@ -1,5 +1,5 @@
 # Immutable Notes — Project Knowledge
-*Last updated: 2026-04-08*
+*Last updated: 2026-04-09*
 
 > **Architecture change (2026-04-02):** KeycardBridge, libkeycard.so, and direct PC/SC code
 > have been removed. Keycard support now uses the external keycard-basecamp module via
@@ -107,7 +107,7 @@ Blocked on Qt 6.9 AOT-compiled QML type registration conflict with external plug
 Upstream issue: https://github.com/logos-co/logos-app/issues/60
 
 Unblock options (in priority order):
-1. `nix bundle --bundler github:logos-co/nix-bundle-lgx` (recommended — matches logos-app-poc)
+1. `nix bundle --bundler github:logos-co/nix-bundle-lgx` (recommended)
 2. `qt_deploy_qml_imports()` CMake function
 3. `QT_QML_NO_CACHEGEN=1` (interpreted mode, simplest)
 

@@ -6,7 +6,7 @@
 #include "CryptoManager.h"
 #include "DatabaseManager.h"
 #include "KeyManager.h"
-// KeycardBridge removed — using keycard-basecamp module via LogosAPI
+
 
 // QML-facing backend. Registered as a context property "backend".
 // Drives screen navigation and note persistence.

@@ -42,7 +42,7 @@ Unlock: card re-derives key → fingerprint verified against stored → master k
 > `KeycardBridge` wrapping `libkeycard.so` (Go `status-keycard-go` compiled as shared lib).
 > Epic #62 replaced this with the external keycard-basecamp module via LogosAPI IPC.
 > The runtime no longer uses KeycardBridge, libkeycard.so, Go JSON-RPC, or direct PC/SC code.
-> Some repo artifacts remain (`lib/keycard/`, `scripts/build-libkeycard.sh`) but are unused.
+> All legacy artifacts have been removed from the repo.
 
 ### Common encryption (both paths)
 
@@ -219,10 +219,8 @@ nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui
 
 ### Post-install workaround
 
-> **Historical (pre-v1.2.0):** When libkeycard.so was bundled in the LGX, the portable bundler
-> also included `libpcsclite.so.1` which broke pcscd socket connectivity. The workaround was
-> to remove it post-install. Since keycard support moved to the external keycard-basecamp module,
-> libkeycard and libpcsclite are no longer bundled. This workaround is no longer needed.
+No post-install workarounds needed. Previous `fix-lgx` script (for removing bundled
+`libpcsclite.so`) was removed — keycard-basecamp module handles card communication externally.
 
 ### Current state
 

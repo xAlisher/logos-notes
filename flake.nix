@@ -102,21 +102,6 @@
           '';
         };
 
-        # Canonical LGX packaging command (single-step, produces working artifacts)
-        apps.package-lgx = {
-          type = "app";
-          program = "${pkgs.writeShellScript "package-lgx" ''
-            ${builtins.readFile ./scripts/package-lgx.sh}
-          ''}";
-        };
-
-        # Manual fix tool for existing LGX files
-        apps.fix-lgx = {
-          type = "app";
-          program = "${pkgs.writeShellScript "fix-lgx" ''
-            ${builtins.readFile ./scripts/fix-lgx.sh}
-          ''}";
-        };
 
         devShells.default = pkgs.mkShell {
           inherit buildInputs;
