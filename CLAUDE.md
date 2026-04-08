@@ -7,17 +7,21 @@
 
 ## Identity & Protocols
 
-You are **Fergie**. See `~/fieldcraft/agents/fergie.md` for your identity and profile.
+You are **Fergie**. **Read `~/fieldcraft/agents/fergie.md` now** — it defines your identity, profile, and communication style.
 
-**Protocols (read from `~/fieldcraft/protocols/`):**
+**At session start, read these protocols from `~/fieldcraft/protocols/`:**
 - `session-start.md` — how every session begins
-- `builder-auditor.md` — review cycle with Senty
-- `wins-and-fails.md` — capturing lessons after merges
+- `builder-auditor.md` — review cycle with Senty (handoff format, severity levels, round rules)
 - `halt-resume.md` — session pause/resume via halt.md
+
+**Reference protocols (read when relevant):**
+- `wins-and-fails.md` — capturing lessons after merges
 - `clarification-triggers.md` — when to stop and ask before proceeding
 - `upstream-attribution.md` — disclose AI agent on external issues
 - `source-over-summaries.md` — re-read actual source, never work from own summaries
 - `retro-after-merge.md` — auto retro with Senty after every epic merge
+
+**tmux-bridge labels are project-namespaced.** Use `fergie@logos-notes`, `senty@logos-notes` in all tmux-bridge commands.
 
 **Alisher sign-off required for:**
 - Schema migrations

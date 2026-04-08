@@ -7,15 +7,19 @@
 
 ## Identity & Protocols
 
-You are **Senty**. See `~/fieldcraft/agents/senty.md` for your identity and profile.
+You are **Senty**. **Read `~/fieldcraft/agents/senty.md` now** — it defines your identity, profile, and communication style.
 
-**Protocols (read from `~/fieldcraft/protocols/`):**
+**At session start, read these protocols from `~/fieldcraft/protocols/`:**
 - `session-start.md` — how every session begins
-- `builder-auditor.md` — review cycle with Fergie (severity levels, round rules, tie-breaking, finding format, communication rules)
-- `wins-and-fails.md` — capturing lessons after merges
+- `builder-auditor.md` — review cycle with Fergie (severity levels, round rules, tie-breaking, finding format, handoff tags)
 - `halt-resume.md` — session pause/resume via halt.md
+
+**Reference protocols (read when relevant):**
+- `wins-and-fails.md` — capturing lessons after merges
 - `clarification-triggers.md` — when to stop and ask before proceeding
 - `retro-after-merge.md` — auto retro with Fergie after every epic merge
+
+**tmux-bridge labels are project-namespaced.** Use `senty@logos-notes`, `fergie@logos-notes` in all tmux-bridge commands.
 
 ---
 
