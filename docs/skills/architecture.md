@@ -41,7 +41,8 @@ Unlock: card re-derives key → fingerprint verified against stored → master k
 > **Historical note (pre-v1.2.0):** Keycard integration originally used an internal
 > `KeycardBridge` wrapping `libkeycard.so` (Go `status-keycard-go` compiled as shared lib).
 > Epic #62 replaced this with the external keycard-basecamp module via LogosAPI IPC.
-> All KeycardBridge, libkeycard.so, Go JSON-RPC, and direct PC/SC code were removed.
+> The runtime no longer uses KeycardBridge, libkeycard.so, Go JSON-RPC, or direct PC/SC code.
+> Some repo artifacts remain (`lib/keycard/`, `scripts/build-libkeycard.sh`) but are unused.
 
 ### Common encryption (both paths)
 
@@ -54,13 +55,13 @@ Note content + title
 Account identity (mnemonic path)
   → SHA-256(normalized_mnemonic) → Ed25519 seed
   → crypto_sign_seed_keypair() → public key
-  → first 16 bytes hex = account fingerprint
+  → full 64-char uppercase hex = account fingerprint
   → deterministic, stable across devices and re-imports
 
 Account identity (keycard path)
   → SHA-256(master_key) → Ed25519 seed
   → crypto_sign_seed_keypair() → public key
-  → first 16 bytes hex = account fingerprint
+  → first 16 hex characters = account fingerprint
 ```
 
 ## SQLite Schema

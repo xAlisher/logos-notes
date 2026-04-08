@@ -86,9 +86,9 @@ Notes does not bundle any keycard libraries or PC/SC code.
 > **Historical (pre-v1.2.0):** Keycard integration originally used an internal `KeycardBridge`
 > wrapping `libkeycard.so` (Go `status-keycard-go` compiled as shared library) with JSON-RPC
 > over C API (`KeycardInitializeRPC`, `KeycardCallRPC`, `KeycardSetSignalEventCallback`).
-> This was removed in Epic #62. Build script `scripts/build-libkeycard.sh`, Go dependencies,
-> and direct PC/SC code are no longer part of this repo. `lib/keycard/libkeycard.h` remains
-> as a leftover artifact.
+> The runtime no longer uses any of this since Epic #62. Some repo artifacts remain
+> (`lib/keycard/libkeycard.h`, `scripts/build-libkeycard.sh`, `scripts/fix-lgx.sh`) but
+> are unused by current code and build.
 
 ### Wallet Integration (v0.7.0+)
 
