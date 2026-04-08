@@ -85,7 +85,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 
 ## Open Questions
 
-1. **New Logos App repo**: ✅ Resolved. `logos-co/logos-app` (now "Logos Basecamp") is the official successor. The repo is active, receiving updates, and introduced dev/portable build discrimination. `logos-app-poc` remains for reference.
+1. **New Logos App repo**: ✅ Resolved. `logos-co/logos-app` (now "Logos Basecamp") is the official successor. The repo is active, receiving updates, and introduced dev/portable build discrimination. `logos-app-poc` is archived/legacy.
 2. **initLogos signature**: ✅ Resolved. `initLogos(LogosAPI*)` is correct. Called reflectively via `QMetaObject::invokeMethod` (see lesson #19).
 3. **Social backup CID discovery**: ✅ Resolved with depth. Giuliano (2026-03-17) provided detailed guidance:
    - **Permissioned groups required** — can't be permissionless or you get abuse. Trust group members by construction.

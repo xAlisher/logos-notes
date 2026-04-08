@@ -121,10 +121,9 @@
             echo "  cmake --build build"
             echo "  ./build/logos-notes"
             echo ""
-            echo "LGX packaging (canonical):"
-            echo "  nix run .#package-lgx"
-            echo ""
-            echo "Produces LGX artifacts for Basecamp installation."
+            echo "LGX packaging:"
+            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib"
+            echo "  nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui"
           '';
         };
       });

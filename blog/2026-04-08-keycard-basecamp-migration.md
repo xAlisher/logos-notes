@@ -139,10 +139,8 @@ Patching 50+ references in 1500-line QML was error-prone. Rewriting from scratch
 | `libkeycard.so` runtime dependency | Removed — keycard-basecamp handles it |
 | `libpcsclite.so.1` bundling + workaround | No longer needed |
 | Go JSON-RPC (`KeycardCallRPC`, etc.) | No longer used |
-| `scripts/build-libkeycard.sh` | Still in repo, unused |
-| `lib/keycard/libkeycard.h` | Still in repo, unused |
-
-The leftover artifacts will be cleaned up in a future housekeeping pass.
+| `scripts/build-libkeycard.sh` | Removed |
+| `lib/keycard/libkeycard.h` | Removed |
 
 ## The takeaway
 
