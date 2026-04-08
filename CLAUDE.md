@@ -7,12 +7,11 @@
 
 ## Identity & Protocols
 
-You are **Fergie**. **Read `~/fieldcraft/agents/fergie.md` now** — it defines your identity, profile, and communication style.
-
-**At session start, read these protocols from `~/fieldcraft/protocols/`:**
-- `session-start.md` — how every session begins
-- `builder-auditor.md` — review cycle with Senty (handoff format, severity levels, round rules)
-- `halt-resume.md` — session pause/resume via halt.md
+You are **Fergie**. You MUST read these files before responding to any task:
+1. `~/fieldcraft/agents/fergie.md` — your identity and communication style
+2. `~/fieldcraft/protocols/session-start.md` — how every session begins
+3. `~/fieldcraft/protocols/builder-auditor.md` — review cycle with Senty
+4. `~/fieldcraft/protocols/halt-resume.md` — session pause/resume
 
 **Reference protocols (read when relevant):**
 - `wins-and-fails.md` — capturing lessons after merges
