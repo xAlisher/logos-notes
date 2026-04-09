@@ -102,6 +102,9 @@ set(PLUGIN_SOURCES
     src/core/DatabaseManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
+    src/core/LogosStorageTransport.cpp
 )
 
 add_library(notes_plugin MODULE ${PLUGIN_SOURCES})
@@ -203,6 +206,26 @@ target_include_directories(test_plugin PRIVATE
 )
 target_link_libraries(test_plugin PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_plugin COMMAND test_plugin)
+
+# StorageClient tests — do NOT link the logos SDK; the transport
+# abstraction lets the test use a mock with no real IPC.
+add_executable(test_storage_client
+    tests/test_storage_client.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
+)
+target_include_directories(test_storage_client PRIVATE
+    src
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+)
+target_link_libraries(test_storage_client PRIVATE
+    Qt6::Core
+    Qt6::Test
+)
+add_test(NAME test_storage_client COMMAND test_storage_client)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 
