@@ -4,6 +4,42 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## Issue #71 — v2.0 Phase 1: StorageClient (2026-04-09)
+
+Merge: `a7f327a`. Single-issue merge (not epic), so skills extraction + wins/fails only.
+
+### Process wins
+- **Transport abstraction for testable IPC.** Defined a `StorageTransport` interface so `StorageClient` core has zero dependency on the Logos SDK. Tests use a `MockStorageTransport` with no SDK linkage. Real implementation (`LogosStorageTransport`) is a separate TU compiled only into the plugin build. 24 unit tests run in 0.4 seconds with no external setup.
+- **Senty caught two real MEDIUMs in round 3.** Pending callbacks could hang forever without a terminal event, and FIFO-by-event-name routing silently misroutes on overlap or stray events. Both were textbook async-IPC holes that unit tests wouldn't have naturally exercised. The round-4 fix (`std::optional` pending slots + per-request `QTimer`) closed both with a coherent single-in-flight contract.
+- **Planning discipline paid off.** Senty's round-1 review forced the Keycard-only scope and the destructive-restore contract split. Without that, Phase 1 would have shipped against a muddier target and required rework in Phase 3.
+
+### Process fails
+- [process] **Falsely flagged the `storage_module` install as an upstream blocker.** Saw `storage_module_plugin.so` in the legacy `~/.local/share/Logos/LogosApp/modules/` dir, classified it as "legacy not available in Basecamp", drafted a 4-option decision memo, and halted Phase 1 implementation. The correct action was to try the trivial experiment first: `cp -r` from LogosApp to LogosBasecamp. That worked on the first try — the v1.2.0 change was a rename, not an ABI break. Alisher had to say "research and install" to get me to investigate. Root cause: treated "found in legacy dir" as equivalent to "not installed anywhere" without verifying. Also missed the clue in Alisher's phrasing "I recall using storage" — strong signal it existed locally.
+- [process] **`tmux-bridge type/message` silently dropped input during the Phase 1 handoff.** Commands returned exit 0 but text never landed in Senty's pane. The earlier tmux-bridge feedback memory ("follow message with keys Enter") only covers half the failure mode. Worked around with native `tmux send-keys -t %2 "..."; tmux send-keys -t %2 Enter; tmux capture-pane -pt %2` — verified reliable. Root cause unknown, tmux-bridge source needs investigation.
+- [process] **Skipped post-merge protocol after Phase 1 merge.** Went straight from merge into Phase 2 planning. Alisher had to remind me to run skills extraction + wins/fails logging. Root cause: treated the merge as "task done" instead of "trigger for post-merge discipline". The autonomous merge criteria are necessary but not sufficient — they tell you when you CAN merge, not what to DO after merging.
+- [process] **Asked Alisher three open questions in one message after the merge** (proceed to Phase 2 / push / remove storage_ui). Should have had a default action plan and only asked about the decisions that actually required input.
+
+### Project wins
+- **Phase 1 is purely additive.** No renames, no caller audits, no migrations. Existing `importBackup()` stays untouched since its only callers are fresh-DB account-import flows. This dropped a significant amount of churn from the original Phase 3 plan after Alisher clarified "POC, no backwards compat needed".
+- **`storage_module` lives in `LogosApp/`.** The legacy install dir still has the compatible .so files after the v1.2.0 rename. Copying them to `LogosBasecamp/` unblocks Phase 2/3 integration without needing to build from source.
+
+### Project fails
+- [project] **`storage_ui.so` breaks the Basecamp sidebar** when opened. After tapping the Storage module, all other sidebar entries disappear and the Modules page shows no UI modules. Pre-existing LogosBasecamp/storage_ui bug, not ours. Workaround: removed `storage_ui` from `~/.local/share/Logos/LogosBasecamp/plugins/` — we only need `storage_module` (the backend) for Phases 2/3 since we invoke it via `LogosAPIClient::invokeRemoteMethod`, not via the user visiting the Storage page.
+- [project] **Legacy `libkeycard.so` + `libpcsclite.so.1` still in `LogosBasecamp/modules/notes/`.** These were removed from the source tree in Epic #62 (keycard-basecamp migration) but the old files persist in the installed module dir because `cmake --install` only adds, never removes. Not breaking anything but a stale-state hazard for future debugging.
+
+### Project lessons
+- **Transport abstractions are the right move for IPC-heavy code.** One tiny virtual interface (`StorageTransport`) made the 24 unit tests possible without linking any of the Logos SDK. Pattern worth reusing for future cross-module consumers on the notes plugin side.
+- **"storage_module not installed" is recoverable by copy** — the v1.2.0 rename did not break ABI. Any other "missing" module should be searched for in sibling Logos dirs before escalating.
+- **Single-in-flight invariants eliminate entire classes of async bugs.** The combination of `std::optional` pending slots + per-request timer means a timeout cannot race with a late success, a stray event cannot misroute, and concurrent calls fail synchronously with a clear error. Much safer than FIFO-by-event-name matching, for zero additional code.
+- **Residual integration risk flagged for Phase 2:** the exact shape of `storageUploadDone` / `storageDownloadDone` args is still assumption-based. When Phase 2 wires up the real IPC path and we observe events against the installed storage_module, the extraction logic in `StorageClient::onEventResponse` may need adjustment. Marked in the source as a TODO for the first real integration test.
+
+### Feedback for Alisher
+- Caught the post-merge protocol miss immediately — agents need that correction to internalize it or it'll repeat on every phase merge.
+- "POC, no backwards compat needed" was the correct scope call and dropped meaningful complexity.
+- "I recall using storage" was the right nudge — next time I'll treat recall-phrases as evidence and search harder before escalating.
+
+---
+
 ## Issue #61 — Cleanup Legacy References (2026-04-09)
 
 ### Process wins

@@ -1,5 +1,5 @@
 # Immutable Notes — Project Knowledge
-*Last updated: 2026-04-09*
+*Last updated: 2026-04-09 (post v2.0 Phase 1 merge)*
 
 > **Architecture change (2026-04-02):** KeycardBridge, libkeycard.so, and direct PC/SC code
 > have been removed. Keycard support now uses the external keycard-basecamp module via
@@ -10,6 +10,49 @@
 > **This file is the project's shared memory.**
 > It lives in the repo root and is committed like any other file.
 > GitHub issues are ephemeral. This file is not.
+
+## v2.0 Phase 1 Lessons — StorageClient Foundation
+
+### Lesson: storage_module from legacy LogosApp dir is ABI-compatible with LogosBasecamp
+The v1.2.0 Basecamp rename was a path+name change, not an ABI break. Copy
+`~/.local/share/Logos/LogosApp/modules/storage_module/` → `.../LogosBasecamp/modules/`
+and it loads cleanly in the current runtime. Symbols (`LogosAPIClient::onEventResponse`
+etc.) match the current nix-store SDK header.
+
+### Lesson: storage_ui.so breaks Basecamp sidebar when opened
+Pre-existing bug. Opening Storage from the sidebar hides all other module entries
+and empties the Modules page. Workaround: remove `~/.local/share/Logos/LogosBasecamp/plugins/storage_ui/`.
+Notes v2.0 auto-backup/restore only needs `storage_module` (the backend) via
+`invokeRemoteMethod` — users never visit the Storage UI page.
+
+### Lesson: storage_module IPC surface has a one-shot high-level API
+Use `uploadUrl(QUrl, int chunkSize)` and `downloadToUrl(cid, QUrl, bool, int)`.
+Pass `QUrl::fromLocalFile(path)` for file-based I/O. The lower-level
+`uploadInit/uploadChunk/uploadFinalize` trio is the chunk-orchestration API
+used by advanced consumers — not needed for Notes. Verified via
+`UploadFileCallbackCtx` symbol and `storage_upload_file` entry in `libstorage.so`.
+
+### Lesson: transport abstraction unlocks fast unit tests for IPC-heavy code
+See `docs/skills/transport-abstraction-for-ipc.md`. The `StorageTransport`
+interface + `MockStorageTransport` pattern let `test_storage_client` run 24
+test cases in 0.4 seconds with no Logos SDK linkage and no running modules.
+
+### Lesson: async IPC consumers need explicit timeouts + single-in-flight
+`storage_module` (and likely any Logos module) can drop events, fail silently,
+or not emit a terminal signal at all. Every pending request MUST have a timer.
+FIFO-by-event-name matching is unsafe if overlap or stray events are possible
+— either correlate by request ID or enforce single-in-flight. `StorageClient`
+uses `std::optional` pending slots + per-request `QTimer` (default 120s,
+configurable) — see `src/core/StorageClient.cpp::onUploadTimeout` etc.
+
+### Lesson: residual storage_module integration risk
+The exact shape of `storageUploadDone` / `storageDownloadDone` `args` is NOT
+verified from symbol inspection. The extraction heuristic in
+`StorageClient::onEventResponse` (last non-empty QString = CID for upload;
+non-empty QString ≠ CID = error for download) may need adjustment once Phase 2
+observes real events. TODO marker is in the source.
+
+---
 
 ## Epic #62 Lessons — Keycard Module Integration
 
@@ -69,7 +112,7 @@ Encrypted notes with Keycard hardware key protection, synced across devices via 
 | v1.0.0 | Keycard hardware key derivation + UI polish | ✅ Complete |
 | v1.1.0 | Build libkeycard from source + portable LGX packaging | ✅ Released |
 | v1.2.0 | Logos Basecamp compatibility | ✅ Released — issue #55 complete |
-| v2.0 | Logos Storage auto-backup + CID tracking | Research |
+| v2.0 | Logos Storage auto-backup + CID tracking (Keycard-only) | Phase 1 merged (a7f327a) — StorageClient foundation |
 | v3.0 | Trust Network — social backup via web of trust | Proposal stage |
 
 ---
