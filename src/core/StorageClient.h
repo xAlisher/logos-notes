@@ -2,10 +2,12 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <functional>
 #include <memory>
+#include <optional>
 
 class LogosAPIClient;
 
@@ -71,14 +73,29 @@ private:
  * storage_upload_file internally (verified by the UploadFileCallbackCtx
  * symbol in storage_module_plugin.so).
  *
- * Async results arrive via eventResponse. Known event names from symbol
- * inspection: storageUploadDone, storageDownloadDone, storageUploadProgress,
- * storageDownloadProgress. v2.0 ignores progress events.
+ * ## Concurrency contract (v2.0)
+ * At most ONE upload and ONE download may be in flight at a time.
+ * Concurrent calls to uploadFile() or downloadToFile() while a request
+ * of the same type is pending are REJECTED synchronously with a "busy"
+ * error. v2.0 Phase 2 debounces auto-backup to 30s intervals, so
+ * overlap is not expected in practice; this restriction makes the
+ * FIFO-by-event-name completion routing safe.
  *
- * The exact shape of eventResponse args is NOT verified from symbols alone.
- * When storage_module is installed in LogosBasecamp, the shape must be
- * confirmed and this class may need adjustment. Extraction logic below
- * documents assumptions.
+ * ## Timeout contract
+ * Every pending request has a QTimer. If the corresponding
+ * storage*Done event does not arrive within the timeout (default
+ * 120s), the callback fires with a timeout error and the pending slot
+ * is freed. The timeout is configurable via setTimeoutMs() for tests.
+ *
+ * ## Event name assumptions
+ * Known event names from symbol inspection: storageUploadDone,
+ * storageDownloadDone, storageUploadProgress, storageDownloadProgress.
+ * v2.0 ignores progress events.
+ *
+ * The exact shape of eventResponse args is NOT verified from symbols
+ * alone. When storage_module is installed in LogosBasecamp, the shape
+ * must be confirmed and this class may need adjustment. Extraction
+ * logic in StorageClient.cpp::onEventResponse documents assumptions.
  */
 class StorageClient : public QObject
 {
@@ -103,41 +120,53 @@ public:
 
     /**
      * Upload a local file. One-shot — storage module chunks internally.
-     * Callback fires exactly once with either a CID (success) or an error
-     * message.
-     *
-     * If the transport is unavailable, the callback fires synchronously
-     * with an error.
+     * Callback fires exactly once: CID on success, error on failure
+     * (unavailable, missing file, busy, timeout, or storage-reported error).
      */
     void uploadFile(const QString& filePath, UploadCallback cb);
 
     /**
-     * Download a blob by CID to a local file. Callback fires exactly once
-     * with an error string (empty = success).
+     * Download a blob by CID to a local file. Callback fires exactly
+     * once with an error string (empty = success).
      */
     void downloadToFile(const QString& cid,
                         const QString& destPath,
                         DownloadCallback cb);
 
+    /**
+     * Set the per-request timeout in milliseconds. Default: 120000 (2min).
+     * Zero disables the timeout entirely (useful for tests that assert
+     * nothing times out). Applies to requests started AFTER this call.
+     */
+    void setTimeoutMs(int ms);
+
+    int timeoutMs() const { return m_timeoutMs; }
+
 private:
     struct PendingUpload {
-        QString        filePath;
-        UploadCallback cb;
+        QString                 filePath;
+        UploadCallback          cb;
+        std::unique_ptr<QTimer> timer;
     };
     struct PendingDownload {
-        QString          cid;
-        QString          destPath;
-        DownloadCallback cb;
+        QString                 cid;
+        QString                 destPath;
+        DownloadCallback        cb;
+        std::unique_ptr<QTimer> timer;
     };
 
     void subscribeEventsIfNeeded();
     void onEventResponse(const QString& eventName, const QVariantList& args);
-    void failAllPending(const QString& error);
+    void onUploadTimeout();
+    void onDownloadTimeout();
+    void failPendingUpload(const QString& cidOrEmpty, const QString& error);
+    void failPendingDownload(const QString& error);
 
-    std::unique_ptr<StorageTransport> m_transport;
-    QList<PendingUpload>              m_pendingUploads;
-    QList<PendingDownload>            m_pendingDownloads;
-    bool                              m_subscribed = false;
+    std::unique_ptr<StorageTransport>    m_transport;
+    std::optional<PendingUpload>         m_pendingUpload;
+    std::optional<PendingDownload>       m_pendingDownload;
+    bool                                 m_subscribed = false;
+    int                                  m_timeoutMs  = 120 * 1000;  // 2min
 
     static constexpr int kChunkSize = 64 * 1024;      // 64 KiB default
 

@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QSignalSpy>
 #include <QUrl>
 
 #include "core/StorageClient.h"
@@ -51,6 +52,9 @@ public:
         if (eventCb) eventCb(QStringLiteral("storageDownloadDone"),
                              QVariantList{error});
     }
+    void fireStrayEvent(const QString& name) {
+        if (eventCb) eventCb(name, QVariantList{QStringLiteral("zDvZOrphan")});
+    }
 };
 
 class TestStorageClient : public QObject
@@ -60,21 +64,40 @@ class TestStorageClient : public QObject
 private slots:
     void initTestCase();
 
+    // isAvailable
     void testIsAvailableWhenTransportConnected();
     void testIsAvailableWhenTransportDisconnected();
     void testIsAvailableWhenTransportNull();
 
+    // uploadFile — success / validation
     void testUploadFileSuccess();
     void testUploadFileWithMissingFile();
     void testUploadFileWhenUnavailable();
     void testUploadFileCallsTransport();
 
+    // uploadFile — concurrency & timeouts
+    void testConcurrentUploadRejected();
+    void testUploadCompletesThenAllowsNextUpload();
+    void testUploadTimeoutFiresCallback();
+    void testStrayUploadDoneIgnored();
+
+    // downloadToFile — success / validation
     void testDownloadSuccess();
     void testDownloadWithEmptyCid();
     void testDownloadWithEmptyPath();
     void testDownloadWhenUnavailable();
     void testDownloadFailureFromEvent();
 
+    // downloadToFile — concurrency & timeouts
+    void testConcurrentDownloadRejected();
+    void testDownloadCompletesThenAllowsNextDownload();
+    void testDownloadTimeoutFiresCallback();
+    void testStrayDownloadDoneIgnored();
+
+    // Independence between upload/download slots
+    void testUploadAndDownloadCanOverlap();
+
+    // Destructor cleanup
     void testDestructorFailsPending();
 
 private:
@@ -116,7 +139,7 @@ void TestStorageClient::testIsAvailableWhenTransportNull()
     QVERIFY(!client.isAvailable());
 }
 
-// ── uploadFile ──────────────────────────────────────────────────────────────
+// ── uploadFile success / validation ─────────────────────────────────────────
 
 void TestStorageClient::testUploadFileSuccess()
 {
@@ -135,7 +158,6 @@ void TestStorageClient::testUploadFileSuccess()
             called = true;
         });
 
-    // Simulate storage_module replying with a CID.
     mockRaw->fireUploadDone(QStringLiteral("zDvZFakeCid123"));
 
     QVERIFY(called);
@@ -159,7 +181,7 @@ void TestStorageClient::testUploadFileWithMissingFile()
             called = true;
         });
 
-    QVERIFY(called);  // synchronous failure
+    QVERIFY(called);
     QVERIFY(receivedCid.isEmpty());
     QVERIFY(receivedError.contains(QStringLiteral("does not exist")));
 }
@@ -180,7 +202,7 @@ void TestStorageClient::testUploadFileWhenUnavailable()
             called = true;
         });
 
-    QVERIFY(called);  // synchronous failure
+    QVERIFY(called);
     QCOMPARE(receivedError, QStringLiteral("storage_module not available"));
 }
 
@@ -200,7 +222,112 @@ void TestStorageClient::testUploadFileCallsTransport()
     QVERIFY(mockRaw->uploadCalls[0].chunkSize > 0);
 }
 
-// ── downloadToFile ──────────────────────────────────────────────────────────
+// ── uploadFile concurrency & timeouts ───────────────────────────────────────
+
+void TestStorageClient::testConcurrentUploadRejected()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    QString firstCid, secondError;
+    bool firstCalled = false, secondCalled = false;
+
+    client.uploadFile(m_existingFile,
+        [&](const QString& cid, const QString& err) {
+            Q_UNUSED(err);
+            firstCid = cid;
+            firstCalled = true;
+        });
+
+    // Second upload while first is still pending.
+    client.uploadFile(m_existingFile,
+        [&](const QString& cid, const QString& err) {
+            Q_UNUSED(cid);
+            secondError = err;
+            secondCalled = true;
+        });
+
+    QVERIFY(secondCalled);  // synchronous rejection
+    QVERIFY(secondError.contains(QStringLiteral("busy")));
+    QCOMPARE(mockRaw->uploadCalls.size(), 1);  // only first was dispatched
+    QVERIFY(!firstCalled);  // first still pending
+
+    // Finish the first upload.
+    mockRaw->fireUploadDone(QStringLiteral("zDvZFirst"));
+    QVERIFY(firstCalled);
+    QCOMPARE(firstCid, QStringLiteral("zDvZFirst"));
+}
+
+void TestStorageClient::testUploadCompletesThenAllowsNextUpload()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    QString cid1, cid2;
+    client.uploadFile(m_existingFile,
+        [&](const QString& c, const QString&) { cid1 = c; });
+    mockRaw->fireUploadDone(QStringLiteral("zDvZFirst"));
+
+    // Second upload should be allowed now.
+    client.uploadFile(m_existingFile,
+        [&](const QString& c, const QString&) { cid2 = c; });
+    mockRaw->fireUploadDone(QStringLiteral("zDvZSecond"));
+
+    QCOMPARE(cid1, QStringLiteral("zDvZFirst"));
+    QCOMPARE(cid2, QStringLiteral("zDvZSecond"));
+    QCOMPARE(mockRaw->uploadCalls.size(), 2);
+}
+
+void TestStorageClient::testUploadTimeoutFiresCallback()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    StorageClient client(std::move(mock));
+    client.setTimeoutMs(50);  // 50ms for fast test
+
+    QString receivedError;
+    bool called = false;
+
+    client.uploadFile(m_existingFile,
+        [&](const QString&, const QString& err) {
+            receivedError = err;
+            called = true;
+        });
+
+    // Don't fire any event — let the timer expire.
+    QTest::qWait(200);
+
+    QVERIFY(called);
+    QVERIFY(receivedError.contains(QStringLiteral("timed out")));
+}
+
+void TestStorageClient::testStrayUploadDoneIgnored()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    // Ensure subscription is set up.
+    bool called = false;
+    client.uploadFile(m_existingFile,
+        [&](const QString&, const QString&) { called = true; });
+    mockRaw->fireUploadDone(QStringLiteral("zDvZOurs"));
+    QVERIFY(called);
+
+    // Stray event — no pending upload. Should be ignored, not crash.
+    mockRaw->fireUploadDone(QStringLiteral("zDvZOrphan"));
+    // (no assertion; if it crashed we'd fail)
+
+    // Subsequent real upload should still work.
+    QString cid2;
+    client.uploadFile(m_existingFile,
+        [&](const QString& c, const QString&) { cid2 = c; });
+    mockRaw->fireUploadDone(QStringLiteral("zDvZSecond"));
+    QCOMPARE(cid2, QStringLiteral("zDvZSecond"));
+}
+
+// ── downloadToFile success / validation ─────────────────────────────────────
 
 void TestStorageClient::testDownloadSuccess()
 {
@@ -225,7 +352,6 @@ void TestStorageClient::testDownloadSuccess()
     QCOMPARE(mockRaw->downloadCalls[0].url.toLocalFile(), destPath);
     QCOMPARE(mockRaw->downloadCalls[0].localOnly, true);
 
-    // Simulate the storage module finishing the download (no error).
     mockRaw->fireDownloadDone();
 
     QVERIFY(called);
@@ -288,6 +414,137 @@ void TestStorageClient::testDownloadFailureFromEvent()
 
     QVERIFY(called);
     QCOMPARE(receivedError, QStringLiteral("network timeout"));
+}
+
+// ── downloadToFile concurrency & timeouts ───────────────────────────────────
+
+void TestStorageClient::testConcurrentDownloadRejected()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    QString secondError;
+    bool secondCalled = false;
+
+    client.downloadToFile(QStringLiteral("zDvZFirst"),
+                          m_tmpDir.filePath("out1.bin"),
+        [](const QString&) {});
+
+    client.downloadToFile(QStringLiteral("zDvZSecond"),
+                          m_tmpDir.filePath("out2.bin"),
+        [&](const QString& err) {
+            secondError = err;
+            secondCalled = true;
+        });
+
+    QVERIFY(secondCalled);
+    QVERIFY(secondError.contains(QStringLiteral("busy")));
+    QCOMPARE(mockRaw->downloadCalls.size(), 1);
+}
+
+void TestStorageClient::testDownloadCompletesThenAllowsNextDownload()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    int successCount = 0;
+    client.downloadToFile(QStringLiteral("zDvZFirst"),
+                          m_tmpDir.filePath("out1.bin"),
+        [&](const QString& err) { if (err.isEmpty()) ++successCount; });
+    mockRaw->fireDownloadDone();
+
+    client.downloadToFile(QStringLiteral("zDvZSecond"),
+                          m_tmpDir.filePath("out2.bin"),
+        [&](const QString& err) { if (err.isEmpty()) ++successCount; });
+    mockRaw->fireDownloadDone();
+
+    QCOMPARE(successCount, 2);
+    QCOMPARE(mockRaw->downloadCalls.size(), 2);
+}
+
+void TestStorageClient::testDownloadTimeoutFiresCallback()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    StorageClient client(std::move(mock));
+    client.setTimeoutMs(50);
+
+    QString receivedError;
+    bool called = false;
+
+    client.downloadToFile(QStringLiteral("zDvZ"), m_tmpDir.filePath("out.bin"),
+        [&](const QString& err) {
+            receivedError = err;
+            called = true;
+        });
+
+    QTest::qWait(200);
+
+    QVERIFY(called);
+    QVERIFY(receivedError.contains(QStringLiteral("timed out")));
+}
+
+void TestStorageClient::testStrayDownloadDoneIgnored()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    // Need a successful cycle first to establish the subscription.
+    client.downloadToFile(QStringLiteral("zDvZ"), m_tmpDir.filePath("out.bin"),
+        [](const QString&) {});
+    mockRaw->fireDownloadDone();
+
+    // Stray event when no pending download — should be ignored.
+    mockRaw->fireDownloadDone();
+
+    // Next real download should still work.
+    QString receivedError;
+    client.downloadToFile(QStringLiteral("zDvZ2"), m_tmpDir.filePath("out2.bin"),
+        [&](const QString& err) { receivedError = err; });
+    mockRaw->fireDownloadDone();
+    QVERIFY(receivedError.isEmpty());
+}
+
+// ── Independence between upload and download slots ─────────────────────────
+
+void TestStorageClient::testUploadAndDownloadCanOverlap()
+{
+    auto mock = std::make_unique<MockStorageTransport>();
+    auto* mockRaw = mock.get();
+    StorageClient client(std::move(mock));
+
+    QString uploadCid;
+    QString downloadError;
+    bool uploadCalled = false;
+    bool downloadCalled = false;
+
+    client.uploadFile(m_existingFile,
+        [&](const QString& cid, const QString&) {
+            uploadCid = cid;
+            uploadCalled = true;
+        });
+
+    client.downloadToFile(QStringLiteral("zDvZDL"),
+                          m_tmpDir.filePath("out.bin"),
+        [&](const QString& err) {
+            downloadError = err;
+            downloadCalled = true;
+        });
+
+    QCOMPARE(mockRaw->uploadCalls.size(), 1);
+    QCOMPARE(mockRaw->downloadCalls.size(), 1);
+    QVERIFY(!uploadCalled);
+    QVERIFY(!downloadCalled);
+
+    mockRaw->fireUploadDone(QStringLiteral("zDvZUL"));
+    mockRaw->fireDownloadDone();
+
+    QVERIFY(uploadCalled);
+    QVERIFY(downloadCalled);
+    QCOMPARE(uploadCid, QStringLiteral("zDvZUL"));
+    QVERIFY(downloadError.isEmpty());
 }
 
 // ── Destructor cleanup ──────────────────────────────────────────────────────
