@@ -1,52 +1,70 @@
-# Halt — 2026-04-09 (post Phase 1 merge)
+# Halt — 2026-04-10 (SDK upgrade verified, ready for Phase 2 rebase)
 
 ## Where we stopped
-v2.0 Phase 1 (StorageClient foundation) merged to master and pushed to
-origin. Post-merge protocol complete: skills extracted, retro logged,
-PROJECT_KNOWLEDGE updated. Phase 2 starts next — keycard-only auto-backup
-on save, wiring StorageClient into NotesBackend.
+
+SDK upgraded to latest (Apr 9). Notes plugin builds clean, all 7 tests
+pass, manual Basecamp verification green (notes load, keycard auth works,
+33 notes intact). Auto-backup can't be tested yet because Phase 2 code
+is on a separate branch. Next: rebase Phase 2 onto this SDK upgrade and
+re-test the capability-token path.
 
 ## Current state
-- Branch: master
-- Last commit: a7f327a (Merge feature/v2-storage-client)
-- Origin: up-to-date
-- Build status: passing (7/7 tests, zero warnings)
-- Open review: none
-- storage_module: installed in LogosBasecamp (copied from legacy LogosApp)
-- storage_ui: removed from LogosBasecamp (pre-existing sidebar bug)
+
+- **Branch:** `feature/sdk-upgrade` at `c3a1f79`
+- **Master:** `fbf485f` (untouched, Phase 1 stable)
+- **feature/v2-autobackup:** `61f2d89` (Phase 2 + #78, old SDK, reference)
+- **Build:** `build-new/` — must run inside `nix develop` shell
+- **Tests:** 7/7 pass (inside nix develop)
+- **Basecamp:** notes green with new SDK plugin
+
+## SDK versions
+
+| What | Rev | Date |
+|------|-----|------|
+| Old (master) | `95f763b48d74` | 2026-02-25 |
+| Tictactoe's | `4197ee183041` | 2026-03-23 |
+| **New (this branch)** | `8b1cfadf090f` | **2026-04-09** |
+
+New SDK adds: `logos_object.h`, `logos_registry.h`, `logos_transport.h`,
+`plugin_registry.h`, `logos_instance.h`, `logos_types.h`, and more.
+Key API changes: `requestObject` returns `LogosObject*` not `QObject*`,
+`onEvent` is now 3-arg, new `invokeRemoteMethodAsync`.
 
 ## Next steps (in order)
-1. Read NotesBackend saveNote / exportBackupAuto / getKeySource to plan
-   Phase 2 (#72) integration points
-2. Decide where StorageClient lives — owned by NotesBackend, or
-   instantiated in NotesPlugin via logosAPI->getClient and injected into
-   NotesBackend?
-3. Create feature branch `feature/v2-autobackup`
-4. Implement: debounce timer, keycard-only check, storage status meta keys,
-   new Q_INVOKABLE methods (getBackupCid, getStorageStatus, triggerBackup)
-5. Tests: keycard-only gating, debounce coalescing, upload success/failure,
-   storage unavailable graceful degradation
-6. Build, install, manual test in Basecamp (no storage_ui → no sidebar bug)
-7. Handoff to Senty on #72
 
-## Blockers
-- None
+1. Rebase or cherry-pick Phase 2 auto-backup code onto `feature/sdk-upgrade`
+2. Update `LogosStorageTransport` for new SDK API (`LogosObject*`, 3-arg `onEvent`)
+3. Build and verify tests pass
+4. Install to Basecamp, load storage_module (click Storage UI)
+5. Save a note, wait 30s, check debug.log for capability-token probe results
+6. **If the new SDK resolves the deny:** end-to-end upload works, merge the combined branch
+7. **If it doesn't:** the deny is fundamental, file upstream question, replan scope
+8. Either way: post-merge protocol (retro, skills, PROJECT_KNOWLEDGE)
 
-## Context that's hard to re-derive
-- Phase 2 only arms the debounce timer when `key_source == "keycard"`.
-  Mnemonic sessions get NO auto-backup, NO timer, `triggerBackup()` errors,
-  `getStorageStatus()` returns "disabled". This is the hard boundary Senty
-  insisted on.
-- StorageClient single-in-flight contract is enforced — a second upload
-  while one pending gets a synchronous "busy" error. Phase 2's 30s debounce
-  means overlap is not expected in practice.
-- CID + timestamp live in the existing meta key-value table; no schema
-  migration. Keys: backup_cid, backup_timestamp, storage_status.
-- `exportBackupAuto()` already exists and writes to `~/.local/share/logos-notes/backups/`.
-  Phase 2 will call it to produce the blob, then upload the resulting file.
-- Residual: eventResponse arg shape for storageUploadDone / storageDownloadDone
-  is still assumption-based. First real integration test in Phase 2 needs to
-  verify and adjust `StorageClient::onEventResponse` if the shape differs.
-- Senty is active in pane %2.
-- Use native `tmux send-keys` for tmux messaging — tmux-bridge has silent
-  failure mode documented in notesforretro.md.
+## Build note
+
+Tests must run inside `nix develop` shell — the new SDK pulls in
+`libzstd.so.1` and other libs not in the system library path:
+
+```bash
+export PATH="/nix/var/nix/profiles/default/bin:/usr/bin:/bin:$PATH"
+cd ~/logos-notes
+nix develop -c bash -c "cd build-new && ctest --output-on-failure"
+```
+
+## Branches for reference
+
+| Branch | Commit | Purpose |
+|--------|--------|---------|
+| `master` | `fbf485f` | Phase 1 stable, old SDK |
+| `feature/sdk-upgrade` | `c3a1f79` | New SDK, notes verified green |
+| `feature/v2-autobackup` | `61f2d89` | Phase 2 + #78, old SDK, DO NOT merge |
+
+## Context
+
+- Tictactoe module PR submitted: https://github.com/fryorcraken/logos-module-tictactoe/pull/1
+- Tictactoe uses generated SDK (`LogosModules`) for IPC — see `docs/skills/generated-sdk-ipc-pattern.md`
+- Discord message to @fryorcraken drafted at `docs/upstream/discord-fryorcraken-draft.md`
+- Upstream issue drafted at `docs/upstream/issue-draft-capability-tokens-for-core-plugins.md`
+- Senty needs status update
+- tmux: use native `tmux send-keys -t %2`, not tmux-bridge
