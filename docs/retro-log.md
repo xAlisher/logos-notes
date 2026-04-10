@@ -4,6 +4,36 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## SDK upgrade — logos-cpp-sdk Feb 25 → Apr 9 (2026-04-10)
+
+Merge: `97c3b3f`. Single-commit merge (flake.lock only).
+
+### Process wins
+- **Peer module comparison unlocked the diagnosis.** Cloning tictactoe module by @fryorcraken and comparing SDK versions revealed ours was a month behind (Feb 25 vs Mar 23). The new SDK has 10 additional headers including the entire `LogosObject` / registry / transport layer. This reframed the #77 capability-token deny from "permission issue we can't control" to "possible version mismatch we CAN fix."
+- **Dedicated branch preserved master throughout.** `feature/sdk-upgrade` branched from master, built in `build-new/`, tested inside nix develop. Master was never at risk. Alisher explicitly requested this safety and it was the right call — if the upgrade had broken things, we'd have reverted cleanly.
+- **Discovered the nix develop test requirement immediately.** First test run outside nix shell failed with `libzstd.so.1` not found. Diagnosed in one step (ldd inside shell), fixed by running all tests via `nix develop -c bash -c "ctest"`. Documented in `docs/skills/sdk-upgrade-guide.md` for keycard-basecamp and future modules.
+
+### Process fails
+- [process] **Spent 14 rounds debugging #77 on the old SDK before checking version.** The SDK version comparison took 5 minutes and revealed a likely root cause. Should have been the FIRST diagnostic, not the last. When cross-module IPC fails in a framework you don't control, check your SDK version before writing workaround architectures.
+- [process] **Built and committed an entire QML-routing workaround (#78) based on the assumption that the capability system was intentionally blocking us.** The assumption was "the framework denies our access by design." The reality may be "the framework can't find our module because we're using an incompatible registry protocol." A 5-minute version check would have saved 4+ hours of #78 work.
+
+### Project wins
+- **New SDK is backward-compatible with all existing code.** Zero compile errors, zero new warnings, 7/7 tests pass. The `LogosObject*` / 3-arg `onEvent` changes only affect `LogosStorageTransport.cpp` which is the transport layer — the rest of the codebase doesn't reference the SDK directly.
+- **SDK upgrade guide created** at `docs/skills/sdk-upgrade-guide.md` with the full procedure, version table, nix develop gotcha, and checklist. Directly reusable by keycard-basecamp module.
+- **Tictactoe AI opponent PR submitted** (https://github.com/fryorcraken/logos-module-tictactoe/pull/1) — good-faith contribution to a peer builder, opens a communication channel for the capability-token question.
+
+### Project fails
+- [project] **Still haven't verified whether the new SDK resolves the capability-token deny.** The SDK is merged but Phase 2 code isn't rebased onto it yet. The critical test (does `invokeRemoteMethod` to storage_module now return a valid response?) is pending next session.
+- [project] **Three investigation docs committed only to `feature/v2-autobackup`, not master.** `docs/skills/logos-capability-tokens.md`, `docs/upstream/basecamp-capability-tokens-questions.md`, and `docs/upstream/issue-draft-*.md` are on the reference branch but not available on master. Should cherry-pick the docs even if the code doesn't merge.
+
+### Project lessons
+- **Check SDK version against working peers FIRST when framework-level IPC fails.** This is now rule #1 in `docs/skills/logos-capability-tokens.md`. Before writing ANY workaround, compare your SDK rev/date against a module that works.
+- **The logos-cpp-sdk has no semver.** Version is always `0.1.0` in the manifest. The only way to tell versions apart is the nix store hash, the git rev, or the header count (7 = old, 17 = new). Document the rev + date in every commit that changes the SDK.
+- **`nix develop` is mandatory for tests after SDK upgrade.** New transitive deps (`libzstd`, `libglib`) aren't in the system library path. Running `ctest` outside the nix shell silently fails all tests with shared library errors.
+- **Static linking of `liblogos_sdk.a` means no ABI conflict.** Each module carries its own SDK copy. A plugin built with the Apr 9 SDK loads fine in a Basecamp AppImage built with an older SDK. This is safe.
+
+---
+
 ## Issue #71 — v2.0 Phase 1: StorageClient (2026-04-09)
 
 Merge: `a7f327a`. Single-issue merge (not epic), so skills extraction + wins/fails only.
