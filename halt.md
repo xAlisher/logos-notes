@@ -1,61 +1,61 @@
-# Halt — 2026-04-11 (probe-first plan approved — Phase 0 ready)
+# Halt — 2026-04-11 (investigation complete, blocked on upstream, bootcamp prep)
 
 ## Where we stopped
 
-Epic #79 restructured as a probe-first investigation. Plan written, sub-issues created,
-Senty reviewed 2 rounds and gave LGTM on `5077776`. Ready to execute Phase 0.
+Deep investigation of AppImage ce48695 compatibility complete. Root causes found,
+upstream issues filed, findings documented. Waiting on Pavel (vpavlin) response
+re: bootcamp and whether core devs (Dario, Helium) will be present.
 
 ## Current state
 
 - **Branch:** `feature/new-appimage-compat`
-- **Last commit:** `5077776` — docs: apply Senty Round 1 findings to probe-first plan
-- **Build:** 7/7 tests pass on master (build-new/)
-- **Open review:** none — Senty LGTM given, safe to proceed
+- **Last commit:** `97c70a2` — docs: upstream findings + bootcamp questions
+- **Build:** 7/7 tests passing on master
+- **AppImage status:** notes_ui loads (30s spinner), buttons non-functional — blocked by upstream #141
 
-## Plan structure
+## What works
 
-- **Epic:** #79 (updated with sub-issues)
-- **Plan doc:** `docs/plans/probe-first-appimage-compat.md`
-- **Sub-issues:**
-  - #80 — Phase 0: Log working state + revert capability_module + package_manager
-  - #81 — Phase 1: Clean tictactoe baseline test
-  - #82 — Phase 2: Build probe_ui introspection plugin
-  - #83 — Phase 3: Run probe, interpret, decide fix strategy
+| Component | State |
+|-----------|-------|
+| notes core (notes_plugin.so) | ✅ solid — 7/7 tests, full encryption |
+| notes_ui manifest | ✅ correct — `type: "ui_qml"`, `view: "Main.qml"` |
+| notes_ui QML | ✅ correct — blocked only by upstream |
+| AppImage end-to-end | ❌ blocked — upstream #141 (dependency auto-loading) |
+
+## What's installed in AppImage user dirs
+
+- `modules/notes/` — notes_plugin.so + manifest + variant
+- `modules/keycard/` — keycard_plugin.so + manifest + variant
+- `modules/tictactoe/` — reference (kept)
+- `plugins/notes_ui/` — Main.qml + manifest (ui_qml) + variant
+- `plugins/tictactoe_ui/` — reference (kept)
+- Framework modules (capability_module, package_manager) — deleted user overrides, AppImage OG used
+
+## Upstream issues filed
+
+- logos-basecamp #141 — dependency auto-loading broken for user-installed ui_qml modules
+- logos-basecamp #142 — `view` field required but undocumented
+- Full findings: `docs/upstream/logos-basecamp-findings.md`
+- 8 bootcamp questions logged in same file
 
 ## Next steps (in order)
 
-1. **Execute Phase 0 (#80):**
-   - Log AppImage git SHA (`cd ~/logos-app && git log --oneline -3`)
-   - Log master state + run tests
-   - Launch AppImage briefly to get mount, then restore BOTH:
-     ```bash
-     MOUNT=$(ls /tmp | grep ".mount_logos-" | head -1)
-     cp /tmp/$MOUNT/usr/modules/capability_module/capability_module_plugin.so \
-        ~/.local/share/Logos/LogosBasecamp/modules/capability_module/
-     cp /tmp/$MOUNT/usr/modules/package_manager/package_manager_plugin.so \
-        ~/.local/share/Logos/LogosBasecamp/modules/package_manager/
-     ```
-   - Log full module inventory from `~/.local/share/Logos/LogosBasecamp/modules/`
-   - Write `docs/skills/working-baseline.md`
-   - Commit, close #80
-
-2. **Execute Phase 1 (#81):** Clean tictactoe baseline test (remove all but tictactoe modules, launch, tap 3x)
-
-3. **Execute Phase 2 (#82):** Build probe_ui in `~/logos-probe/` (separate dir, tictactoe mirror)
-
-4. **Execute Phase 3 (#83):** Run all probe buttons, record output, apply decision gate
+1. **Wait for Pavel's response** — determines bootcamp strategy (core devs present? which path?)
+2. **If core devs present at bootcamp:** bring questions from `docs/upstream/logos-basecamp-findings.md` directly
+3. **If ecosystem devs only:** focus on notes core story, collect contacts, skip AppImage demo
+4. **Park feature/new-appimage-compat** — it's correct, just waiting on upstream fix to #141
+5. **Do NOT build probe-basecamp** until #141 is resolved — probing a broken dependency path gives bad data
 
 ## Blockers
 
-- Phase 0 and Phase 1 require manual UI actions by Alisher (launching AppImage, tapping modules)
-- Phase 2 is fully automated (Fergie builds probe_ui)
+- Upstream logos-basecamp #141 — nothing we can do until Logos team fixes dependency auto-loading
+- Pavel's response — determines bootcamp strategy
 
 ## Context that's hard to re-derive
 
-- Senty's key finding: tictactoe baseline can false-fail if `package_manager` is stale user copy
-  (v0.1.0 overrides AppImage). Must restore BOTH framework modules, not just capability_module.
-- Senty's second finding: probe passing ≠ notes_ui startup clean. If probe works but notes_ui
-  stalls → diff constructor/createWidget/initLogos ordering vs tictactoe.
-- The patched capability_module source is still in `/tmp/capability_module_fix/` (may be cleaned).
-  Installed patched copy at `~/.local/share/Logos/LogosBasecamp/modules/capability_module/` —
-  this is exactly what Phase 0 reverts.
+- The 30s spinner is the AppImage's dependency loading timeout, NOT LogosQmlBridge blocking
+- `LogosQmlBridge` has only one method: `callModule` — returns immediately with error if module not connected
+- Ghost IPC dirs in `/tmp/` accumulate across sessions — run `cd /tmp && ls | grep "^logos_" | xargs rm -rf` before every launch
+- `type: "ui"` (QWidget IComponent, tictactoe pattern) is deprecated — do not build on it
+- New reference for ui plugins: `counter_qml` (QML-only) and `package_manager_ui` (QML + C++ backend)
+- `package_manager_ui` has a `_replica_factory.so` for Qt Remote Objects — that's the IPC mechanism for C++ backends
