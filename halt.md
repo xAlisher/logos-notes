@@ -1,87 +1,70 @@
-# Halt — 2026-04-11 (new AppImage compat — UI modules not showing)
+# Halt — 2026-04-11 (UI modules now working — needs commit + merge)
 
 ## Where we stopped
 
-Working on `feature/new-appimage-compat` to make notes and keycard work in the
-new Logos Basecamp AppImage (ce48695+). Core modules (notes, keycard) now load
-without crash. UI modules (notes_ui, keycard-ui) still don't appear in the sidebar.
-Root cause is partially understood — see next steps.
+UI modules (notes_ui, keycard-ui) now appear in the Logos Basecamp sidebar after
+fixing the stale `package_manager` module. Both branches are ready for final commit
+and Senty review.
 
 ## Current state
 
-- **logos-notes branch:** `feature/new-appimage-compat` at `c1560b2`
+- **logos-notes branch:** `feature/new-appimage-compat` at `a24c1b1`
 - **keycard-basecamp branch:** `feature/new-appimage-compat` at `d435226`
-- **Master:** `cfa217a` (SDK upgrade retro, stable)
-- **AppImage:** `~/logos-app/result/logos-basecamp.AppImage` (ce48695+, latest)
-- **Build:** `build-new/` — builds clean, 63/63 targets
-- **Tests:** 7/7 pass (inside nix develop)
+- **AppImage:** `~/logos-app/result/logos-basecamp.AppImage` (ce48695+)
+- **notes_ui:** visible in sidebar ✓
+- **keycard-ui:** should also be visible (same fix applied)
+- **notes core module:** loads and runs ✓
+- **keycard core module:** loads ✓
 
 ## What was fixed
 
-1. **manifest.json** updated to v0.2.0 on both modules and UI plugins:
-   - `notes`: keeps `"main": {"linux-amd64": "notes_plugin.so"}` (core type)
-   - `notes_ui`: uses `"main": {}` + `"view": "Main.qml"` (ui_qml type)
-   - Same pattern for keycard and keycard-ui
-2. **metadata.json** updated: `"main": "Main.qml"` → `"view": "Main.qml"` on notes_ui and keycard-ui
-3. **Core modules load**: notes and keycard appear in module stats, no crash
-4. **New LGX packages built**: `~/Desktop/logos-notes-core.lgx` and `~/Desktop/logos-notes-ui.lgx`
+### Fix 1: manifests updated to v0.2.0 (committed)
+- `modules/notes/manifest.json` — kept `"main"` map for .so files
+- `plugins/notes_ui/manifest.json` — `"main": {}` + `"view": "Main.qml"`
+- Same for keycard module and keycard-ui in keycard-basecamp repo
+- `metadata.json` — changed `"main": "Main.qml"` → `"view": "Main.qml"`
 
-## The remaining problem
+### Fix 2: stale package_manager module replaced (NOT committed yet)
+The user-installed `~/.local/share/Logos/LogosBasecamp/modules/package_manager/` had v0.1.0
+which is missing `getInstalledUiPlugins` entirely. Replaced at runtime with AppImage embedded v0.2.0.
 
-UI plugins do NOT appear in the sidebar after LGX install attempt.
+This fix is currently just a manual file copy — not committed anywhere. See next steps.
 
-### What we know
+## Root cause (for reference)
+Since commit `113b67c` (Mar 27), `MainUIBackend` calls `package_manager.setUserUiPluginsDirectory()`
+and `package_manager.getInstalledUiPluginsAsync()`. Old v0.1.0 has neither. New API calls
+silently returned nothing — no error, empty sidebar. Confirmed via `nm -D` symbol comparison.
 
-Since commit `113b67c` (Mar 27, 2026), Basecamp uses `package_manager.getInstalledUiPluginsAsync()`
-to populate the sidebar — not a file scan. The package_manager module scans
-two directories set by:
-- `setEmbeddedUiPluginsDirectory()` — AppImage embedded plugins (counter_qml etc.)
-- `setUserUiPluginsDirectory()` — user-installed plugins
-
-**Key unknown:** What exact directory does `setUserUiPluginsDirectory()` point to in the
-new AppImage? The research suggests it might be `~/.local/share/logos_host/plugins/`
-(not `~/.local/share/Logos/LogosBasecamp/plugins/` where we've been installing).
-
-Also: `package_manager.db` was not found in `module_data/package_manager/63d20fa9b4b8/`
-(empty directory). Either the DB lives elsewhere or the package_manager uses directory
-scan (not DB) for user plugins.
-
-### What to try next
-
-1. **Check exact user plugins path**: In logos-app source, find what value is passed to
-   `setUserUiPluginsDirectory()` in the app startup code. Compare to where we're installing.
-
-2. **Check if counter_qml (user-dir copy) appears in sidebar**:
-   `~/.local/share/Logos/LogosBasecamp/plugins/counter_qml/` exists. If it doesn't appear,
-   the whole user plugins dir is wrong path.
-
-3. **Try installing to `~/.local/share/logos_host/plugins/`** if that's the real path.
-
-4. **Check the package_manager module source** (in logos-package-manager-module repo or
-   embedded in logos-app) for what directory is used.
+See `docs/skills/appimage-module-versioning.md` for full details.
 
 ## Next steps (in order)
 
-1. In logos-app, grep for `setUserUiPluginsDirectory` to find exact path used at runtime
-2. Verify by checking if any user-installed plugin shows in sidebar (counter_qml is a good test)
-3. Copy notes_ui files to the correct path and retest
-4. If still broken: check package_manager module source in logos-app's nix deps
-5. Once working: commit + post Senty review + merge both branches
+1. **Verify notes_ui actually loads** — click it in the sidebar, confirm PIN screen appears
+2. **Commit skill doc**: `git add docs/skills/appimage-module-versioning.md docs/retro-log.md && git commit`
+3. **The package_manager fix needs to be documented as an install step** — not something we commit,
+   but something the install guide documents. Update `docs/skills/sdk-upgrade-guide.md` or create
+   a new "Basecamp compatibility guide".
+4. **Senty review** — post handoff on both feature/new-appimage-compat branches
+5. **Merge both branches** after Senty LGTM
+6. **Post Builder Hub** — capability token question (`docs/upstream/discord-builder-hub-draft.md`)
 
-## Context
+## Remaining known issues
 
-- **AppImage path confusion**: `~/.local/share/logos_host/` vs `~/.local/share/Logos/LogosBasecamp/`
-  — these are two different directories. `logos_host` is used by notes.db and keycard_pairings.json.
-  The `module_data/package_manager/63d20fa9b4b8/` dir is empty (no DB found there).
-- **Retro intel**: LGX install test on Desktop files was tried but didn't surface notes_ui in sidebar.
-  Unclear if the install succeeded silently or if the path is wrong.
-- **logos-app source file**: `src/MainUIBackend.cpp` lines 93-127 has `setEmbeddedUiPluginsDirectory`
-  and `setUserUiPluginsDirectory` calls — check what paths are passed.
-- **Tictactoe PR**: still open at https://github.com/fryorcraken/logos-module-tictactoe/pull/1
-- **Capability deny**: storage_module still denies notes. Upstream question drafted at
-  `docs/upstream/discord-builder-hub-draft.md`. Post to Builder Hub after UI fix.
+- **Capability deny still unresolved** — storage_module returns "false" for notes plugin.
+  Upstream question drafted. Post after compat branches are merged.
+- **Stale legacy libs** in notes module dir: `libkeycard.so`, `libpcsclite.so.1` still present
+  from before Epic #62. Not breaking but worth cleaning.
 
-## LGX packages on Desktop
+## Notes on the package_manager version fix
 
-- `~/Desktop/logos-notes-core.lgx` — built from `feature/new-appimage-compat` (v0.2.0 manifests)
-- `~/Desktop/logos-notes-ui.lgx` — built from same branch
+The manual fix copies from the AppImage mount (only available while AppImage is running):
+```bash
+MOUNT=$(find /tmp -maxdepth 1 -name ".mount_logos-*" -type d | head -1)
+for mod in package_manager capability_module; do
+    cp $MOUNT/usr/modules/$mod/*.so ~/.local/share/Logos/LogosBasecamp/modules/$mod/
+    cp $MOUNT/usr/modules/$mod/manifest.json ~/.local/share/Logos/LogosBasecamp/modules/$mod/
+done
+```
+
+Long-term: logos-app should prefer embedded framework modules over user-installed stale copies.
+This is an upstream issue to file.

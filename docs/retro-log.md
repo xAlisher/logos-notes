@@ -28,6 +28,14 @@ Branch: `feature/new-appimage-compat` on logos-notes + keycard-basecamp. Not mer
 - [project] **UI modules still don't appear in sidebar.** Not yet confirmed whether cause is: wrong install path, LGX install failure, or something else in the package_manager's scan logic.
 - [project] **Capability deny still unresolved.** Storage module still returns "false" for our plugin. Upstream question drafted but not posted.
 
+### Root cause (found in overnight research)
+**Stale user-installed `package_manager_plugin.so` (v0.1.0) missing the new API.**
+Since commit `113b67c`, `MainUIBackend` calls `setUserUiPluginsDirectory()` + `getInstalledUiPluginsAsync()`.
+The old v0.1.0 module only had `setUiPluginsDirectory` (single dir) and no `getInstalledUiPlugins` at all.
+New API calls silently did nothing — no error, empty sidebar. Fix: copy embedded AppImage v0.2.0 module.
+
+Confirmed via `nm -D`: old module missing `_ZN17PackageManagerLib21getInstalledUiPluginsB5cxx11Ev` entirely.
+
 ### Project lessons
 - **Use embedded AppImage plugins as canary before testing user-installed ones.** counter_qml is always in the AppImage. If it shows → discovery works. If it doesn't → something is fundamentally wrong with the sidebar, unrelated to our plugins.
 - **Find the exact runtime path before copying files.** `grep -r setUserUiPluginsDirectory ~/logos-app/src/` would give the answer in 5 seconds. Don't assume `LogosBasecamp/plugins/` is correct.
