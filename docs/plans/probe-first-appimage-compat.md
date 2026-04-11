@@ -30,6 +30,7 @@
 - `plugins/notes_ui/manifest.json` modified: `type: "ui"`, `main: notes_ui_plugin.so`
 - `src/ui_plugin/` created: NotesUiPlugin.h, NotesUiPlugin.cpp, ui_plugin_metadata.json
 - Patched `capability_module_plugin.so` installed at runtime — **this must be reverted**
+- `package_manager_plugin.so` provenance unknown — may be stale user-installed copy overriding AppImage original — **must also be restored from AppImage**
 
 ### AppImage in use
 - `~/logos-app/result/logos-basecamp.AppImage`
@@ -45,11 +46,25 @@ Sub-issue: #80
 
 1. Log AppImage version (git SHA from logos-app repo)
 2. Log master + test status
-3. **Revert patched capability_module** — restore AppImage original unmodified binary
-4. Write one-paragraph note to `docs/skills/working-baseline.md`:
+3. **Revert BOTH framework modules** — restore AppImage originals for `capability_module` AND `package_manager`:
+   ```bash
+   MOUNT=$(ls /tmp | grep ".mount_logos-" | head -1)
+   # Restore capability_module
+   cp /tmp/$MOUNT/usr/modules/capability_module/capability_module_plugin.so \
+      ~/.local/share/Logos/LogosBasecamp/modules/capability_module/
+   # Restore package_manager (stale user copy may override AppImage version)
+   cp /tmp/$MOUNT/usr/modules/package_manager/package_manager_plugin.so \
+      ~/.local/share/Logos/LogosBasecamp/modules/package_manager/
+   ```
+   **Why both:** Prior root cause analysis showed stale `package_manager` v0.1.0 in user modules
+   overrides AppImage copy. If package_manager is stale during Phase 1, tictactoe can false-fail,
+   making the baseline untrustworthy.
+4. Log the complete framework-module set with versions — record every `.so` in
+   `~/.local/share/Logos/LogosBasecamp/modules/` so we know exactly what ran during baseline.
+5. Write `docs/skills/working-baseline.md`:
    - AppImage git SHA
    - master commit SHA
-   - Which modules are installed and their versions
+   - Full module inventory (name + version for every module in modules/)
    - Observed behavior
 
 ---
@@ -136,6 +151,13 @@ Sub-issue: #83
 | capability token = "" | File Builder Hub question. Cannot fix in our code. |
 | notes.isInitialized errors | Investigate notes logo_host spawn — check manifest deps field |
 | probe itself crashes on load | IComponent contract issue — compare against tictactoe symbol table |
+| **probe passes, notes_ui still stalls** | Diff notes_ui against probe/tictactoe for plugin contract violations — specifically: constructor side-effects, createWidget blocking calls, initLogos ordering (must store base field before any API use), and any sync init in createWidget that should be async. probe_ui validates loadLegacyUiModule + runtime IPC but does NOT prove notes_ui's own startup path is clean. |
+
+**Senty's note (Round 1):** probe_ui validates `loadLegacyUiModule` and runtime IPC, but it is a
+different plugin than notes_ui. A probe passing is necessary but not sufficient — notes_ui could
+still stall due to its own constructor/createWidget/initLogos ordering or blocking init work.
+The "probe passes, notes_ui stalls" branch is the most likely real-world outcome and must be
+investigated before concluding the runtime is at fault.
 
 ---
 
