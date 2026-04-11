@@ -28,6 +28,9 @@ Branch: `feature/new-appimage-compat` on logos-notes + keycard-basecamp. Not mer
 - [project] **UI modules still don't appear in sidebar.** Not yet confirmed whether cause is: wrong install path, LGX install failure, or something else in the package_manager's scan logic.
 - [project] **Capability deny still unresolved.** Storage module still returns "false" for our plugin. Upstream question drafted but not posted.
 
+### Additional process fail (post-research)
+- [process] **Chained tmux-bridge calls with `&&`, causing Enter to be skipped.** After `tmux-bridge message`, the `&&` chain ran `tmux-bridge keys Enter` then `tmux-bridge read senty@logos-notes 5`. The blocking read failed with "must read the pane before interacting" — each tmux-bridge call consumes the read gate, so the Enter step was never confirmed delivered. Alisher caught it. Root cause: treating tmux-bridge as a normal shell pipeline instead of a stateful protocol where each call must be a separate command. Fix: protocol updated in `~/fieldcraft/protocols/builder-auditor.md` — always run message, keys Enter, and read-back as three separate commands, never chained.
+
 ### Root cause (found in overnight research)
 **Stale user-installed `package_manager_plugin.so` (v0.1.0) missing the new API.**
 Since commit `113b67c`, `MainUIBackend` calls `setUserUiPluginsDirectory()` + `getInstalledUiPluginsAsync()`.
