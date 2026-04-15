@@ -4,12 +4,10 @@
   "dependencies": ["keycard", "notes"],
   "description": "Encrypted local-first notes — UI",
   "icon": "",
-  "main": {
-    "linux-amd64": "Main.qml",
-    "darwin-arm64": "Main.qml"
-  },
-  "manifestVersion": "0.1.0",
+  "main": {},
+  "manifestVersion": "0.2.0",
   "name": "notes_ui",
   "type": "ui_qml",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "view": "Main.qml"
 }

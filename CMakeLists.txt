@@ -141,9 +141,35 @@ configure_file(
     COPYONLY
 )
 
+# ── Notes UI Plugin ───────────────────────────────────────────────────────────
+# Pure ui_qml path — no C++ IComponent wrapper needed.
+# The AppImage 9b52529-160 (upstream #141 fix) loads ui_qml modules correctly.
+# Basecamp reads manifest.json: type=ui_qml, view=Main.qml → QML-only load.
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 enable_testing()
 find_package(Qt6 REQUIRED COMPONENTS Test)
+
+# qmllint — run as a ctest entry so QML errors surface alongside C++ failures.
+# Skipped gracefully if the binary is not found (e.g. CI without Qt installed).
+find_program(QMLLINT_EXECUTABLE qmllint
+    HINTS "${CMAKE_PREFIX_PATH}/bin"
+    DOC "Qt QML linter"
+)
+if(QMLLINT_EXECUTABLE)
+    add_test(NAME lint_main_qml
+        COMMAND ${QMLLINT_EXECUTABLE} "${CMAKE_SOURCE_DIR}/plugins/notes_ui/Main.qml"
+    )
+    set_tests_properties(lint_main_qml PROPERTIES
+        # Fail on Error only. Unqualified-access Warnings for `logos` are
+        # expected false positives — it is an injected bridge object that
+        # qmllint cannot resolve without a .qmltypes file.
+        FAIL_REGULAR_EXPRESSION "Error:"
+        LABELS "qml"
+    )
+else()
+    message(STATUS "qmllint not found — QML lint test skipped")
+endif()
 
 # Common core sources shared by all test targets
 set(TEST_CORE_SOURCES
@@ -227,12 +253,30 @@ target_link_libraries(test_storage_client PRIVATE
 )
 add_test(NAME test_storage_client COMMAND test_storage_client)
 
+# Backup + Storage integration tests — chains NotesBackend (local export/import)
+# with StorageClient (mock transport). No SDK linkage needed.
+add_executable(test_backup_storage
+    tests/test_backup_storage.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
+    ${TEST_CORE_SOURCES}
+)
+target_include_directories(test_backup_storage PRIVATE
+    src
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+)
+target_link_libraries(test_backup_storage PRIVATE ${TEST_CORE_LIBS})
+add_test(NAME test_backup_storage COMMAND test_backup_storage)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 
-# Logos Basecamp paths (renamed from LogosApp in March 2026)
-# Dev builds (cmake install) use LogosBasecampDev
-# Portable builds (AppImage/LGX) use LogosBasecamp
-set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosBasecampDev")
+# Dev install convention (mirrors keycard-basecamp pattern):
+#   Primary:  LogosApp   — cmake --install target
+#   Mirror:   LogosBasecamp — AppImage runtime dir
+set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
 set(NOTES_MODULE_DIR "${LOGOS_APP_DATA}/modules/notes")
 set(NOTES_UI_DIR     "${LOGOS_APP_DATA}/plugins/notes_ui")
 
@@ -268,3 +312,49 @@ install(FILES
 install(FILES assets/icons/app_icon.png
     DESTINATION "${NOTES_UI_DIR}/icons"
 )
+
+# Patch RUNPATH on notes_plugin.so after install:
+#   1. Collect Nix store lib dirs (Qt, libsodium, etc.) from the build artifact.
+#   2. Add system lib paths so Nix ld-linux can find system libs (libpcsclite etc.).
+find_program(PATCHELF_EXECUTABLE patchelf)
+if(PATCHELF_EXECUTABLE)
+    install(CODE "
+        set(_plugin \"${NOTES_MODULE_DIR}/notes_plugin.so\")
+        set(_build_so \"${CMAKE_BINARY_DIR}/notes_plugin.so\")
+        if(EXISTS \"\${_plugin}\")
+            execute_process(
+                COMMAND bash -c \"ldd '\${_build_so}' | grep nix/store | awk '{print \\\$3}' | xargs -I{} dirname {} | sort -u | tr '\\n' ':' | sed 's/:$//'\"\
+                OUTPUT_VARIABLE _nix_paths
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            set(_rpath \"\\\$ORIGIN:\${_nix_paths}:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu\")
+            execute_process(
+                COMMAND ${PATCHELF_EXECUTABLE} --set-rpath \"\${_rpath}\" \"\${_plugin}\"
+            )
+            message(STATUS \"Patched RUNPATH on notes_plugin.so\")
+        endif()
+    ")
+endif()
+
+# Mirror notes module + UI plugin to LogosBasecamp (AppImage runtime dir).
+install(CODE "
+    set(_mod_src \"${NOTES_MODULE_DIR}\")
+    set(_mod_dst \"\$ENV{HOME}/.local/share/Logos/LogosBasecamp/modules/notes\")
+    message(STATUS \"Mirroring notes module to LogosBasecamp: \${_mod_dst}\")
+    file(COPY \"\${_mod_src}/\" DESTINATION \"\${_mod_dst}\")
+
+    set(_ui_src \"${NOTES_UI_DIR}\")
+    set(_ui_dst \"\$ENV{HOME}/.local/share/Logos/LogosBasecamp/plugins/notes_ui\")
+    message(STATUS \"Mirroring notes UI to LogosBasecamp: \${_ui_dst}\")
+    file(GLOB _ui_files \"\${_ui_src}/*\")
+    foreach(_f \${_ui_files})
+        if(NOT IS_DIRECTORY \"\${_f}\")
+            file(COPY \"\${_f}\" DESTINATION \"\${_ui_dst}\")
+        endif()
+    endforeach()
+    file(GLOB _ui_icons \"\${_ui_src}/icons/*\")
+    foreach(_f \${_ui_icons})
+        file(COPY \"\${_f}\" DESTINATION \"\${_ui_dst}/icons\")
+    endforeach()
+    message(STATUS \"Mirror complete\")
+")

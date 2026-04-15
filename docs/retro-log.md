@@ -4,6 +4,48 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## New AppImage Compat — UI modules investigation (2026-04-11)
+
+Branch: `feature/new-appimage-compat` on logos-notes + keycard-basecamp. Not merged — UI modules still not showing.
+
+### Process wins
+- **Manifest format diff found fast.** Comparing the embedded `counter_qml` (inside AppImage) vs our manifests revealed the v0.2.0 breaking changes: `ui_qml` plugins need `"view": "Main.qml"` + `"main": {}`, and `metadata.json` must use `"view"` not `"main"`. Found this by reading `/tmp/.mount_logos-*/usr/plugins/counter_qml/manifest.json` directly.
+- **Core modules now load without crash.** Both notes and keycard appear in module stats in the new AppImage after manifest updates. The v0.1.0 → v0.2.0 format was the crash root cause.
+- **Source research gave precise answer.** logos-app `MainUIBackend.cpp` confirmed: sidebar uses `package_manager.getInstalledUiPluginsAsync()`, not file scan (since commit `113b67c`, Mar 27). Research took one agent call vs hours of guessing.
+
+### Process fails
+- [process] **Spent time updating metadata.json without first verifying that ANY user-installed plugin appears in the sidebar.** Counter_qml exists in the user dir with old format — if it appeared, old format works; if it didn't, the path is wrong. Should have used counter_qml as a known-working canary before touching our files.
+- [process] **Installed notes_ui to `LogosBasecamp/plugins/` without confirming that's the correct user plugins path.** Research found the package_manager uses `setUserUiPluginsDirectory()` — we never found what value that is set to in the new AppImage. Could be `logos_host/plugins/` or `Logos/LogosBasecamp/plugins/` — unchecked.
+- [process] **Two AppImage instances were running simultaneously during the test.** Kill command returned exit 1 (no processes), then launched a new one — but the old one was still alive. Discovered via `ps aux`. Always verify 0 logos processes before relaunching.
+- [process] **Chased LGX install path before confirming directory scanning still works.** The research showed `setUserUiPluginsDirectory()` IS a directory scan (not DB-only). We built LGX packages and tried to install them before confirming whether the raw directory approach just had the wrong path.
+
+### Project wins
+- **Both manifest formats now correct in source.** Four manifest.json + two metadata.json files updated and committed on `feature/new-appimage-compat` branches.
+- **New LGX packages built** at `~/Desktop/` from the updated branch.
+- **AppImage architecture understood.** Two-layer discovery (embedded dir + user dir), controlled by `setEmbeddedUiPluginsDirectory()` + `setUserUiPluginsDirectory()` in `MainUIBackend.cpp` lines 93-127. Exact user dir path is the remaining unknown.
+
+### Project fails
+- [project] **UI modules still don't appear in sidebar.** Not yet confirmed whether cause is: wrong install path, LGX install failure, or something else in the package_manager's scan logic.
+- [project] **Capability deny still unresolved.** Storage module still returns "false" for our plugin. Upstream question drafted but not posted.
+
+### Additional process fail (post-research)
+- [process] **Chained tmux-bridge calls with `&&`, causing Enter to be skipped.** After `tmux-bridge message`, the `&&` chain ran `tmux-bridge keys Enter` then `tmux-bridge read senty@logos-notes 5`. The blocking read failed with "must read the pane before interacting" — each tmux-bridge call consumes the read gate, so the Enter step was never confirmed delivered. Alisher caught it. Root cause: treating tmux-bridge as a normal shell pipeline instead of a stateful protocol where each call must be a separate command. Fix: protocol updated in `~/fieldcraft/protocols/builder-auditor.md` — always run message, keys Enter, and read-back as three separate commands, never chained.
+
+### Root cause (found in overnight research)
+**Stale user-installed `package_manager_plugin.so` (v0.1.0) missing the new API.**
+Since commit `113b67c`, `MainUIBackend` calls `setUserUiPluginsDirectory()` + `getInstalledUiPluginsAsync()`.
+The old v0.1.0 module only had `setUiPluginsDirectory` (single dir) and no `getInstalledUiPlugins` at all.
+New API calls silently did nothing — no error, empty sidebar. Fix: copy embedded AppImage v0.2.0 module.
+
+Confirmed via `nm -D`: old module missing `_ZN17PackageManagerLib21getInstalledUiPluginsB5cxx11Ev` entirely.
+
+### Project lessons
+- **Use embedded AppImage plugins as canary before testing user-installed ones.** counter_qml is always in the AppImage. If it shows → discovery works. If it doesn't → something is fundamentally wrong with the sidebar, unrelated to our plugins.
+- **Find the exact runtime path before copying files.** `grep -r setUserUiPluginsDirectory ~/logos-app/src/` would give the answer in 5 seconds. Don't assume `LogosBasecamp/plugins/` is correct.
+- **Kill verification matters.** After `pkill`, always `ps aux | grep logos | grep -v grep | wc -l` before relaunching. A stale instance will pollute module stats.
+
+---
+
 ## SDK upgrade — logos-cpp-sdk Feb 25 → Apr 9 (2026-04-10)
 
 Merge: `97c3b3f`. Single-commit merge (flake.lock only).

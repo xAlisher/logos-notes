@@ -1,70 +1,61 @@
-# Halt — 2026-04-10 (SDK upgrade verified, ready for Phase 2 rebase)
+# Halt — 2026-04-11 (investigation complete, blocked on upstream, bootcamp prep)
 
 ## Where we stopped
 
-SDK upgraded to latest (Apr 9). Notes plugin builds clean, all 7 tests
-pass, manual Basecamp verification green (notes load, keycard auth works,
-33 notes intact). Auto-backup can't be tested yet because Phase 2 code
-is on a separate branch. Next: rebase Phase 2 onto this SDK upgrade and
-re-test the capability-token path.
+Deep investigation of AppImage ce48695 compatibility complete. Root causes found,
+upstream issues filed, findings documented. Waiting on Pavel (vpavlin) response
+re: bootcamp and whether core devs (Dario, Helium) will be present.
 
 ## Current state
 
-- **Branch:** `feature/sdk-upgrade` at `c3a1f79`
-- **Master:** `fbf485f` (untouched, Phase 1 stable)
-- **feature/v2-autobackup:** `61f2d89` (Phase 2 + #78, old SDK, reference)
-- **Build:** `build-new/` — must run inside `nix develop` shell
-- **Tests:** 7/7 pass (inside nix develop)
-- **Basecamp:** notes green with new SDK plugin
+- **Branch:** `feature/new-appimage-compat`
+- **Last commit:** `97c70a2` — docs: upstream findings + bootcamp questions
+- **Build:** 7/7 tests passing on master
+- **AppImage status:** notes_ui loads (30s spinner), buttons non-functional — blocked by upstream #141
 
-## SDK versions
+## What works
 
-| What | Rev | Date |
-|------|-----|------|
-| Old (master) | `95f763b48d74` | 2026-02-25 |
-| Tictactoe's | `4197ee183041` | 2026-03-23 |
-| **New (this branch)** | `8b1cfadf090f` | **2026-04-09** |
+| Component | State |
+|-----------|-------|
+| notes core (notes_plugin.so) | ✅ solid — 7/7 tests, full encryption |
+| notes_ui manifest | ✅ correct — `type: "ui_qml"`, `view: "Main.qml"` |
+| notes_ui QML | ✅ correct — blocked only by upstream |
+| AppImage end-to-end | ❌ blocked — upstream #141 (dependency auto-loading) |
 
-New SDK adds: `logos_object.h`, `logos_registry.h`, `logos_transport.h`,
-`plugin_registry.h`, `logos_instance.h`, `logos_types.h`, and more.
-Key API changes: `requestObject` returns `LogosObject*` not `QObject*`,
-`onEvent` is now 3-arg, new `invokeRemoteMethodAsync`.
+## What's installed in AppImage user dirs
+
+- `modules/notes/` — notes_plugin.so + manifest + variant
+- `modules/keycard/` — keycard_plugin.so + manifest + variant
+- `modules/tictactoe/` — reference (kept)
+- `plugins/notes_ui/` — Main.qml + manifest (ui_qml) + variant
+- `plugins/tictactoe_ui/` — reference (kept)
+- Framework modules (capability_module, package_manager) — deleted user overrides, AppImage OG used
+
+## Upstream issues filed
+
+- logos-basecamp #141 — dependency auto-loading broken for user-installed ui_qml modules
+- logos-basecamp #142 — `view` field required but undocumented
+- Full findings: `docs/upstream/logos-basecamp-findings.md`
+- 8 bootcamp questions logged in same file
 
 ## Next steps (in order)
 
-1. Rebase or cherry-pick Phase 2 auto-backup code onto `feature/sdk-upgrade`
-2. Update `LogosStorageTransport` for new SDK API (`LogosObject*`, 3-arg `onEvent`)
-3. Build and verify tests pass
-4. Install to Basecamp, load storage_module (click Storage UI)
-5. Save a note, wait 30s, check debug.log for capability-token probe results
-6. **If the new SDK resolves the deny:** end-to-end upload works, merge the combined branch
-7. **If it doesn't:** the deny is fundamental, file upstream question, replan scope
-8. Either way: post-merge protocol (retro, skills, PROJECT_KNOWLEDGE)
+1. **Wait for Pavel's response** — determines bootcamp strategy (core devs present? which path?)
+2. **If core devs present at bootcamp:** bring questions from `docs/upstream/logos-basecamp-findings.md` directly
+3. **If ecosystem devs only:** focus on notes core story, collect contacts, skip AppImage demo
+4. **Park feature/new-appimage-compat** — it's correct, just waiting on upstream fix to #141
+5. **Do NOT build probe-basecamp** until #141 is resolved — probing a broken dependency path gives bad data
 
-## Build note
+## Blockers
 
-Tests must run inside `nix develop` shell — the new SDK pulls in
-`libzstd.so.1` and other libs not in the system library path:
+- Upstream logos-basecamp #141 — nothing we can do until Logos team fixes dependency auto-loading
+- Pavel's response — determines bootcamp strategy
 
-```bash
-export PATH="/nix/var/nix/profiles/default/bin:/usr/bin:/bin:$PATH"
-cd ~/logos-notes
-nix develop -c bash -c "cd build-new && ctest --output-on-failure"
-```
+## Context that's hard to re-derive
 
-## Branches for reference
-
-| Branch | Commit | Purpose |
-|--------|--------|---------|
-| `master` | `fbf485f` | Phase 1 stable, old SDK |
-| `feature/sdk-upgrade` | `c3a1f79` | New SDK, notes verified green |
-| `feature/v2-autobackup` | `61f2d89` | Phase 2 + #78, old SDK, DO NOT merge |
-
-## Context
-
-- Tictactoe module PR submitted: https://github.com/fryorcraken/logos-module-tictactoe/pull/1
-- Tictactoe uses generated SDK (`LogosModules`) for IPC — see `docs/skills/generated-sdk-ipc-pattern.md`
-- Discord message to @fryorcraken drafted at `docs/upstream/discord-fryorcraken-draft.md`
-- Upstream issue drafted at `docs/upstream/issue-draft-capability-tokens-for-core-plugins.md`
-- Senty needs status update
-- tmux: use native `tmux send-keys -t %2`, not tmux-bridge
+- The 30s spinner is the AppImage's dependency loading timeout, NOT LogosQmlBridge blocking
+- `LogosQmlBridge` has only one method: `callModule` — returns immediately with error if module not connected
+- Ghost IPC dirs in `/tmp/` accumulate across sessions — run `cd /tmp && ls | grep "^logos_" | xargs rm -rf` before every launch
+- `type: "ui"` (QWidget IComponent, tictactoe pattern) is deprecated — do not build on it
+- New reference for ui plugins: `counter_qml` (QML-only) and `package_manager_ui` (QML + C++ backend)
+- `package_manager_ui` has a `_replica_factory.so` for Qt Remote Objects — that's the IPC mechanism for C++ backends
