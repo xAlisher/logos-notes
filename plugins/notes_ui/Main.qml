@@ -102,31 +102,23 @@ Item {
         if (currentScreen === "import") {
             var result = logos.callModule("notes", "importWithKeycardKey",
                                           [keycardDerivedKey, root.pendingBackupPath])
-            try {
-                var obj = JSON.parse(result)
-                if (obj.success) {
-                    root.keySource = "keycard"
-                    root.currentScreen = "note"
-                    if (obj.warning) root.restoreWarning = obj.warning
-                } else {
-                    root.errorMessage = obj.error || "Import failed"
-                }
-            } catch (e) {
-                root.errorMessage = "Import failed"
+            var obj = callModuleParse(result)
+            if (obj && obj.success) {
+                root.keySource = "keycard"
+                root.currentScreen = "note"
+                if (obj.warning) root.restoreWarning = obj.warning
+            } else {
+                root.errorMessage = (obj && obj.error) || "Import failed"
             }
         } else if (currentScreen === "unlock") {
             var unlockResult = logos.callModule("notes", "unlockWithKeycardKey",
                                                  [keycardDerivedKey])
-            try {
-                var unlockObj = JSON.parse(unlockResult)
-                if (unlockObj.success) {
-                    root.currentScreen = "note"
-                    root.errorMessage = ""
-                } else {
-                    root.errorMessage = unlockObj.error || "Unlock failed"
-                }
-            } catch (e) {
-                root.errorMessage = "Unlock failed"
+            var unlockObj = callModuleParse(unlockResult)
+            if (unlockObj && unlockObj.success) {
+                root.currentScreen = "note"
+                root.errorMessage = ""
+            } else {
+                root.errorMessage = (unlockObj && unlockObj.error) || "Unlock failed"
             }
         }
         resetKeycardAuth()
