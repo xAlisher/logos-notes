@@ -142,6 +142,23 @@ Q_INVOKABLE QString importBackup(const QString& filePath, const QString& mnemoni
 
 `logos.callModule(module, method, args)` — synchronous, returns JSON string.
 
+**Double-wrap in ui_qml path (critical):** In `type: "ui_qml"` plugins, `logos.callModule` wraps the C++ QString return in an additional JSON string layer. `JSON.parse(result)` returns a string, not an object. Always use `callModuleParse()`:
+
+```qml
+function callModuleParse(raw) {
+    try {
+        var tmp = JSON.parse(raw)
+        return (typeof tmp === 'string') ? JSON.parse(tmp) : tmp
+    } catch (e) { return null }
+}
+```
+
+**Exceptions (plain-string returns — no parse needed):**
+- `isInitialized`, `getKeySource`, `getAccountFingerprint` — returned as bare strings
+
+**Special case — `loadNote` (plain text or error JSON):**
+Unwrap one layer with `JSON.parse`, then check `charAt(0) === '{'` to detect error JSON vs plain note content.
+
 ## PluginInterface — Base Class Definition
 
 From `/nix/store/092zxk8qbm9zxqigq1z0a5l901a068cz-logos-liblogos-headers-0.1.0/include/interface.h`:

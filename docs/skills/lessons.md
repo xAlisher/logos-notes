@@ -8,7 +8,7 @@
 Every method added to NotesBackend that QML needs must also be explicitly added to NotesPlugin as Q_INVOKABLE. QML callModule calls silently fail (no error, empty response) when the method doesn't exist on the plugin.
 
 ### 2. logos.callModule returns JSON, not raw text
-`loadNote(id)` returns note text wrapped in JSON. QML must parse the response before assigning to `editor.text`. On error returns `{"error":"..."}` — guard against this.
+`loadNote(id)` returns note text wrapped in JSON. QML must parse the response before assigning to `editor.text`. On error returns `{"error":"..."}` — guard against this. See also lesson #40 — in the `ui_qml` path responses are double-wrapped; use `callModuleParse()` not `JSON.parse()` directly.
 
 ### 3. Screen state must survive Qt Loader destruction
 Qt's Loader destroys the previous screen when switching. Data that needs to survive a screen transition must be passed as arguments to C++ backend methods, not held in QML state. Pass backup path to `importMnemonic()` on the C++ side before any screen switch.
