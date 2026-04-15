@@ -280,7 +280,7 @@ Item {
                         if (typeof logos === "undefined" || !logos.callModule) return
                         var json = logos.callModule("notes", "listBackups", [])
                         try {
-                            var parsed = JSON.parse(json)
+                            var parsed = callModuleParse(json)
                             // listBackups returns a raw array, not {backups: [...]}
                             var backups = Array.isArray(parsed) ? parsed : (parsed.backups || [])
                             if (backups.length > 0) {
@@ -442,7 +442,7 @@ Item {
                     if (typeof logos === "undefined" || !logos.callModule) return
                     root.errorMessage = ""
                     var result = logos.callModule("notes", "unlockWithPin", [unlockPinField.text])
-                    var parsed = JSON.parse(result)
+                    var parsed = callModuleParse(result)
                     if (parsed.success) {
                         root.currentScreen = "note"
                     } else {
@@ -502,7 +502,7 @@ Item {
         function refreshList() {
             if (typeof logos === "undefined" || !logos.callModule) return
             var json = logos.callModule("notes", "loadNotes", [])
-            var arr = JSON.parse(json)
+            var arr = callModuleParse(json)
             noteModel.clear()
             for (var i = 0; i < arr.length; i++) {
                 noteModel.append({
@@ -520,9 +520,12 @@ Item {
             loading = true
             if (id !== -1) {
                 var result = logos.callModule("notes", "loadNote", [id])
-                if (result && result.charAt(0) === '{') {
+                // Shell wraps C++ return in extra JSON layer — unwrap once to get inner string
+                var inner
+                try { inner = JSON.parse(result) } catch(e) { inner = result }
+                if (inner && inner.charAt(0) === '{') {
                     try {
-                        var parsed = JSON.parse(result)
+                        var parsed = JSON.parse(inner)
                         if (parsed.error) {
                             loading = false
                             retryNoteId = id
@@ -531,7 +534,7 @@ Item {
                         }
                     } catch(e) {}
                 }
-                editor.text = result || ""
+                editor.text = inner || ""
                 lastLoadedContent = editor.text
             }
             loading = false
@@ -562,7 +565,7 @@ Item {
             if (typeof logos === "undefined" || !logos.callModule) return
             saveCurrentNote()
             var json = logos.callModule("notes", "createNote", [])
-            var obj = JSON.parse(json)
+            var obj = callModuleParse(json)
             activeNoteId = obj.id
             loading = true
             editor.text = ""
@@ -710,8 +713,10 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 var nid = parent.parent.noteId
-                                if (typeof logos !== "undefined" && logos.callModule)
-                                    logos.callModule("notes", "deleteNote", [nid])
+                                if (typeof logos !== "undefined" && logos.callModule) {
+                                    var delResult = callModuleParse(logos.callModule("notes", "deleteNote", [nid]))
+                                    if (delResult && delResult.error) return
+                                }
                                 if (nid === noteScreen.activeNoteId)
                                     noteScreen.activeNoteId = -1
                                 noteScreen.refreshList()
@@ -1101,7 +1106,7 @@ Item {
                             onClicked: {
                                 if (typeof logos === "undefined" || !logos.callModule) return
                                 var result = logos.callModule("notes", "exportBackupAuto", [])
-                                var parsed = JSON.parse(result)
+                                var parsed = callModuleParse(result)
                                 pluginExportStatus.text = parsed.ok
                                     ? "Saved to: " + parsed.path
                                     : "Export failed: " + (parsed.error || "unknown")
