@@ -194,6 +194,27 @@ configure_file(
 enable_testing()
 find_package(Qt6 REQUIRED COMPONENTS Test)
 
+# qmllint — run as a ctest entry so QML errors surface alongside C++ failures.
+# Skipped gracefully if the binary is not found (e.g. CI without Qt installed).
+find_program(QMLLINT_EXECUTABLE qmllint
+    HINTS "${CMAKE_PREFIX_PATH}/bin"
+    DOC "Qt QML linter"
+)
+if(QMLLINT_EXECUTABLE)
+    add_test(NAME lint_main_qml
+        COMMAND ${QMLLINT_EXECUTABLE} "${CMAKE_SOURCE_DIR}/plugins/notes_ui/Main.qml"
+    )
+    set_tests_properties(lint_main_qml PROPERTIES
+        # Fail on Error only. Unqualified-access Warnings for `logos` are
+        # expected false positives — it is an injected bridge object that
+        # qmllint cannot resolve without a .qmltypes file.
+        FAIL_REGULAR_EXPRESSION "Error:"
+        LABELS "qml"
+    )
+else()
+    message(STATUS "qmllint not found — QML lint test skipped")
+endif()
+
 # Common core sources shared by all test targets
 set(TEST_CORE_SOURCES
     src/core/DatabaseManager.h

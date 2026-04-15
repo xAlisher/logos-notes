@@ -333,7 +333,8 @@ Item {
             Image {
                 source: "Lock.svg"
                 Layout.alignment: Qt.AlignHCenter
-                width: 32; height: 32
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 sourceSize: Qt.size(32, 32)
             }
 
@@ -431,16 +432,16 @@ Item {
                 enabled: root.lockoutRemaining === 0
                 text: root.lockoutRemaining > 0 ? "Locked (" + root.lockoutRemaining + "s)" : "Unlock"
                 contentItem: Text {
-                    text: parent.text
+                    text: unlockBtn.text
                     font.pixelSize: 14
                     font.weight: Font.Medium
-                    color: parent.enabled ? root.textColor : root.textDisabled
+                    color: unlockBtn.enabled ? root.textColor : root.textDisabled
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
                 background: Rectangle {
-                    color: parent.enabled
-                           ? (parent.pressed ? root.primaryHover : root.primary)
+                    color: unlockBtn.enabled
+                           ? (unlockBtn.pressed ? root.primaryHover : root.primary)
                            : root.bgSecondary
                     radius: 16
                     implicitHeight: 40
@@ -1102,6 +1103,7 @@ Item {
                         }
 
                         Button {
+                            id: exportBackupBtn
                             text: "Export Backup"
                             leftPadding: 24; rightPadding: 24
                             onClicked: {
@@ -1113,7 +1115,7 @@ Item {
                                     : "Export failed: " + (parsed.error || "unknown")
                             }
                             contentItem: Text {
-                                text: parent.text
+                                text: exportBackupBtn.text
                                 font.pixelSize: 14
                                 font.weight: Font.Medium
                                 color: "#FFFFFF"
@@ -1121,7 +1123,7 @@ Item {
                                 verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle {
-                                color: parent.pressed ? root.primaryHover : root.primary
+                                color: exportBackupBtn.pressed ? root.primaryHover : root.primary
                                 radius: 16
                                 implicitHeight: 36
                             }
@@ -1198,12 +1200,13 @@ Item {
                         }
 
                         Button {
+                            id: resetAppBtn
                             text: "Reset the app"
                             enabled: pluginConfirmCheck.checked
                             opacity: pluginConfirmCheck.checked ? 1.0 : 0.4
                             leftPadding: 24; rightPadding: 24
                             contentItem: Text {
-                                text: parent.text
+                                text: resetAppBtn.text
                                 font.pixelSize: 14
                                 font.weight: Font.Medium
                                 color: root.textColor
