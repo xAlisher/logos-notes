@@ -35,37 +35,26 @@ Everything else: agents handle autonomously. Trust the loop.
 - **Build**: CMake 3.28 + Nix flake
 - **OS**: Ubuntu 24.04
 
-### Key headers (Nix store)
-```
-/nix/store/092zxk8qbm9zxqigq1z0a5l901a068cz-logos-liblogos-headers-0.1.0/include/interface.h
-/nix/store/047dmhc4gi7yib02i1fbwidxpksqvcc2-logos-cpp-sdk/include/cpp/logos_api.h
-```
-
 ---
 
 ## Build Commands
 
 ```bash
-# Configure
-cmake -B build -G Ninja \
-  -DCMAKE_PREFIX_PATH=~/Qt/6.9.3/gcc_64 \
-  -DCMAKE_BUILD_TYPE=Debug
-
-# Build
-cmake --build build -j4
+# Configure + Build (inside nix develop — required for SDK transitive deps)
+nix develop -c bash -c "cmake -B build-new -G Ninja -DCMAKE_BUILD_TYPE=Debug && cmake --build build-new -j4"
 
 # Install to Logos App module paths
-cmake --install build
+cmake --install build-new
 
-# Run tests — always from build/ directory
-cd build && ctest --output-on-failure
+# Run tests — always inside nix develop, from build-new/
+nix develop -c bash -c "cd build-new && ctest --output-on-failure"
 
 # Lint QML before installing
 ~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
 
 # Launch Logos Basecamp for testing
-pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"
-~/logos-app/result/logos-basecamp.AppImage
+pkill -9 -f ".logos_host.elf"; pkill -9 -f ".ui-host.elf"; pkill -9 -f "LogosBasecamp"
+~/.local/share/Logos/appimages/current.AppImage
 ```
 
 ---
@@ -100,7 +89,7 @@ which only work with the portable/AppImage build.
 ### Kill all processes before relaunch
 logos_host child processes survive LogosBasecamp being killed and hold stale `.so` files.
 
-**Rule**: `pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"` before every test.
+**Rule**: `pkill -9 -f ".logos_host.elf"; pkill -9 -f ".ui-host.elf"; pkill -9 -f "LogosBasecamp"` before every test. Verify 0 processes remain.
 
 ---
 
@@ -132,39 +121,14 @@ call `resetAndWipe()` and return to import screen.
 
 ---
 
-## Logos App Shell Patterns
-
-```cpp
-// LogosAPI surface
-auto* client = logosAPI->getClient("package_manager");
-QVariant result = client->invokeRemoteMethod("SomeObject", "someMethod", args);
-client->onEvent(originObj, this, "eventName", [](auto name, auto data) { ... });
-logosAPI->getProvider()->registerObject("NotesBackend", backendObj);
-```
-
-```qml
-// QML bridge
-logos.callModule("notes", "methodName", [arg1, arg2])
-// returns JSON string — always JSON.parse() before use
-
-// Theme colors (hardcoded — no Logos.Theme in ui_qml)
-// backgroundPrimary: "#1A1A1F"
-// backgroundSecondary: "#232328"
-// accentOrange: "#FF7D46"
-// textPrimary: "#FFFFFF"
-// textSecondary: "#9B9BA6"
-```
-
----
-
 ## Development Routines
 
 ### After every feature branch
 1. Manual UI/UX test checklist (see below)
-2. `cmake --build build && cmake --install build`
+2. `nix develop -c bash -c "cmake --build build-new -j4 && cmake --install build-new"`
 3. Kill processes, test in Logos App AppImage
 4. Rebuild the current branch before `ctest` if tests, packaging, or build wiring changed
-5. `cd build && ctest --output-on-failure` — all tests must pass
+5. `nix develop -c bash -c "cd build-new && ctest --output-on-failure"` — all tests must pass
 6. Merge to master (see autonomous merge criteria)
 7. Update README.md + screenshots
 8. Create GitHub release with version tag + attach LGX artifacts (`nix bundle --bundler github:logos-co/nix-bundle-lgx .#lib` and `.#ui`)
@@ -209,11 +173,11 @@ Merge without waiting for Alisher when ALL are true:
 - [ ] Wrong PIN 5x → lockout → wait → correct PIN works
 
 **Logos App (never skip):**
-- [ ] `cmake --install build` → kill Logos App → relaunch AppImage
+- [ ] `cmake --install build-new` → kill all Logos processes → relaunch `current.AppImage`
 - [ ] Notes module loads in sidebar
 - [ ] Full flow: import → notes → lock → unlock → notes intact
 - [ ] Backup export/import works via plugin bridge
-- [ ] SQLite check: `sqlite3 ~/.local/share/logos_host/notes.db "SELECT hex(title_ciphertext) FROM notes LIMIT 1;"` → hex blob, not readable text
+- [ ] SQLite check: `sqlite3 ~/.local/share/.logos_host.elf/notes.db "SELECT hex(title_ciphertext) FROM notes LIMIT 1;"` → hex blob, not readable text
 
 ---
 
@@ -228,11 +192,7 @@ gh issue create --title "Release: Build LGX packages for <version/description>"
 Include: what's in the release, what changed since last build, known issues.
 
 ### 2. Build
-```bash
-# Use #portable bundler for correct platform (linux-amd64 not linux-amd64-dev)
-nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#lib
-nix bundle --bundler github:logos-co/nix-bundle-lgx#portable .#ui
-```
+See `docs/skills/architecture.md` — LGX Package Format → Build command.
 
 ### 3. Verify
 - notes_plugin.so present in core LGX
@@ -277,9 +237,9 @@ For issues that change method signatures or state contracts:
 ## Default Verification Matrix
 
 Unless the issue says otherwise, verify:
-1. `nix develop` dev build (`cmake -B build -G Ninja && cmake --build build`)
+1. `nix develop` dev build (`nix develop -c bash -c "cmake --build build-new -j4"`)
 2. `nix build .#lib`
-3. `cd build && ctest --output-on-failure`
+3. `nix develop -c bash -c "cd build-new && ctest --output-on-failure"`
 
 Host runtime validation in Basecamp is required **only** when the issue explicitly calls for real host-app behavior.
 

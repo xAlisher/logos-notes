@@ -78,7 +78,7 @@ meta(key, value)
 
 | Context | Path |
 |---------|------|
-| Logos Basecamp plugin | `~/.local/share/logos_host/notes.db` |
+| Logos Basecamp plugin | `~/.local/share/.logos_host.elf/notes.db` |
 | Standalone app | `~/.local/share/logos-co/logos-notes/notes.db` |
 
 When wiping for tests, delete both. When verifying DB contents, check which context you're in.
