@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # ── Qt ──────────────────────────────────────────────────────────────────────
-find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml QuickControls2 Sql RemoteObjects)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml QuickControls2 Sql RemoteObjects Widgets QuickWidgets)
 qt_standard_project_setup()
 qt_policy(SET QTP0001 NEW) 
 qt_policy(SET QTP0004 NEW)
@@ -141,6 +141,55 @@ configure_file(
     COPYONLY
 )
 
+# ── Notes UI Plugin (IComponent wrapper that embeds Main.qml) ─────────────────
+# Needed so loadLegacyUiModule pre-loads the notes core dep before QML starts.
+
+set(LOGOS_VIEW_MODULE_RUNTIME
+    "/nix/store/s0jhc3nwm0yd23kn3xh4cvk5g4v3a8xd-logos-view-module-runtime-1.0.0")
+
+# IComponent.h lives in the tictactoe-ui package (same IID, same layout)
+set(ICOMPONENT_INCLUDE_DIR
+    "/nix/store/1lz55df1b2sw6gl8f0x1s7hrrvfr2rh3-tictactoe-ui/interfaces")
+
+set(UI_PLUGIN_SOURCES
+    src/ui_plugin/NotesUiPlugin.h
+    src/ui_plugin/NotesUiPlugin.cpp
+    # Compile LogosQmlBridge from the logos-app source used to build the AppImage
+    /nix/store/ci0j8w9vrpkvr6cci5h8msbfav78y34f-source/src/LogosQmlBridge.cpp
+)
+
+add_library(notes_ui_plugin MODULE ${UI_PLUGIN_SOURCES})
+
+set_target_properties(notes_ui_plugin PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "notes_ui_plugin"
+)
+
+target_include_directories(notes_ui_plugin PRIVATE
+    src
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+    "${LOGOS_VIEW_MODULE_RUNTIME}/include"
+    "${ICOMPONENT_INCLUDE_DIR}"
+    /nix/store/ci0j8w9vrpkvr6cci5h8msbfav78y34f-source/src
+)
+
+target_link_libraries(notes_ui_plugin PRIVATE
+    Qt6::Core
+    Qt6::Quick
+    Qt6::Widgets
+    Qt6::QuickWidgets
+    "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
+)
+
+configure_file(
+    src/ui_plugin/ui_plugin_metadata.json
+    ${CMAKE_CURRENT_BINARY_DIR}/src/ui_plugin/ui_plugin_metadata.json
+    COPYONLY
+)
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 enable_testing()
 find_package(Qt6 REQUIRED COMPONENTS Test)
@@ -229,10 +278,10 @@ add_test(NAME test_storage_client COMMAND test_storage_client)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 
-# Logos Basecamp paths (renamed from LogosApp in March 2026)
-# Dev builds (cmake install) use LogosBasecampDev
-# Portable builds (AppImage/LGX) use LogosBasecamp
-set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosBasecampDev")
+# Dev install convention (mirrors keycard-basecamp pattern):
+#   Primary:  LogosApp   — cmake --install target
+#   Mirror:   LogosBasecamp — AppImage runtime dir
+set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
 set(NOTES_MODULE_DIR "${LOGOS_APP_DATA}/modules/notes")
 set(NOTES_UI_DIR     "${LOGOS_APP_DATA}/plugins/notes_ui")
 
@@ -256,6 +305,9 @@ install(TARGETS notes_plugin
 install(FILES modules/notes/manifest.json
     DESTINATION "${NOTES_MODULE_DIR}"
 )
+install(TARGETS notes_ui_plugin
+    LIBRARY DESTINATION "${NOTES_UI_DIR}"
+)
 install(FILES
     plugins/notes_ui/manifest.json
     plugins/notes_ui/metadata.json
@@ -268,3 +320,49 @@ install(FILES
 install(FILES assets/icons/app_icon.png
     DESTINATION "${NOTES_UI_DIR}/icons"
 )
+
+# Patch RUNPATH on notes_plugin.so after install:
+#   1. Collect Nix store lib dirs (Qt, libsodium, etc.) from the build artifact.
+#   2. Add system lib paths so Nix ld-linux can find system libs (libpcsclite etc.).
+find_program(PATCHELF_EXECUTABLE patchelf)
+if(PATCHELF_EXECUTABLE)
+    install(CODE "
+        set(_plugin \"${NOTES_MODULE_DIR}/notes_plugin.so\")
+        set(_build_so \"${CMAKE_BINARY_DIR}/notes_plugin.so\")
+        if(EXISTS \"\${_plugin}\")
+            execute_process(
+                COMMAND bash -c \"ldd '\${_build_so}' | grep nix/store | awk '{print \\\$3}' | xargs -I{} dirname {} | sort -u | tr '\\n' ':' | sed 's/:$//'\"\
+                OUTPUT_VARIABLE _nix_paths
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+            set(_rpath \"\\\$ORIGIN:\${_nix_paths}:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu\")
+            execute_process(
+                COMMAND ${PATCHELF_EXECUTABLE} --set-rpath \"\${_rpath}\" \"\${_plugin}\"
+            )
+            message(STATUS \"Patched RUNPATH on notes_plugin.so\")
+        endif()
+    ")
+endif()
+
+# Mirror notes module + UI plugin to LogosBasecamp (AppImage runtime dir).
+install(CODE "
+    set(_mod_src \"${NOTES_MODULE_DIR}\")
+    set(_mod_dst \"\$ENV{HOME}/.local/share/Logos/LogosBasecamp/modules/notes\")
+    message(STATUS \"Mirroring notes module to LogosBasecamp: \${_mod_dst}\")
+    file(COPY \"\${_mod_src}/\" DESTINATION \"\${_mod_dst}\")
+
+    set(_ui_src \"${NOTES_UI_DIR}\")
+    set(_ui_dst \"\$ENV{HOME}/.local/share/Logos/LogosBasecamp/plugins/notes_ui\")
+    message(STATUS \"Mirroring notes UI to LogosBasecamp: \${_ui_dst}\")
+    file(GLOB _ui_files \"\${_ui_src}/*\")
+    foreach(_f \${_ui_files})
+        if(NOT IS_DIRECTORY \"\${_f}\")
+            file(COPY \"\${_f}\" DESTINATION \"\${_ui_dst}\")
+        endif()
+    endforeach()
+    file(GLOB _ui_icons \"\${_ui_src}/icons/*\")
+    foreach(_f \${_ui_icons})
+        file(COPY \"\${_f}\" DESTINATION \"\${_ui_dst}/icons\")
+    endforeach()
+    message(STATUS \"Mirror complete\")
+")

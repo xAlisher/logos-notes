@@ -5,8 +5,10 @@
   "description": "Encrypted local-first notes for the Logos ecosystem",
   "icon": "",
   "main": {
-    "linux-amd64": "notes_plugin.so",
-    "darwin-arm64": "notes_plugin.dylib"
+    "linux-amd64":       "notes_plugin.so",
+    "linux-amd64-dev":   "notes_plugin.so",
+    "linux-x86_64-dev":  "notes_plugin.so",
+    "darwin-arm64":      "notes_plugin.dylib"
   },
   "manifestVersion": "0.2.0",
   "name": "notes",

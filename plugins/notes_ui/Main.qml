@@ -35,6 +35,15 @@ Item {
     property string keycardAuthId: ""
     property string keycardAuthStatus: "disconnected"  // "disconnected", "pending", "connected"
     property string keycardDerivedKey: ""
+    property bool   keycardPollBusy: false
+
+    // logos.callModule wraps the C++ QString return in an extra JSON layer — parse twice.
+    function callModuleParse(raw) {
+        try {
+            var tmp = JSON.parse(raw)
+            return (typeof tmp === 'string') ? JSON.parse(tmp) : tmp
+        } catch (e) { return null }
+    }
 
     Timer {
         id: keycardStatusPoller
@@ -47,51 +56,45 @@ Item {
     function requestKeycardAuth() {
         if (typeof logos === "undefined" || !logos.callModule) return
         var result = logos.callModule("keycard", "requestAuth", ["notes_encryption", "notes"])
-        try {
-            var response = JSON.parse(result)
+        var response = callModuleParse(result)
+        if (response !== null && !response.error) {
             if (response.authId) {
                 root.keycardAuthId = response.authId
                 root.keycardAuthStatus = "pending"
                 root.errorMessage = ""
-            } else if (response.error) {
-                root.errorMessage = response.error
             }
-        } catch (e) {
-            root.errorMessage = "Failed to request keycard auth"
+        } else {
+            root.errorMessage = (response && response.error) ? response.error : "Failed to request keycard auth"
         }
     }
 
     function checkKeycardAuthStatus() {
         if (!root.keycardAuthId) return
+        if (root.keycardPollBusy) return  // callModule blocks; guard prevents re-entrant stack buildup
+        root.keycardPollBusy = true
         var result = logos.callModule("keycard", "checkAuthStatus", [root.keycardAuthId])
-        try {
-            var response = JSON.parse(result)
-            if (response.status === "complete" && response.key) {
-                root.keycardAuthStatus = "connected"
-                root.keycardDerivedKey = response.key
-                // Auto-complete the current flow
-                processKeycardKey()
-            } else if (response.status === "failed") {
-                root.keycardAuthStatus = "disconnected"
-                root.keycardAuthId = ""
-                root.errorMessage = response.error || "Authorization failed"
-            } else if (response.status === "rejected") {
-                root.keycardAuthStatus = "disconnected"
-                root.keycardAuthId = ""
-                root.errorMessage = "Authorization rejected"
-            } else if (response.error) {
-                // Unknown/expired auth ID or other error — stop polling
-                root.keycardAuthStatus = "disconnected"
-                root.keycardAuthId = ""
-                root.errorMessage = response.error
-            }
-        } catch (e) {
-            console.error("Failed to check keycard auth status:", e)
-            // Parse failure — stop polling to avoid infinite loop
+        var response = callModuleParse(result)
+        if (response === null || response.error) {
+            // Unknown/expired auth ID or parse failure — stop polling
             root.keycardAuthStatus = "disconnected"
             root.keycardAuthId = ""
-            root.errorMessage = "Keycard communication error"
+            root.errorMessage = (response && response.error) ? response.error : "Keycard communication error"
+        } else if (response.status === "complete" && response.key) {
+            root.keycardAuthStatus = "connected"
+            root.keycardDerivedKey = response.key
+            root.keycardPollBusy = false
+            processKeycardKey()
+            return
+        } else if (response.status === "failed") {
+            root.keycardAuthStatus = "disconnected"
+            root.keycardAuthId = ""
+            root.errorMessage = response.error || "Authorization failed"
+        } else if (response.status === "rejected") {
+            root.keycardAuthStatus = "disconnected"
+            root.keycardAuthId = ""
+            root.errorMessage = "Authorization rejected"
         }
+        root.keycardPollBusy = false
     }
 
     function processKeycardKey() {
