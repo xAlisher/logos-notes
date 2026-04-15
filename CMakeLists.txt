@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # ── Qt ──────────────────────────────────────────────────────────────────────
-find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml QuickControls2 Sql RemoteObjects Widgets QuickWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick Qml QuickControls2 Sql RemoteObjects)
 qt_standard_project_setup()
 qt_policy(SET QTP0001 NEW) 
 qt_policy(SET QTP0004 NEW)
@@ -141,54 +141,10 @@ configure_file(
     COPYONLY
 )
 
-# ── Notes UI Plugin (IComponent wrapper that embeds Main.qml) ─────────────────
-# Needed so loadLegacyUiModule pre-loads the notes core dep before QML starts.
-
-set(LOGOS_VIEW_MODULE_RUNTIME
-    "/nix/store/s0jhc3nwm0yd23kn3xh4cvk5g4v3a8xd-logos-view-module-runtime-1.0.0")
-
-# IComponent.h lives in the tictactoe-ui package (same IID, same layout)
-set(ICOMPONENT_INCLUDE_DIR
-    "/nix/store/1lz55df1b2sw6gl8f0x1s7hrrvfr2rh3-tictactoe-ui/interfaces")
-
-set(UI_PLUGIN_SOURCES
-    src/ui_plugin/NotesUiPlugin.h
-    src/ui_plugin/NotesUiPlugin.cpp
-    # Compile LogosQmlBridge from the logos-app source used to build the AppImage
-    /nix/store/ci0j8w9vrpkvr6cci5h8msbfav78y34f-source/src/LogosQmlBridge.cpp
-)
-
-add_library(notes_ui_plugin MODULE ${UI_PLUGIN_SOURCES})
-
-set_target_properties(notes_ui_plugin PROPERTIES
-    PREFIX ""
-    OUTPUT_NAME "notes_ui_plugin"
-)
-
-target_include_directories(notes_ui_plugin PRIVATE
-    src
-    "${LOGOS_LIBLOGOS_HEADERS}"
-    "${LOGOS_CPP_SDK}/include"
-    "${LOGOS_CPP_SDK}/include/cpp"
-    "${LOGOS_CPP_SDK}/include/core"
-    "${LOGOS_VIEW_MODULE_RUNTIME}/include"
-    "${ICOMPONENT_INCLUDE_DIR}"
-    /nix/store/ci0j8w9vrpkvr6cci5h8msbfav78y34f-source/src
-)
-
-target_link_libraries(notes_ui_plugin PRIVATE
-    Qt6::Core
-    Qt6::Quick
-    Qt6::Widgets
-    Qt6::QuickWidgets
-    "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
-)
-
-configure_file(
-    src/ui_plugin/ui_plugin_metadata.json
-    ${CMAKE_CURRENT_BINARY_DIR}/src/ui_plugin/ui_plugin_metadata.json
-    COPYONLY
-)
+# ── Notes UI Plugin ───────────────────────────────────────────────────────────
+# Pure ui_qml path — no C++ IComponent wrapper needed.
+# The AppImage 9b52529-160 (upstream #141 fix) loads ui_qml modules correctly.
+# Basecamp reads manifest.json: type=ui_qml, view=Main.qml → QML-only load.
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 enable_testing()
@@ -343,9 +299,6 @@ install(TARGETS notes_plugin
 )
 install(FILES modules/notes/manifest.json
     DESTINATION "${NOTES_MODULE_DIR}"
-)
-install(TARGETS notes_ui_plugin
-    LIBRARY DESTINATION "${NOTES_UI_DIR}"
 )
 install(FILES
     plugins/notes_ui/manifest.json
