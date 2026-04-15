@@ -276,6 +276,24 @@ target_link_libraries(test_storage_client PRIVATE
 )
 add_test(NAME test_storage_client COMMAND test_storage_client)
 
+# Backup + Storage integration tests — chains NotesBackend (local export/import)
+# with StorageClient (mock transport). No SDK linkage needed.
+add_executable(test_backup_storage
+    tests/test_backup_storage.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
+    ${TEST_CORE_SOURCES}
+)
+target_include_directories(test_backup_storage PRIVATE
+    src
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+)
+target_link_libraries(test_backup_storage PRIVATE ${TEST_CORE_LIBS})
+add_test(NAME test_backup_storage COMMAND test_backup_storage)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 
 # Dev install convention (mirrors keycard-basecamp pattern):
