@@ -1,6 +1,5 @@
 #include "NotesPlugin.h"
 
-#include "core/LibStorageTransport.h"
 #include "core/StorageClient.h"
 #include "cpp/logos_api.h"
 
@@ -14,20 +13,14 @@ NotesPlugin::NotesPlugin(QObject* parent)
 void NotesPlugin::initLogos(LogosAPI* api)
 {
     logosAPI = api;
-
-    // Embed a logos-storage-nim node in-process via libstorage.a.
-    // No Logos IPC, no capability tokens. The node starts async —
-    // isConnected() returns true once cbStart fires RET_OK.
-    auto* t = new LibStorageTransport();
-    t->start();
-    auto storage = std::make_unique<StorageClient>(
-        std::unique_ptr<StorageTransport>(t));
-    m_backend.setStorageClient(std::move(storage));
+    // libstorage.a removed — Nim runtime (cmdLine/cmdCount) conflicts with
+    // logos_host child process dlopen. Storage backup unavailable until
+    // a token-free IPC path is available (upstream bug #141).
 }
 
 void NotesPlugin::ensureStorageClient()
 {
-    // LibStorageTransport is started once in initLogos(). Nothing to do here.
+    // No-op: storage client not available (libstorage.a removed, see initLogos).
 }
 
 QString NotesPlugin::initialize()

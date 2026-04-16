@@ -109,8 +109,6 @@ set(PLUGIN_SOURCES
     src/core/KeyManager.cpp
     src/core/StorageClient.h
     src/core/StorageClient.cpp
-    src/core/LibStorageTransport.h
-    src/core/LibStorageTransport.cpp
     src/core/LogosStorageTransport.cpp
 )
 
@@ -139,10 +137,6 @@ target_link_libraries(notes_plugin PRIVATE
     Qt6::Sql
     PkgConfig::sodium
     "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
-    "${LOGOS_STORAGE_DIR}/lib/libstorage.a"
-    "${LOGOS_STORAGE_DIR}/lib/libbacktrace.a"
-    "${LOGOS_STORAGE_DIR}/lib/libminiupnpc.a"
-    "${LOGOS_STORAGE_DIR}/lib/libnatpmp.a"
     dl pthread
 )
 

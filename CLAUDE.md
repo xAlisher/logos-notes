@@ -274,20 +274,25 @@ Host runtime validation in Basecamp is required **only** when the issue explicit
 
 ## Logos Basecamp Updates Routine
 
-Check weekly:
+See `~/basecamp-skills/skills/appimage-provisioning.md` for the full protocol.
+
+Quick version:
 ```bash
-cd ~/logos-app && git fetch && git log HEAD..origin/master --oneline
+# Check latest release
+gh release list --repo logos-co/logos-basecamp --limit 5
+
+# Download latest
+LATEST=$(gh release list --repo logos-co/logos-basecamp --limit 1 --json tagName --jq '.[0].tagName')
+gh release download "$LATEST" --repo logos-co/logos-basecamp \
+  --pattern "logos-basecamp-x86_64.AppImage" --output ~/logos-basecamp-current.AppImage
+chmod +x ~/logos-basecamp-current.AppImage
 ```
 
-If updates exist:
-```bash
-git pull && nix build '.#bin-appimage'
-```
-
-Re-run full UI/UX checklist after every Logos Basecamp update. Watch specifically for:
+Re-run full UI/UX checklist after every update. Watch specifically for:
 - `PluginInterface` changes — update `NotesPlugin` immediately if broken
 - `LogosQmlBridge` new methods or behavior changes
 - `logos-design-system` token changes affecting hardcoded colors
+- Stale framework modules (see `appimage-module-versioning.md`)
 
 ---
 
