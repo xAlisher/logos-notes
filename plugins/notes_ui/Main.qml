@@ -1128,6 +1128,270 @@ Item {
                     }
                 }
 
+                // Cloud Backup (Keycard sessions only)
+                Rectangle {
+                    id: cloudBackupCard
+                    width: parent.width
+                    height: cloudBackupCol.height + 40
+                    color: root.bgSecondary
+                    radius: 8
+                    visible: root.keySource === "keycard"
+
+                    // Hidden TextEdit for clipboard copy
+                    TextEdit {
+                        id: clipHelper
+                        visible: false
+                        text: ""
+                    }
+
+                    // Poll storage status every 5s while settings is open
+                    Timer {
+                        id: backupStatusPoller
+                        interval: 5000
+                        running: noteScreen.showSettings && root.keySource === "keycard"
+                        repeat: true
+                        onTriggered: cloudBackupCard.refreshBackupStatus()
+                    }
+
+                    function refreshBackupStatus() {
+                        if (typeof logos === "undefined" || !logos.callModule) return
+                        var st = callModuleParse(logos.callModule("notes", "getStorageStatus", []))
+                        if (typeof st === "string") cloudStatus = st
+                        else if (st && typeof st === "object" && st.status) cloudStatus = st.status
+                        var cidRaw = callModuleParse(logos.callModule("notes", "getBackupCid", []))
+                        if (cidRaw && cidRaw.cid) {
+                            cloudCid = cidRaw.cid
+                            cloudTs  = cidRaw.timestamp ? parseInt(cidRaw.timestamp) : 0
+                        } else {
+                            cloudCid = ""
+                            cloudTs  = 0
+                        }
+                    }
+
+                    property string cloudStatus: "disabled"
+                    property string cloudCid:    ""
+                    property int    cloudTs:     0
+
+                    // Refresh when settings opens
+                    Connections {
+                        target: noteScreen
+                        function onShowSettingsChanged() {
+                            if (noteScreen.showSettings && root.keySource === "keycard")
+                                cloudBackupCard.refreshBackupStatus()
+                        }
+                    }
+
+                    function statusColor() {
+                        switch (cloudStatus) {
+                            case "synced":      return "#22C55E"
+                            case "uploading":   return "#FF7D46"
+                            case "failed":      return root.errorColor
+                            default:            return root.textSecondary
+                        }
+                    }
+
+                    function statusLabel() {
+                        switch (cloudStatus) {
+                            case "synced":      return "Synced"
+                            case "uploading":   return "Uploading…"
+                            case "failed":      return "Failed"
+                            case "unavailable": return "Storage unavailable"
+                            default:            return "Not available"
+                        }
+                    }
+
+                    function relativeTime(epochSecs) {
+                        if (epochSecs === 0) return ""
+                        var diff = Math.floor(Date.now() / 1000) - epochSecs
+                        if (diff < 5)   return "just now"
+                        if (diff < 60)  return diff + "s ago"
+                        if (diff < 3600) return Math.floor(diff / 60) + "m ago"
+                        if (diff < 86400) return Math.floor(diff / 3600) + "h ago"
+                        return Math.floor(diff / 86400) + "d ago"
+                    }
+
+                    function truncateCid(cid) {
+                        if (!cid || cid.length <= 12) return cid
+                        return cid.slice(0, 6) + "…" + cid.slice(-4)
+                    }
+
+                    Column {
+                        id: cloudBackupCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 20 }
+                        spacing: 10
+
+                        // Header row: label + status dot
+                        Row {
+                            width: parent.width
+                            spacing: 8
+
+                            Text {
+                                text: "Cloud Backup"
+                                font.pixelSize: 14
+                                font.weight: Font.Bold
+                                color: root.textColor
+                            }
+
+                            Rectangle {
+                                width: 8; height: 8
+                                radius: 4
+                                color: cloudBackupCard.statusColor()
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: cloudBackupCard.statusLabel()
+                                font.pixelSize: 12
+                                color: cloudBackupCard.statusColor()
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        // CID row (shown only when a CID exists)
+                        Row {
+                            width: parent.width
+                            spacing: 8
+                            visible: cloudBackupCard.cloudCid !== ""
+
+                            Text {
+                                text: cloudBackupCard.truncateCid(cloudBackupCard.cloudCid)
+                                font.pixelSize: 12
+                                color: root.textSecondary
+                                font.family: "monospace"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Rectangle {
+                                width: copyBtn.implicitWidth + 16
+                                height: 22
+                                radius: 11
+                                color: copyBtn.pressed ? root.bgActive : root.bgOverlay
+
+                                Text {
+                                    id: copyBtn
+                                    property bool pressed: false
+                                    anchors.centerIn: parent
+                                    text: "Copy"
+                                    font.pixelSize: 11
+                                    color: root.textSecondary
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onPressed:  copyBtn.pressed = true
+                                    onReleased: copyBtn.pressed = false
+                                    onClicked: {
+                                        if (cloudBackupCard.cloudCid !== "") {
+                                            clipHelper.text = cloudBackupCard.cloudCid
+                                            clipHelper.selectAll()
+                                            clipHelper.copy()
+                                            cidCopyStatus.visible = true
+                                            cidCopyTimer.restart()
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                id: cidCopyStatus
+                                text: "Copied!"
+                                font.pixelSize: 11
+                                color: "#22C55E"
+                                visible: false
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                Timer {
+                                    id: cidCopyTimer
+                                    interval: 1500
+                                    onTriggered: cidCopyStatus.visible = false
+                                }
+                            }
+                        }
+
+                        // Timestamp
+                        Text {
+                            visible: cloudBackupCard.cloudTs > 0
+                            text: "Last backup: " + cloudBackupCard.relativeTime(cloudBackupCard.cloudTs)
+                            font.pixelSize: 12
+                            color: root.textSecondary
+
+                            Timer {
+                                interval: 30000
+                                running: parent.visible
+                                repeat: true
+                                onTriggered: parent.text = "Last backup: " + cloudBackupCard.relativeTime(cloudBackupCard.cloudTs)
+                            }
+                        }
+
+                        // Empty state
+                        Text {
+                            visible: cloudBackupCard.cloudCid === "" && cloudBackupCard.cloudStatus !== "unavailable" && cloudBackupCard.cloudStatus !== "disabled"
+                            text: "No backup yet — save a note to trigger the first upload"
+                            font.pixelSize: 12
+                            color: root.textSecondary
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                            visible: cloudBackupCard.cloudStatus === "unavailable" || cloudBackupCard.cloudStatus === "disabled"
+                            text: "Logos Storage not available"
+                            font.pixelSize: 12
+                            color: root.textSecondary
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                        }
+
+                        // Back up now button
+                        Row {
+                            spacing: 10
+                            visible: cloudBackupCard.cloudStatus !== "uploading"
+                                  && cloudBackupCard.cloudStatus !== "unavailable"
+                                  && cloudBackupCard.cloudStatus !== "disabled"
+
+                            Button {
+                                id: backupNowBtn
+                                text: "Back up now"
+                                leftPadding: 24; rightPadding: 24
+                                onClicked: {
+                                    if (typeof logos === "undefined" || !logos.callModule) return
+                                    var result = callModuleParse(logos.callModule("notes", "triggerBackup", []))
+                                    if (result && result.error) {
+                                        backupNowStatus.text = result.error
+                                    } else {
+                                        backupNowStatus.text = ""
+                                        cloudBackupCard.cloudStatus = "uploading"
+                                        backupStatusPoller.restart()
+                                    }
+                                }
+                                contentItem: Text {
+                                    text: backupNowBtn.text
+                                    font.pixelSize: 13
+                                    font.weight: Font.Medium
+                                    color: "#FFFFFF"
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: backupNowBtn.pressed ? root.primaryHover : root.primary
+                                    radius: 16
+                                    implicitHeight: 32
+                                }
+                            }
+                        }
+
+                        Text {
+                            id: backupNowStatus
+                            text: ""
+                            visible: text.length > 0
+                            font.pixelSize: 12
+                            color: root.errorColor
+                            width: parent.width
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
                 // Danger Zone
                 Rectangle {
                     width: parent.width
