@@ -514,8 +514,11 @@ Item {
 
         function doStashBackup() {
             if (typeof logos === "undefined" || !logos.callModule) return
-            if (noteScreen.activeNoteId < 0) return
             if (noteScreen.stashBusy) return
+            if (noteScreen.activeNoteId < 0) {
+                noteScreen.stashLogAppend("no note selected — open a note first", "error")
+                return
+            }
             noteScreen.stashBusy = true
 
             // Save first so the exported file is current
@@ -1091,7 +1094,6 @@ Item {
                 }
             }
 
-            TextEdit { id: logClipHelper; visible: false }
         }
 
         // ── Empty state ─────────────────────────────────────────────
@@ -1707,6 +1709,7 @@ Item {
         }
 
         TextEdit { id: fpHelper; visible: false }
+        TextEdit { id: logClipHelper; visible: false }
         Timer { id: pluginCopyTimer; interval: 2000 }
     }
 }
