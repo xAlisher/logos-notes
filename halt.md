@@ -1,48 +1,56 @@
-# Halt — 2026-04-16
+# Halt — 2026-04-16 (session 2)
 
 ## Where we stopped
 
-Built stash-basecamp from scratch — universal module-watch protocol, QML gear panel, uploadWithCallback, auto-poll timer. Senty reviewed twice, LGTM on both stash-basecamp `a3f497c` and logos-notes `f5eceff`. Attempted smoke test in Logos Basecamp AppImage. Hit a fundamental blocker: `stash_plugin.so` statically links `libstorage.a` (Nim runtime) which conflicts with the AppImage's bundled `storage_module_plugin.so` (loads `libstorage.so`). Two Nim runtimes in one process → stash module silently fails to load, not visible in sidebar.
+Smoke tested stash-basecamp in Logos Basecamp AppImage. Hit the Nim runtime conflict
+(stash statically links libstorage.a, AppImage already has storage_module loading
+libstorage.so — two runtimes, stash silently doesn't load). Wrote a cold retrospective
+of all storage integration attempts. Discussed QML routing as the next viable path.
+User halted to save tokens.
 
 ## Current state
 
-- **Branch (stash-basecamp):** `feature/notes-integration` @ `a3f497c` — Senty LGTM ✓
-- **Branch (logos-notes):** `feature/stash-integration` @ `f5eceff` — Senty LGTM ✓
-- **Build status:** both pass `ctest` (stash 2/2, notes 11/11)
-- **AppImage smoke test:** BLOCKED — stash module not visible in sidebar (Nim runtime conflict)
-- **Open review:** none — both branches have LGTM, waiting for master merge go-ahead
+- **Branch (stash-basecamp):** `feature/notes-integration` @ `461ebea` — Senty LGTM ✓
+- **Branch (logos-notes):** `feature/stash-integration` @ `686beee` — Senty LGTM ✓
+- **Build:** both pass ctest (stash 2/2, notes 11/11)
+- **AppImage smoke test:** BLOCKED — stash module invisible (Nim runtime conflict)
+- **Open review:** none — both branches LGTM, awaiting merge go-ahead from Alisher
 
 ## Next steps (in order)
 
-1. **Decide: merge current branches as-is or fix first**
-   - Current code is correct and tested headlessly. The AppImage conflict is a deployment architecture issue, not a logic bug.
-   - Option A: merge now, file issue for LibStorageTransport → IPC rewire in follow-up
-   - Option B: rewire first, then merge (significant work — need storage_module API method names)
+1. **Test QML routing** — cheapest possible experiment:
+   - Strip `libstorage.a` linkage from stash CMakeLists.txt (fixes Nim conflict, stash loads)
+   - Add one call in stash QML: `logos.callModule("storage_module", "getStatus", [])`
+   - Reinstall, launch, check if it returns real data or empty/null
+   - If works → tokens available from third-party QML → invest in full rewire
+   - If fails → same token wall → go REST HTTP or accept local-only backup
 
-2. **If merging (Option A):**
-   - `cd ~/stash-basecamp && git checkout master && git merge feature/notes-integration`
-   - `cd ~/logos-notes && git checkout master && git merge feature/stash-integration`
-   - File stash-basecamp issue: "Replace LibStorageTransport with storage_module IPC"
-   - Close stash-basecamp #5 (LGTM'd), close logos-notes #95
+2. **If QML routing works:**
+   - Stash C++: add `prepareUpload(moduleName)` → exports file, returns path
+   - Stash QML: calls storage_module directly, polls for CID, calls setBackupCid on notes
+   - Remove LibStorageTransport + StorageClient from stash (no longer needed)
+   - Re-test, Senty review, merge
 
-3. **If rewiring (Option B):**
-   - Check storage_module API: what methods does `StorageBackend` expose? (`lm` tool or inspect manifest)
-   - Replace `src/core/LibStorageTransport.cpp` with IPC calls via `logosAPI->getClient("storage_module")`
-   - Remove `libstorage.a` linkage from `CMakeLists.txt`
-   - Re-run tests, re-Senty, re-smoke
+3. **If QML routing fails:**
+   - Decision point: REST HTTP (port 8080) or accept local-only?
+   - See `stash-basecamp/docs/why-logos-storage-always-fails.md` for full options
 
-4. **Post-merge (whichever option):** update stash-basecamp #6 (Stash Protocol spec) to document the IPC fix path
+4. **Merge decision (either way):**
+   - Alisher still needs to go-ahead on merging both current branches to master
+   - Current code is clean and LGTM'd regardless of storage outcome
 
 ## Blockers
 
-- Need Alisher's go-ahead to merge both branches to master
-- Need Alisher's decision: merge-now or rewire-first
+- Merge go-ahead from Alisher (both branches)
+- Decision: QML routing test first, or merge as-is and file follow-up issue?
 
 ## Context that's hard to re-derive
 
-- The `FooBackend` convention in `checkAll()`: module "notes" → object "NotesBackend". This must match whatever name the peer module registers in `logosAPI->getProvider()->registerObject(...)`.
-- `callModuleParse` fix (lesson #44): the inner try/catch is critical. Without it, plain-string returns from `getStatus()` cause every QML refresh to silently fail.
-- Manifest format was wrong (old `entry` field) — already fixed, both manifests now at `manifestVersion: 0.2.0`.
-- AppImage path: `~/logos-basecamp-current.AppImage` (not `~/logos-app/result/...`)
-- FUSE cleanup required before every launch — see `docs/skills/ecosystem.md` launch protocol.
-- Lessons #41–#45 written this session, cover all the new failure patterns.
+- `stash-basecamp/docs/why-logos-storage-always-fails.md` (gitignored) — full
+  retrospective on all 3 failed storage attempts, read before starting storage work
+- Stash doesn't load in AppImage due to Nim runtime conflict (lesson #41)
+- `callModuleParse` canonical form now has inner try/catch — updated in basecamp-skills
+- Manifest format fixed (v0.2.0 with `main` map) — stash UI loads, core doesn't
+- AppImage path: `~/logos-basecamp-current.AppImage`
+- Clean launch sequence in `docs/skills/ecosystem.md` (FUSE unmount before every launch)
+- storage_module REST API is on port 8080 — documented in ecosystem.md
