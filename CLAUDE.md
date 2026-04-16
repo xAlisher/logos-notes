@@ -274,7 +274,7 @@ Host runtime validation in Basecamp is required **only** when the issue explicit
 
 ## Logos Basecamp Updates Routine
 
-See `~/basecamp-skills/skills/appimage-provisioning.md` for the full protocol.
+See `~/basecamp/basecamp-skills/skills/appimage-provisioning.md` for the full protocol.
 
 Quick version:
 ```bash
@@ -306,8 +306,8 @@ Prefer simple and correct over clever and broken.
 
 | What | Where |
 |------|-------|
-| Shell integration patterns | `~/logos-app/src/` (Logos Basecamp repo) |
-| Seed phrase UX patterns | `~/status-desktop/ui/imports/shared/popups/addaccount/` |
+| Shell integration patterns | `~/basecamp/refs/logos-app/src/` |
+| Seed phrase UX patterns | `~/basecamp/refs/status-desktop/ui/imports/shared/popups/addaccount/` |
 | Logos design system | `~/Qt/6.9.3/gcc_64/` (installed) |
 | Plugin QML | `plugins/notes_ui/Main.qml` |
 | Backend core | `src/core/NotesBackend.cpp` |
@@ -320,4 +320,4 @@ Prefer simple and correct over clever and broken.
 | Architecture reference | `docs/skills/architecture.md` |
 | Lessons learned | `docs/skills/lessons.md` |
 | Ecosystem & tools | `docs/skills/ecosystem.md` |
-| Platform tooling, module structure, AppImage | `~/basecamp-skills/skills/` |
+| Platform tooling, module structure, AppImage | `~/basecamp/basecamp-skills/skills/` |
