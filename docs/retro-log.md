@@ -4,6 +4,77 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## #74 Settings UI + capability token investigation (2026-04-16)
+
+### What happened
+
+1. **logosAPI member shadowing** — Added `LogosAPI* logosAPI = nullptr` to `NotesPlugin.h`. `PluginInterface` base class already declares it. The shadowed member was set in `initLogos()` while the framework read the base class one (null) → "Invalid response" on every Keycard unlock. Fix: remove the duplicate; the base class member is the right one.
+
+2. **FUSE mount leak from crashed AppImage runs** — 246 stale FUSE mounts accumulated in `/tmp/.mount_curren*` from prior test sessions. Caused keycard module to fail resolving its squashfs path. Cleaned with `fusermount -u`. Lesson: add FUSE sweep to every kill-and-relaunch sequence.
+
+3. **capability_module.requestModule() blocks and crashes** — Tried to call `capability_module.requestModule("notes", "storage_module")` synchronously in `ensureStorageClient()` (called from `initLogos()`). The `invokeRemoteMethod` default timeout is ~20s; the call blocked the notes host process thread and crashed the app. Reverted immediately. Synchronous IPC calls from module init paths are unsafe.
+
+4. **C++ plugin → storage_module IPC requires capability token** — `LogosAPIClient::isConnected()` returns false for storage_module even when the module is running and was loaded first. The direct C++ plugin IPC path is blocked without capability provisioning (#77). "Logos Storage unavailable" in the UI is correct and honest.
+
+### Root causes
+
+- logosAPI: didn't check the base class header before adding a member with the same name
+- FUSE leak: kill sequence in CLAUDE.md didn't include `fusermount -u` sweep
+- capability crash: assumed `invokeRemoteMethod` was safe to call from init path without checking timeout/blocking behavior
+- IPC limitation: capability token requirement was known (#77) but worth confirming empirically
+
+### What went right
+
+- Reverted the crashing capability call immediately; didn't try to work around it
+- FUSE sweep fix is now documented in basecamp-skills
+- "Logos Storage unavailable" text is honest — no false "connected" state shown to user
+- The UI panel itself (status dot, CID, timestamp, Back up now) is complete and correct
+
+### Lessons added to basecamp-skills
+
+- Kill sequence now includes `fusermount -u` sweep (platform-module-structure.md)
+
+### Open items
+
+- #77: Research capability token provisioning — async approach needed (not from init path)
+- #78: QML routing workaround as alternative to C++ direct IPC
+
+---
+
+## Manual test setup — wrong AppImage + wrong build dir (2026-04-16)
+
+Session start. Alisher asked for a manual test. Launched wrong AppImage and built from wrong directory.
+
+### What happened
+
+1. Ran `cmake --build build && cmake --install build` — used the old `build/` directory, not `build-new/`
+2. Launched `~/logos-app/result/logos-basecamp.AppImage` (Nix result, commit `ce48695`) — not the correct `logos-basecamp-9b52529-160.AppImage`
+
+### Root cause
+
+- Relied on `CLAUDE.md` AppImage path (`~/logos-app/result/logos-basecamp.AppImage`) without verifying it was current
+- halt.md was stale — no guidance on which AppImage or build dir to use after 5 commits landed
+- Did NOT consult skills docs before launching, despite user prompt "explore basecamp skills" being an explicit hint
+- Opened the app before reading the skills that would have revealed the correct setup
+
+### Why this matters
+
+- Tested against the wrong AppImage version. Results would be meaningless or misleading.
+- `build-new/` uses the SDK-upgraded build with nix develop; `build/` is the old system-library build. Different configs, different install targets.
+
+### Fix
+
+- Always consult `docs/skills/` before any test session — especially after a stale halt
+- Correct AppImage: `~/.local/share/Logos/appimages/logos-basecamp-9b52529-160.AppImage` (or `current.AppImage` symlink)
+- Correct build dir: `build-new/` (nix develop, SDK-upgraded)
+- Verify install target before launching: `cmake --install build-new` → check which Logos dir it writes to
+
+### Rule to add
+
+> Before any test session, read `docs/skills/` (at minimum: `working-baseline.md`, `appimage-module-versioning.md`). Never assume the CLAUDE.md AppImage path is current.
+
+---
+
 ## New AppImage Compat — UI modules investigation (2026-04-11)
 
 Branch: `feature/new-appimage-compat` on logos-notes + keycard-basecamp. Not merged — UI modules still not showing.

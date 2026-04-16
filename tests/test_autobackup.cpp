@@ -1,4 +1,5 @@
 #include <QtTest/QtTest>
+#include <QFile>
 #include <QTemporaryDir>
 #include <QStandardPaths>
 #include <QJsonDocument>
@@ -83,6 +84,10 @@ private slots:
     void testWipeDuringUploadDiscardsCallback();
     void testLockDuringUploadDiscardsCallback();
     void testTriggerBackupUnavailableReturnsError();
+    void testSetBackupCidPersists();
+    void testSetBackupCidEmptyCidReturnsError();
+    void testGetFileForStashReturnsValidPath();
+    void testGetFileForStashFileExists();
 
 private:
     void wipeTestData();
@@ -436,6 +441,68 @@ void TestAutoBackup::testTriggerBackupUnavailableReturnsError()
     QJsonObject result = parseJson(backend.triggerBackup());
     QVERIFY(!result["error"].toString().isEmpty());
     QVERIFY(!result.contains("success"));
+}
+
+// ── testSetBackupCid ─────────────────────────────────────────────────────────
+// setBackupCid() must persist the CID and timestamp and be readable via getBackupCid().
+
+void TestAutoBackup::testSetBackupCidPersists()
+{
+    wipeTestData();
+    NotesBackend backend;
+    backend.importWithKeycardKey(TEST_HEX_KEY);
+
+    QJsonObject setResult = parseJson(
+        backend.setBackupCid(QStringLiteral("zDvZStashCid"), QStringLiteral("1712345678")));
+    QVERIFY(setResult[QStringLiteral("ok")].toBool());
+
+    QJsonObject cidObj = parseJson(backend.getBackupCid());
+    QCOMPARE(cidObj[QStringLiteral("cid")].toString(), QStringLiteral("zDvZStashCid"));
+    QCOMPARE(cidObj[QStringLiteral("timestamp")].toString(), QStringLiteral("1712345678"));
+}
+
+void TestAutoBackup::testSetBackupCidEmptyCidReturnsError()
+{
+    NotesBackend backend;
+    QJsonObject result = parseJson(backend.setBackupCid({}, {}));
+    QVERIFY(!result[QStringLiteral("error")].toString().isEmpty());
+    QVERIFY(!result.contains(QStringLiteral("ok")));
+}
+
+// ── testGetFileForStash ───────────────────────────────────────────────────────
+// getFileForStash() must export a backup and return {"ok":true,"path":"..."}.
+
+void TestAutoBackup::testGetFileForStashReturnsValidPath()
+{
+    wipeTestData();
+    NotesBackend backend;
+    backend.importWithKeycardKey(TEST_HEX_KEY);
+
+    // Create a note so the export has content.
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n[QStringLiteral("id")].toInt(), QStringLiteral("stash cable test"));
+
+    QJsonObject result = parseJson(backend.getFileForStash());
+    QVERIFY(result[QStringLiteral("ok")].toBool());
+    QVERIFY(!result[QStringLiteral("path")].toString().isEmpty());
+    QVERIFY(result[QStringLiteral("path")].toString().endsWith(QStringLiteral(".imnotes")));
+}
+
+void TestAutoBackup::testGetFileForStashFileExists()
+{
+    wipeTestData();
+    NotesBackend backend;
+    backend.importWithKeycardKey(TEST_HEX_KEY);
+
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n[QStringLiteral("id")].toInt(), QStringLiteral("stash file exists test"));
+
+    QJsonObject result = parseJson(backend.getFileForStash());
+    QVERIFY(result[QStringLiteral("ok")].toBool());
+
+    // The file Stash would upload must actually exist on disk.
+    const QString path = result[QStringLiteral("path")].toString();
+    QVERIFY(QFile::exists(path));
 }
 
 QTEST_MAIN(TestAutoBackup)

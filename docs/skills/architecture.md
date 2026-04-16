@@ -86,7 +86,6 @@ When wiping for tests, delete both. When verifying DB contents, check which cont
 ## Logos Basecamp Module Structure
 
 ```
-# Portable builds (AppImage/LGX)
 ~/.local/share/Logos/LogosBasecamp/modules/notes/
 ├── manifest.json          (type: "core")
 └── notes_plugin.so
@@ -95,11 +94,10 @@ When wiping for tests, delete both. When verifying DB contents, check which cont
 ├── manifest.json          (type: "ui_qml")
 ├── metadata.json
 └── Main.qml
-
-# Dev builds (cmake install)
-~/.local/share/Logos/LogosBasecampDev/modules/notes/
-~/.local/share/Logos/LogosBasecampDev/plugins/notes_ui/
 ```
+
+> For install/uninstall procedures, kill sequences, and known limitations (embedded AppImage modules):
+> see `docs/skills/module-install-uninstall.md`
 
 ## Plugin Contract (Q_INVOKABLE Surface)
 

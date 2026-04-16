@@ -13,13 +13,14 @@ NotesPlugin::NotesPlugin(QObject* parent)
 void NotesPlugin::initLogos(LogosAPI* api)
 {
     logosAPI = api;
+    // libstorage.a removed — Nim runtime (cmdLine/cmdCount) conflicts with
+    // logos_host child process dlopen. Storage backup unavailable until
+    // a token-free IPC path is available (upstream bug #141).
+}
 
-    // Wire up StorageClient if the storage_module is available.
-    if (auto* storageApiClient = logosAPI->getClient("storage_module")) {
-        auto transport = std::make_unique<LogosStorageTransport>(storageApiClient);
-        auto storage   = std::make_unique<StorageClient>(std::move(transport));
-        m_backend.setStorageClient(std::move(storage));
-    }
+void NotesPlugin::ensureStorageClient()
+{
+    // No-op: storage client not available (libstorage.a removed, see initLogos).
 }
 
 QString NotesPlugin::initialize()
@@ -177,16 +178,29 @@ QString NotesPlugin::unlockWithKeycardKey(const QString& hexKey)
 
 QString NotesPlugin::getBackupCid()
 {
+    ensureStorageClient();
     return m_backend.getBackupCid();
+}
+
+QString NotesPlugin::setBackupCid(const QString& cid, const QString& timestamp)
+{
+    return m_backend.setBackupCid(cid, timestamp);
+}
+
+QString NotesPlugin::getFileForStash()
+{
+    return m_backend.getFileForStash();
 }
 
 QString NotesPlugin::getStorageStatus()
 {
+    ensureStorageClient();
     return m_backend.getStorageStatus();
 }
 
 QString NotesPlugin::triggerBackup()
 {
+    ensureStorageClient();
     return m_backend.triggerBackup();
 }
 

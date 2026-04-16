@@ -1,61 +1,56 @@
-# Halt — 2026-04-11 (investigation complete, blocked on upstream, bootcamp prep)
+# Halt — 2026-04-16 (session 2)
 
 ## Where we stopped
 
-Deep investigation of AppImage ce48695 compatibility complete. Root causes found,
-upstream issues filed, findings documented. Waiting on Pavel (vpavlin) response
-re: bootcamp and whether core devs (Dario, Helium) will be present.
+Smoke tested stash-basecamp in Logos Basecamp AppImage. Hit the Nim runtime conflict
+(stash statically links libstorage.a, AppImage already has storage_module loading
+libstorage.so — two runtimes, stash silently doesn't load). Wrote a cold retrospective
+of all storage integration attempts. Discussed QML routing as the next viable path.
+User halted to save tokens.
 
 ## Current state
 
-- **Branch:** `feature/new-appimage-compat`
-- **Last commit:** `97c70a2` — docs: upstream findings + bootcamp questions
-- **Build:** 7/7 tests passing on master
-- **AppImage status:** notes_ui loads (30s spinner), buttons non-functional — blocked by upstream #141
-
-## What works
-
-| Component | State |
-|-----------|-------|
-| notes core (notes_plugin.so) | ✅ solid — 7/7 tests, full encryption |
-| notes_ui manifest | ✅ correct — `type: "ui_qml"`, `view: "Main.qml"` |
-| notes_ui QML | ✅ correct — blocked only by upstream |
-| AppImage end-to-end | ❌ blocked — upstream #141 (dependency auto-loading) |
-
-## What's installed in AppImage user dirs
-
-- `modules/notes/` — notes_plugin.so + manifest + variant
-- `modules/keycard/` — keycard_plugin.so + manifest + variant
-- `modules/tictactoe/` — reference (kept)
-- `plugins/notes_ui/` — Main.qml + manifest (ui_qml) + variant
-- `plugins/tictactoe_ui/` — reference (kept)
-- Framework modules (capability_module, package_manager) — deleted user overrides, AppImage OG used
-
-## Upstream issues filed
-
-- logos-basecamp #141 — dependency auto-loading broken for user-installed ui_qml modules
-- logos-basecamp #142 — `view` field required but undocumented
-- Full findings: `docs/upstream/logos-basecamp-findings.md`
-- 8 bootcamp questions logged in same file
+- **Branch (stash-basecamp):** `feature/notes-integration` @ `461ebea` — Senty LGTM ✓
+- **Branch (logos-notes):** `feature/stash-integration` @ `686beee` — Senty LGTM ✓
+- **Build:** both pass ctest (stash 2/2, notes 11/11)
+- **AppImage smoke test:** BLOCKED — stash module invisible (Nim runtime conflict)
+- **Open review:** none — both branches LGTM, awaiting merge go-ahead from Alisher
 
 ## Next steps (in order)
 
-1. **Wait for Pavel's response** — determines bootcamp strategy (core devs present? which path?)
-2. **If core devs present at bootcamp:** bring questions from `docs/upstream/logos-basecamp-findings.md` directly
-3. **If ecosystem devs only:** focus on notes core story, collect contacts, skip AppImage demo
-4. **Park feature/new-appimage-compat** — it's correct, just waiting on upstream fix to #141
-5. **Do NOT build probe-basecamp** until #141 is resolved — probing a broken dependency path gives bad data
+1. **Test QML routing** — cheapest possible experiment:
+   - Strip `libstorage.a` linkage from stash CMakeLists.txt (fixes Nim conflict, stash loads)
+   - Add one call in stash QML: `logos.callModule("storage_module", "getStatus", [])`
+   - Reinstall, launch, check if it returns real data or empty/null
+   - If works → tokens available from third-party QML → invest in full rewire
+   - If fails → same token wall → go REST HTTP or accept local-only backup
+
+2. **If QML routing works:**
+   - Stash C++: add `prepareUpload(moduleName)` → exports file, returns path
+   - Stash QML: calls storage_module directly, polls for CID, calls setBackupCid on notes
+   - Remove LibStorageTransport + StorageClient from stash (no longer needed)
+   - Re-test, Senty review, merge
+
+3. **If QML routing fails:**
+   - Decision point: REST HTTP (port 8080) or accept local-only?
+   - See `stash-basecamp/docs/why-logos-storage-always-fails.md` for full options
+
+4. **Merge decision (either way):**
+   - Alisher still needs to go-ahead on merging both current branches to master
+   - Current code is clean and LGTM'd regardless of storage outcome
 
 ## Blockers
 
-- Upstream logos-basecamp #141 — nothing we can do until Logos team fixes dependency auto-loading
-- Pavel's response — determines bootcamp strategy
+- Merge go-ahead from Alisher (both branches)
+- Decision: QML routing test first, or merge as-is and file follow-up issue?
 
 ## Context that's hard to re-derive
 
-- The 30s spinner is the AppImage's dependency loading timeout, NOT LogosQmlBridge blocking
-- `LogosQmlBridge` has only one method: `callModule` — returns immediately with error if module not connected
-- Ghost IPC dirs in `/tmp/` accumulate across sessions — run `cd /tmp && ls | grep "^logos_" | xargs rm -rf` before every launch
-- `type: "ui"` (QWidget IComponent, tictactoe pattern) is deprecated — do not build on it
-- New reference for ui plugins: `counter_qml` (QML-only) and `package_manager_ui` (QML + C++ backend)
-- `package_manager_ui` has a `_replica_factory.so` for Qt Remote Objects — that's the IPC mechanism for C++ backends
+- `stash-basecamp/docs/why-logos-storage-always-fails.md` (gitignored) — full
+  retrospective on all 3 failed storage attempts, read before starting storage work
+- Stash doesn't load in AppImage due to Nim runtime conflict (lesson #41)
+- `callModuleParse` canonical form now has inner try/catch — updated in basecamp-skills
+- Manifest format fixed (v0.2.0 with `main` map) — stash UI loads, core doesn't
+- AppImage path: `~/logos-basecamp-current.AppImage`
+- Clean launch sequence in `docs/skills/ecosystem.md` (FUSE unmount before every launch)
+- storage_module REST API is on port 8080 — documented in ecosystem.md

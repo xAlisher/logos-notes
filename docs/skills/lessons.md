@@ -130,5 +130,14 @@ When a QML component becomes invisible (e.g., module tab closed), properties lik
 ### 40. logos.callModule double-wraps responses in the pure ui_qml path
 After switching from `type: "ui"` (IComponent) to `type: "ui_qml"` (commit 48c1900), `logos.callModule` adds an extra JSON string layer around the C++ return. `JSON.parse` alone returns a string not an object — causes phantom entries, silent failures. Always use `callModuleParse()`. Full rule + exceptions in `docs/skills/architecture.md` — QML Bridge section. (Issues #92, #93, #94 — fixed 2026-04-16.)
 
+### 41. Static libstorage.a + AppImage libstorage.so = two Nim runtimes, silent load failure
+An orchestrator plugin must NOT statically link `libstorage.a` — the AppImage already has `storage_module_plugin.so` loading `libstorage.so`. Two Nim runtimes in one process → stash silently fails to load (no log error). Fix: use `logosAPI->getClient("storage_module")` IPC. See basecamp-skills platform-lessons #59.
+
+### 44. `callModuleParse` inner try/catch needed for plain-string returns
+The two-liner form breaks on `getStatus()` → `"offline"`: second `JSON.parse` throws → returns `null` → every refresh silently fails. Use the inner try/catch form. See basecamp-skills qml-patterns.md and platform-lessons #61.
+
+### 45. CMake `install(CODE)` escaping: `\${var}` defers, `\\${var}` evaluates at configure time
+`\\${var}` in `install(CODE)` collapses `\\` to `\` then expands `${var}` at configure time (empty) → parse error. Use `\${var}` to defer. See basecamp-skills platform-lessons #60.
+
 ### 39. Cleanup claims must be verified against both docs and filesystem
 For housekeeping changes, do not trust a narrow diff or memory like "those artifacts were already deleted." A cleanup is only complete when three checks agree: (1) the actual files are gone from the repo, (2) repo-wide search no longer finds the removed command/path in active workflow docs or shell help, and (3) replacement instructions are updated in the same commit. This caught issue #61 where `package-lgx` was removed from the flake surface but still documented in `CLAUDE.md` and shell help, and where docs claimed `lib/keycard/` artifacts were gone while the files still existed.

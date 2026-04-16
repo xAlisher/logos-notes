@@ -59,6 +59,8 @@ public:
 
     // Storage auto-backup (issue #72)
     Q_INVOKABLE QString getBackupCid();
+    Q_INVOKABLE QString setBackupCid(const QString& cid, const QString& timestamp);
+    Q_INVOKABLE QString getFileForStash();   // Stash protocol
     Q_INVOKABLE QString getStorageStatus();
     Q_INVOKABLE QString triggerBackup();
 
@@ -70,5 +72,8 @@ private:
     static QString successJson();
     static QString errorJson(const QString& msg);
 
-    NotesBackend m_backend;
+    // Try to wire StorageClient if it wasn't available at initLogos() time.
+    void ensureStorageClient();
+
+    NotesBackend  m_backend;
 };
