@@ -1128,7 +1128,7 @@ Item {
                     }
                 }
 
-                // Cloud Backup (Keycard sessions only)
+                // Logos Storage Backup (Keycard sessions only)
                 Rectangle {
                     id: cloudBackupCard
                     width: parent.width
@@ -1171,6 +1171,7 @@ Item {
                     property string cloudStatus: "disabled"
                     property string cloudCid:    ""
                     property int    cloudTs:     0
+                    property int    nowTick:     0  // incremented by tsRefreshTimer to re-evaluate relative time
 
                     // Refresh when settings opens
                     Connections {
@@ -1186,6 +1187,7 @@ Item {
                             case "synced":      return "#22C55E"
                             case "uploading":   return "#FF7D46"
                             case "failed":      return root.errorColor
+                            case "available":   return root.textSecondary
                             default:            return root.textSecondary
                         }
                     }
@@ -1195,7 +1197,8 @@ Item {
                             case "synced":      return "Synced"
                             case "uploading":   return "Uploading…"
                             case "failed":      return "Failed"
-                            case "unavailable": return "Storage unavailable"
+                            case "available":   return "Ready"
+                            case "unavailable": return "Logos Storage unavailable"
                             default:            return "Not available"
                         }
                     }
@@ -1226,7 +1229,7 @@ Item {
                             spacing: 8
 
                             Text {
-                                text: "Cloud Backup"
+                                text: "Logos Storage Backup"
                                 font.pixelSize: 14
                                 font.weight: Font.Bold
                                 color: root.textColor
@@ -1308,19 +1311,21 @@ Item {
                             }
                         }
 
-                        // Timestamp
+                        // Timestamp — nowTick is a dummy dependency that forces re-evaluation every 30s
+                        Timer {
+                            id: tsRefreshTimer
+                            interval: 30000
+                            running: cloudBackupCard.cloudTs > 0
+                            repeat: true
+                            onTriggered: cloudBackupCard.nowTick++
+                        }
+
                         Text {
                             visible: cloudBackupCard.cloudTs > 0
-                            text: "Last backup: " + cloudBackupCard.relativeTime(cloudBackupCard.cloudTs)
+                            // Reading nowTick establishes a binding dependency — re-evaluates every 30s tick
+                            text: { var _t = cloudBackupCard.nowTick; return "Last backup: " + cloudBackupCard.relativeTime(cloudBackupCard.cloudTs) }
                             font.pixelSize: 12
                             color: root.textSecondary
-
-                            Timer {
-                                interval: 30000
-                                running: parent.visible
-                                repeat: true
-                                onTriggered: parent.text = "Last backup: " + cloudBackupCard.relativeTime(cloudBackupCard.cloudTs)
-                            }
                         }
 
                         // Empty state
@@ -1335,7 +1340,7 @@ Item {
 
                         Text {
                             visible: cloudBackupCard.cloudStatus === "unavailable" || cloudBackupCard.cloudStatus === "disabled"
-                            text: "Logos Storage not available"
+                            text: "Logos Storage unavailable"
                             font.pixelSize: 12
                             color: root.textSecondary
                             width: parent.width

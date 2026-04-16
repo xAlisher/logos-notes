@@ -2,6 +2,7 @@
 
 #include "core/StorageClient.h"
 #include "cpp/logos_api.h"
+#include "cpp/logos_api_client.h"
 
 NotesPlugin::NotesPlugin(QObject* parent)
     : QObject(parent)
@@ -13,8 +14,19 @@ NotesPlugin::NotesPlugin(QObject* parent)
 void NotesPlugin::initLogos(LogosAPI* api)
 {
     logosAPI = api;
+    ensureStorageClient();
+}
 
-    // Wire up StorageClient if the storage_module is available.
+void NotesPlugin::ensureStorageClient()
+{
+    if (!logosAPI) return;
+    // Skip if storage is already connected and available — avoid replacing a
+    // working client (which would drop any in-flight upload callbacks).
+    const QString status = m_backend.getStorageStatus();
+    if (status == QStringLiteral("available")
+            || status == QStringLiteral("uploading")
+            || status == QStringLiteral("synced")) return;
+
     if (auto* storageApiClient = logosAPI->getClient("storage_module")) {
         auto transport = std::make_unique<LogosStorageTransport>(storageApiClient);
         auto storage   = std::make_unique<StorageClient>(std::move(transport));
@@ -177,16 +189,19 @@ QString NotesPlugin::unlockWithKeycardKey(const QString& hexKey)
 
 QString NotesPlugin::getBackupCid()
 {
+    ensureStorageClient();
     return m_backend.getBackupCid();
 }
 
 QString NotesPlugin::getStorageStatus()
 {
+    ensureStorageClient();
     return m_backend.getStorageStatus();
 }
 
 QString NotesPlugin::triggerBackup()
 {
+    ensureStorageClient();
     return m_backend.triggerBackup();
 }
 

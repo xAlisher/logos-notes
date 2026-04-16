@@ -70,5 +70,8 @@ private:
     static QString successJson();
     static QString errorJson(const QString& msg);
 
-    NotesBackend m_backend;
+    // Try to wire StorageClient if it wasn't available at initLogos() time.
+    void ensureStorageClient();
+
+    NotesBackend  m_backend;
 };
