@@ -488,6 +488,7 @@ Item {
         property bool showSettings: false
         property bool loading: false
         property string lastLoadedContent: ""
+        property bool stashBusy: false
 
         onVisibleChanged: {
             if (visible) {
@@ -496,7 +497,56 @@ Item {
                     root.errorMessage = root.restoreWarning
                     root.restoreWarning = ""
                 }
+            } else {
+                logModel.clear()   // clear log on lock/navigate away
             }
+        }
+
+        function stashLogAppend(msg, level) {
+            var ts = "[" + Qt.formatDateTime(new Date(), "HH:mm:ss") + "]"
+            if (logModel.count >= 100) logModel.remove(0)
+            logModel.append({ ts: ts, msg: msg, level: level || "info" })
+        }
+
+        function doStashBackup() {
+            if (typeof logos === "undefined" || !logos.callModule) return
+            if (noteScreen.stashBusy) return
+            if (noteScreen.activeNoteId < 0) {
+                noteScreen.stashLogAppend("no note selected — open a note first", "error")
+                return
+            }
+            noteScreen.stashBusy = true
+
+            // Save first so the exported file is current
+            noteScreen.saveCurrentNote()
+
+            var fileRes = callModuleParse(logos.callModule("notes", "getFileForStash", []))
+            if (!fileRes || !fileRes.ok || !fileRes.path) {
+                noteScreen.stashLogAppend(
+                    "error: " + (fileRes && fileRes.error ? fileRes.error : "getFileForStash failed"),
+                    "error")
+                noteScreen.stashBusy = false
+                return
+            }
+
+            var fname = fileRes.path.split("/").pop()
+            noteScreen.stashLogAppend(fname + " created", "info")
+            noteScreen.stashLogAppend("waiting for CID...", "info")
+
+            var upRes = callModuleParse(logos.callModule("stash", "uploadViaIpfs", [fileRes.path]))
+            if (!upRes || !upRes.cid) {
+                noteScreen.stashLogAppend(
+                    "error: " + (upRes && upRes.error ? upRes.error : "upload failed"),
+                    "error")
+                noteScreen.stashBusy = false
+                return
+            }
+
+            logos.callModule("notes", "setBackupCid", [upRes.cid, String(Math.floor(Date.now() / 1000))])
+            noteScreen.stashLogAppend("stash: " + upRes.cid, "success")
+            noteScreen.stashLogAppend("beacon: pending (module not yet available)", "muted")
+
+            noteScreen.stashBusy = false
         }
 
         function refreshList() {
@@ -598,36 +648,92 @@ Item {
             anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
             color: root.bgSecondary
 
+            // ── Top bar: [+ Ctrl+N | ⛏ Stash] ─────────────────────
             Rectangle {
                 id: newNoteBtn
                 anchors { top: parent.top; left: parent.left; right: parent.right }
                 height: 48
-                color: newNoteArea.containsMouse ? "#333333" : "transparent"
+                color: "transparent"
 
-                Row {
-                    anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
-                    spacing: 8
-                    Image {
-                        source: "Add.svg"
-                        width: 16; height: 16
-                        anchors.verticalCenter: parent.verticalCenter
-                        sourceSize: Qt.size(16, 16)
+                // Left half — New Note
+                Rectangle {
+                    id: newHalf
+                    anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
+                    width: parent.width - stashHalf.width - divider.width
+                    color: newNoteArea.containsMouse ? "#333333" : "transparent"
+
+                    Row {
+                        anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter }
+                        spacing: 8
+                        Image {
+                            source: "Add.svg"
+                            width: 16; height: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            sourceSize: Qt.size(16, 16)
+                        }
+                        Text {
+                            text: "Ctrl+N"
+                            color: root.textColor
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
-                    Text {
-                        text: "Ctrl+N"
-                        color: root.textColor
-                        font.pixelSize: 13
-                        anchors.verticalCenter: parent.verticalCenter
+
+                    MouseArea {
+                        id: newNoteArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: noteScreen.createNewNote()
                     }
                 }
 
-                MouseArea {
-                    id: newNoteArea
-                    z: 10
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: noteScreen.createNewNote()
+                // Divider
+                Rectangle {
+                    id: divider
+                    anchors { top: parent.top; bottom: parent.bottom; right: stashHalf.left }
+                    anchors.topMargin: 10
+                    anchors.bottomMargin: 10
+                    width: 1
+                    color: root.borderColor
+                }
+
+                // Right half — Stash
+                Rectangle {
+                    id: stashHalf
+                    anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+                    width: 72
+                    color: stashArea.containsMouse ? "#333333"
+                         : noteScreen.stashBusy   ? "#1A1A1A"
+                         : "transparent"
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Image {
+                            source: "Stash.png"
+                            width: 16; height: 16
+                            sourceSize: Qt.size(16, 16)
+                            anchors.verticalCenter: parent.verticalCenter
+                            opacity: noteScreen.stashBusy ? 0.4 : 1.0
+                        }
+                        Text {
+                            text: noteScreen.stashBusy ? "…" : "Stash"
+                            font.pixelSize: 13
+                            color: noteScreen.stashBusy ? root.textDisabled : root.textColor
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+
+                    MouseArea {
+                        id: stashArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: noteScreen.stashBusy ? Qt.WaitCursor : Qt.PointingHandCursor
+                        enabled: !noteScreen.stashBusy
+                        onClicked: noteScreen.doStashBackup()
+                    }
                 }
             }
 
@@ -832,7 +938,7 @@ Item {
                 top: parent.top; topMargin: 24
                 left: sidebar.right; leftMargin: 24
                 right: parent.right; rightMargin: 4
-                bottom: parent.bottom; bottomMargin: 24
+                bottom: activityLog.top
             }
             contentWidth: width
             contentHeight: editor.height
@@ -886,6 +992,115 @@ Item {
             }
         }
 
+        // ── Activity log panel (keycard-style, ephemeral) ────────────
+        Rectangle {
+            id: activityLog
+            visible: !noteScreen.showSettings
+            anchors {
+                left: sidebar.right
+                right: parent.right
+                bottom: parent.bottom
+            }
+            height: 120
+            color: "#0D0D0D"
+
+            function copyAllToClipboard() {
+                var text = ""
+                for (var i = 0; i < logModel.count; i++) {
+                    var e = logModel.get(i)
+                    text += e.ts + " " + e.msg + "\n"
+                }
+                fpHelper.text = text
+                fpHelper.selectAll()
+                fpHelper.copy()
+                copyLogFeedback.restart()
+            }
+
+            // Top border
+            Rectangle {
+                anchors { top: parent.top; left: parent.left; right: parent.right }
+                height: 1
+                color: root.borderColor
+            }
+
+            // Copy-all button (top-right)
+            Rectangle {
+                id: copyLogBtn
+                anchors { top: parent.top; right: parent.right; topMargin: 6; rightMargin: 8 }
+                width: 20; height: 20
+                color: "transparent"
+                opacity: copyLogArea.containsMouse ? 0.8 : 0.4
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                // Copy icon (two overlapping rects)
+                Rectangle {
+                    x: 3; y: 5; width: 10; height: 10
+                    color: "transparent"
+                    border.color: root.textSecondary; border.width: 1; radius: 2
+                }
+                Rectangle {
+                    x: 6; y: 2; width: 10; height: 10
+                    color: "#0D0D0D"
+                    border.color: root.textSecondary; border.width: 1; radius: 2
+                }
+
+                MouseArea {
+                    id: copyLogArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: activityLog.copyAllToClipboard()
+                }
+
+                Timer {
+                    id: copyLogFeedback
+                    interval: 1200
+                    onTriggered: copyLogBtn.opacity = copyLogArea.containsMouse ? 0.8 : 0.4
+                }
+            }
+
+            // Empty-log placeholder
+            Text {
+                anchors.centerIn: parent
+                visible: logModel.count === 0
+                text: "Activity log — click Stash to back up"
+                color: root.textDisabled
+                font.pixelSize: 11
+                font.family: "Courier New, monospace"
+            }
+
+            // Log entries
+            ListView {
+                id: logListView
+                anchors { fill: parent; margins: 10; topMargin: 14 }
+                clip: true
+                spacing: 2
+                onCountChanged: Qt.callLater(() => logListView.positionViewAtEnd())
+
+                model: ListModel { id: logModel }
+
+                delegate: TextEdit {
+                    required property string ts
+                    required property string msg
+                    required property string level
+                    width: logListView.width
+                    text: ts + " " + msg
+                    color: level === "success" ? root.successGreen
+                         : level === "error"   ? root.errorColor
+                         : level === "muted"   ? root.textDisabled
+                         : root.textSecondary
+                    font.pixelSize: 11
+                    font.family: "Courier New, monospace"
+                    wrapMode: Text.WrapAnywhere
+                    readOnly: true
+                    selectByMouse: true
+                    selectedTextColor: root.bgColor
+                    selectionColor: root.textSecondary
+                }
+            }
+
+        }
+
         // ── Empty state ─────────────────────────────────────────────
         Item {
             visible: !noteScreen.showSettings && noteScreen.activeNoteId === -1
@@ -893,7 +1108,7 @@ Item {
                 top: parent.top
                 left: sidebar.right
                 right: parent.right
-                bottom: parent.bottom
+                bottom: activityLog.top
             }
 
             Text {

@@ -3,7 +3,7 @@
   "category": "notes",
   "dependencies": ["keycard", "notes"],
   "description": "Encrypted local-first notes — UI",
-  "icon": "",
+  "icon": "icons/notes.png",
   "main": {},
   "manifestVersion": "0.2.0",
   "name": "notes_ui",

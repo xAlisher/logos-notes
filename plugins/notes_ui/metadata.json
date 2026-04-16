@@ -9,5 +9,5 @@
   "dependencies": ["notes"],
   "category": "notes",
   "capabilities": [],
-  "icon": "icons/app_icon.png"
+  "icon": "icons/notes.png"
 }
