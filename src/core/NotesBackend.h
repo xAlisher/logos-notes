@@ -75,6 +75,12 @@ public:
     // Returns {"cid":"...", "timestamp":"..."} or {} if no backup has been uploaded.
     Q_INVOKABLE QString getBackupCid() const;
 
+    // Store a CID recorded by an external upload (e.g. Stash). Returns {"ok":true} or {"error":"..."}.
+    Q_INVOKABLE QString setBackupCid(const QString& cid, const QString& timestamp);
+
+    // Stash protocol: export backup and return {"ok":true,"path":"..."} or {"ok":false}.
+    Q_INVOKABLE QString getFileForStash();
+
     // Returns "available"|"unavailable"|"uploading"|"synced"|"failed"|"disabled".
     // "disabled" when key_source != "keycard".
     Q_INVOKABLE QString getStorageStatus() const;

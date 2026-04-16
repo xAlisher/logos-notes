@@ -83,6 +83,8 @@ private slots:
     void testWipeDuringUploadDiscardsCallback();
     void testLockDuringUploadDiscardsCallback();
     void testTriggerBackupUnavailableReturnsError();
+    void testSetBackupCidPersists();
+    void testSetBackupCidEmptyCidReturnsError();
 
 private:
     void wipeTestData();
@@ -436,6 +438,32 @@ void TestAutoBackup::testTriggerBackupUnavailableReturnsError()
     QJsonObject result = parseJson(backend.triggerBackup());
     QVERIFY(!result["error"].toString().isEmpty());
     QVERIFY(!result.contains("success"));
+}
+
+// ── testSetBackupCid ─────────────────────────────────────────────────────────
+// setBackupCid() must persist the CID and timestamp and be readable via getBackupCid().
+
+void TestAutoBackup::testSetBackupCidPersists()
+{
+    wipeTestData();
+    NotesBackend backend;
+    backend.importWithKeycardKey(TEST_HEX_KEY);
+
+    QJsonObject setResult = parseJson(
+        backend.setBackupCid(QStringLiteral("zDvZStashCid"), QStringLiteral("1712345678")));
+    QVERIFY(setResult[QStringLiteral("ok")].toBool());
+
+    QJsonObject cidObj = parseJson(backend.getBackupCid());
+    QCOMPARE(cidObj[QStringLiteral("cid")].toString(), QStringLiteral("zDvZStashCid"));
+    QCOMPARE(cidObj[QStringLiteral("timestamp")].toString(), QStringLiteral("1712345678"));
+}
+
+void TestAutoBackup::testSetBackupCidEmptyCidReturnsError()
+{
+    NotesBackend backend;
+    QJsonObject result = parseJson(backend.setBackupCid({}, {}));
+    QVERIFY(!result[QStringLiteral("error")].toString().isEmpty());
+    QVERIFY(!result.contains(QStringLiteral("ok")));
 }
 
 QTEST_MAIN(TestAutoBackup)

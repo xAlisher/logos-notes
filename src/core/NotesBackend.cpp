@@ -762,6 +762,34 @@ QString NotesBackend::getBackupCid() const
     return QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }
 
+QString NotesBackend::setBackupCid(const QString& cid, const QString& timestamp)
+{
+    if (cid.isEmpty())
+        return QStringLiteral("{\"error\":\"cid is empty\"}");
+    const bool cidOk = m_db.saveMeta(QStringLiteral("backup_cid"), cid);
+    const bool tsOk  = m_db.saveMeta(QStringLiteral("backup_timestamp"),
+                                      timestamp.isEmpty()
+                                      ? QString::number(QDateTime::currentSecsSinceEpoch())
+                                      : timestamp);
+    if (!cidOk || !tsOk)
+        return QStringLiteral("{\"error\":\"db write failed\"}");
+    return QStringLiteral("{\"ok\":true}");
+}
+
+QString NotesBackend::getFileForStash()
+{
+    // Export the backup and return a path Stash can upload.
+    // Returns {"ok":true,"path":"..."} on success, {"ok":false} on failure.
+    const QString result = exportBackupAuto();
+    const QJsonObject obj = QJsonDocument::fromJson(result.toUtf8()).object();
+    if (!obj.value(QStringLiteral("ok")).toBool())
+        return QStringLiteral("{\"ok\":false}");
+    QJsonObject out;
+    out[QStringLiteral("ok")]   = true;
+    out[QStringLiteral("path")] = obj.value(QStringLiteral("path")).toString();
+    return QString::fromUtf8(QJsonDocument(out).toJson(QJsonDocument::Compact));
+}
+
 QString NotesBackend::getStorageStatus() const
 {
     if (m_keySource != QLatin1String("keycard"))

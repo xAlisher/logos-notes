@@ -189,6 +189,16 @@ QString NotesPlugin::getBackupCid()
     return m_backend.getBackupCid();
 }
 
+QString NotesPlugin::setBackupCid(const QString& cid, const QString& timestamp)
+{
+    return m_backend.setBackupCid(cid, timestamp);
+}
+
+QString NotesPlugin::getFileForStash()
+{
+    return m_backend.getFileForStash();
+}
+
 QString NotesPlugin::getStorageStatus()
 {
     ensureStorageClient();
