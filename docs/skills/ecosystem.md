@@ -4,6 +4,114 @@
 
 ---
 
+## Logos Basecamp Launch Protocol
+
+AppImage FUSE mounts accumulate silently across runs and never self-clean when processes are killed hard.
+After dozens of sessions there will be hundreds of stale `/tmp/.mount_logos-*` entries. They don't
+block launch outright but cause subtle module-load failures and confusing log noise.
+
+**Always run this sequence before launching:**
+
+```bash
+# 1. Kill all Logos processes
+pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"; pkill -9 -f "logos-basecamp"
+
+# 2. Unmount stale FUSE mounts
+mount | grep "fuse.logos" | awk '{print $3}' | xargs -I{} fusermount -u {} 2>/dev/null
+
+# 3. Verify clean (both must return nothing / 0)
+mount | grep "fuse.logos" | wc -l
+ps aux | grep -E "logos_host|logos-basecamp" | grep -v grep
+
+# 4. Launch
+nohup ~/logos-basecamp-current.AppImage > /tmp/basecamp.log 2>&1 &
+```
+
+**Why:** `pkill -9` kills the process without giving AppImage a chance to unmount its FUSE loop device.
+Repeated kills → hundreds of ghost mounts → disk space waste, and occasionally inode exhaustion on `/tmp`.
+
+**pkill chaining rule:** Never chain `pkill` with `&&`. It exits 1 when nothing matches, aborting the chain.
+Always use `;` between kill commands. Use `2>/dev/null; true` if you need zero exit for downstream commands.
+
+**AppImage path:** `~/logos-basecamp-current.AppImage` — the canonical pinned test binary.
+Never construct from `~/logos-app/result/` — that Nix result symlink is garbage-collected.
+
+**run_in_background:** Never use `run_in_background: true` to launch the AppImage. The AppImage
+daemonizes and the wrapper exits non-zero, reporting false failure. Use `nohup ... > /tmp/basecamp.log 2>&1 &`.
+
+---
+
+## Logos Module Manifest Format (current — v0.2.0)
+
+Always use the notes manifests as canonical reference. The old format (`"entry"` field, no `manifestVersion`) causes silent load failure.
+
+**Core module manifest** (`modules/<name>/manifest.json`):
+```json
+{
+  "author": "...",
+  "category": "...",
+  "dependencies": [],
+  "description": "...",
+  "icon": "",
+  "main": {
+    "linux-amd64":       "foo_plugin.so",
+    "linux-amd64-dev":   "foo_plugin.so",
+    "linux-x86_64-dev":  "foo_plugin.so",
+    "darwin-arm64":      "foo_plugin.dylib"
+  },
+  "manifestVersion": "0.2.0",
+  "name": "foo",
+  "type": "core",
+  "version": "1.0.0"
+}
+```
+
+**UI plugin manifest** (`plugins/<name>_ui/manifest.json`):
+```json
+{
+  "author": "...",
+  "category": "...",
+  "dependencies": ["foo"],
+  "description": "...",
+  "icon": "",
+  "main": {},
+  "manifestVersion": "0.2.0",
+  "name": "foo_ui",
+  "type": "ui_qml",
+  "version": "1.0.0",
+  "view": "Main.qml"
+}
+```
+
+---
+
+## CMake install(CODE) Escaping
+
+In `install(CODE "...")` blocks, variable expansion rules differ from normal CMake:
+
+| Form | Result |
+|------|--------|
+| `\${var}` | Deferred — expands to `${var}` at install time ✓ |
+| `\\${var}` | **Wrong** — `\\` → literal `\`, `${var}` evaluated at configure time (empty) → parse error |
+| `${VAR}` | Configure-time — correct for CMake variables known at configure time (paths, executables) |
+
+**Rule:** Use `\${var}` for variables set inside the install script. Use `${VAR}` for CMake variables from configure time. Reference: `logos-notes/CMakeLists.txt` install blocks.
+
+---
+
+## Stash Architecture — Known Limitation
+
+`stash_plugin.so` statically links `libstorage.a` (Nim runtime). The AppImage bundles `storage_module_plugin.so` which dynamically loads `libstorage.so`. Two Nim runtimes in the same process = stash module silently fails to load (no error in log).
+
+**Fix path (Phase 2):** Replace `LibStorageTransport` with IPC calls to `storage_module`:
+```cpp
+auto* client = logosAPI->getClient("storage_module");
+client->invokeRemoteMethod("StorageBackend", "uploadFile", filePath);
+```
+Stash is an orchestrator, not a storage node. It should use the existing node, not embed one.
+
+---
+
 ## Logos Developer Tools
 
 | Tool | Purpose |

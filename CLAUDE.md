@@ -53,8 +53,15 @@ nix develop -c bash -c "cd build-new && ctest --output-on-failure"
 ~/Qt/6.9.3/gcc_64/bin/qmllint plugins/notes_ui/Main.qml
 
 # Launch Logos Basecamp for testing
-pkill -9 -f ".logos_host.elf"; pkill -9 -f ".ui-host.elf"; pkill -9 -f "LogosBasecamp"
-~/.local/share/Logos/appimages/current.AppImage
+# 1. Kill processes
+pkill -9 -f "logos_host.elf"; pkill -9 -f "LogosBasecamp.elf"; pkill -9 -f "logos-basecamp"
+# 2. Unmount stale FUSE mounts (accumulate silently across runs — always clear before launch)
+mount | grep "fuse.logos" | awk '{print $3}' | xargs -I{} fusermount -u {} 2>/dev/null
+# 3. Verify clean
+mount | grep "fuse.logos" | wc -l   # must be 0
+ps aux | grep -E "logos_host|logos-basecamp" | grep -v grep  # must be empty
+# 4. Launch
+nohup ~/logos-basecamp-current.AppImage > /tmp/basecamp.log 2>&1 &
 ```
 
 ---
@@ -308,3 +315,4 @@ Prefer simple and correct over clever and broken.
 | Architecture reference | `docs/skills/architecture.md` |
 | Lessons learned | `docs/skills/lessons.md` |
 | Ecosystem & tools | `docs/skills/ecosystem.md` |
+| Platform tooling, module structure, AppImage | `~/basecamp-skills/skills/` |

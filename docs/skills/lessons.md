@@ -130,5 +130,20 @@ When a QML component becomes invisible (e.g., module tab closed), properties lik
 ### 40. logos.callModule double-wraps responses in the pure ui_qml path
 After switching from `type: "ui"` (IComponent) to `type: "ui_qml"` (commit 48c1900), `logos.callModule` adds an extra JSON string layer around the C++ return. `JSON.parse` alone returns a string not an object — causes phantom entries, silent failures. Always use `callModuleParse()`. Full rule + exceptions in `docs/skills/architecture.md` — QML Bridge section. (Issues #92, #93, #94 — fixed 2026-04-16.)
 
+### 41. Static libstorage.a conflicts with AppImage's libstorage.so — two Nim runtimes crash
+A plugin that statically links `libstorage.a` cannot coexist with the AppImage's bundled `storage_module_plugin.so` (which loads `libstorage.so` dynamically). Both try to initialize the Nim runtime, causing a conflict that silently prevents the plugin from loading — no error in log, module just doesn't appear in the sidebar. **Fix**: a thin orchestrator plugin must NOT embed the storage node. Use `logosAPI->getClient("storage_module")` IPC instead of LibStorageTransport. Stash is an orchestration layer, not a storage node.
+
+### 42. Manifest format v0.2.0 required — old `entry` field causes silent load failure
+Logos Basecamp (AppImage ≥ d8cfc1b-144) requires `manifestVersion: "0.2.0"` and a `"main"` platform-dispatch map (`{"linux-amd64": "foo.so", ...}`). The old format (`"entry": "foo.so"`, no `manifestVersion`) causes the module to be silently ignored — no error, module simply doesn't appear. Always copy the notes manifest as the canonical reference.
+
+### 43. `pkill` exits 1 when no process matches — never chain with `&&`
+`pkill -9 -f "pattern"` returns exit code 1 when nothing matches. Chaining kills with `&&` aborts the chain at the first dead process, leaving remaining processes alive. Always separate kill commands with `;` and append `2>/dev/null; true` for guaranteed zero exit.
+
+### 44. `callModuleParse` must fall back to string on failed second JSON.parse
+The double-parse helper breaks on plain-string returns (e.g. `getStatus()` → `"offline"`). After Basecamp wraps: `'"offline"'`. First parse → `"offline"` (string). Second parse → `SyntaxError` → returns `null` → all refreshes silently fail. Fix: wrap the inner `JSON.parse` in its own try/catch and return the string on failure. `try { return JSON.parse(tmp) } catch(e) { return tmp }`.
+
+### 45. CMake `install(CODE)` escaping: `\${var}` defers, `\\${var}` evaluates at configure time
+In `install(CODE "...")` blocks, `\${var}` defers expansion to install time (correct). `\\${var}` collapses to `\` + configure-time expansion (empty) → `\)` in cmake_install.cmake → parse error. Use notes CMakeLists.txt as reference for all install block escaping.
+
 ### 39. Cleanup claims must be verified against both docs and filesystem
 For housekeeping changes, do not trust a narrow diff or memory like "those artifacts were already deleted." A cleanup is only complete when three checks agree: (1) the actual files are gone from the repo, (2) repo-wide search no longer finds the removed command/path in active workflow docs or shell help, and (3) replacement instructions are updated in the same commit. This caught issue #61 where `package-lgx` was removed from the flake surface but still documented in `CLAUDE.md` and shell help, and where docs claimed `lib/keycard/` artifacts were gone while the files still existed.
