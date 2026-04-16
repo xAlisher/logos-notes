@@ -1,7 +1,9 @@
 #include "LibStorageTransport.h"
 
 #include <QDebug>
+#include <QDir>
 #include <QMetaObject>
+#include <QStandardPaths>
 #include <QUrl>
 
 extern "C" {
@@ -11,12 +13,18 @@ extern "C" {
 void libstorageNimMain(void);
 }
 
-// Default config: local-only node, no listening address, minimal logging.
-// data-dir under logos-notes so it doesn't collide with Basecamp's node.
-static constexpr const char* kDefaultConfig = R"({
-    "dataDir": "/home/alisher/.local/share/logos-notes/storage",
-    "logLevel": "WARN"
-})";
+// Build the config JSON at runtime so dataDir is always under the real
+// user's home — never a hardcoded path.
+static QByteArray buildConfig()
+{
+    const QString dataDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+        + QStringLiteral("/storage");
+    QDir().mkpath(dataDir);
+    return QStringLiteral("{\"dataDir\":\"%1\",\"logLevel\":\"WARN\"}")
+        .arg(dataDir)
+        .toUtf8();
+}
 
 // ── Construction / destruction ────────────────────────────────────────────────
 
@@ -51,15 +59,16 @@ LibStorageTransport::~LibStorageTransport()
 
 void LibStorageTransport::start()
 {
-    if (m_ctx) return;  // Already started.
+    if (m_ctx) return;  // Already started (or startup succeeded earlier).
 
     // Initialise the Nim runtime embedded in libstorage.a.
     // Safe to call multiple times — Nim's generated init guard is idempotent.
     libstorageNimMain();
 
+    const QByteArray config = buildConfig();
     auto* ctx = new StartCtx{this};
     // storage_new is synchronous — returns the context immediately.
-    m_ctx = storage_new(kDefaultConfig, cbStart, ctx);
+    m_ctx = storage_new(config.constData(), cbStart, ctx);
     if (!m_ctx) {
         qWarning() << "LibStorageTransport: storage_new failed";
         delete ctx;
@@ -71,6 +80,10 @@ void LibStorageTransport::start()
     if (ret != RET_OK) {
         qWarning() << "LibStorageTransport: storage_start returned" << ret;
         delete ctx;
+        // Reset m_ctx so start() can be retried — otherwise m_ctx stays
+        // non-null and the guard above would block all future attempts.
+        storage_destroy(m_ctx);
+        m_ctx = nullptr;
     }
 }
 
