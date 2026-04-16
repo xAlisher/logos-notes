@@ -57,6 +57,11 @@ public:
                                               const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithKeycardKey(const QString& hexKey);
 
+    // Storage auto-backup (issue #72)
+    Q_INVOKABLE QString getBackupCid();
+    Q_INVOKABLE QString getStorageStatus();
+    Q_INVOKABLE QString triggerBackup();
+
 signals:
     void eventResponse(const QString& eventName, const QVariantList& data);
 

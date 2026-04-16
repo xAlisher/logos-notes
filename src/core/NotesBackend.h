@@ -2,10 +2,13 @@
 
 #include <QObject>
 #include <QString>
+#include <QTimer>
+#include <memory>
 
 #include "CryptoManager.h"
 #include "DatabaseManager.h"
 #include "KeyManager.h"
+#include "StorageClient.h"
 
 
 // QML-facing backend. Registered as a context property "backend".
@@ -64,6 +67,24 @@ public:
     // List .imnotes files in the backups directory.
     Q_INVOKABLE QString listBackups() const;
 
+    // ── Storage auto-backup (Keycard sessions only) ────────────────────
+
+    // Inject a StorageClient. Called from NotesPlugin::initLogos().
+    void setStorageClient(std::unique_ptr<StorageClient> client);
+
+    // Returns {"cid":"...", "timestamp":"..."} or {} if no backup has been uploaded.
+    Q_INVOKABLE QString getBackupCid() const;
+
+    // Returns "available"|"unavailable"|"uploading"|"synced"|"failed"|"disabled".
+    // "disabled" when key_source != "keycard".
+    Q_INVOKABLE QString getStorageStatus() const;
+
+    // Manual "back up now". Returns error if not a keycard session or upload busy.
+    Q_INVOKABLE QString triggerBackup();
+
+    // Override the debounce interval (default 30s). For tests only.
+    void setDebounceIntervalMs(int ms) { m_debounceTimer.setInterval(ms); }
+
     // Import notes from an encrypted backup file.
     Q_INVOKABLE QString importBackup(const QString &filePath,
                                       const QString &mnemonic = {});
@@ -96,4 +117,14 @@ private:
     // PIN brute-force protection (Issue #2)
     int  m_failedAttempts = 0;
     qint64 m_lockoutUntil = 0; // epoch seconds; 0 = no lockout
+
+    // Storage auto-backup (Keycard sessions only — issue #72)
+    std::unique_ptr<StorageClient> m_storage;
+    QTimer  m_debounceTimer;           // 30s single-shot; restarts on each saveNote
+    QString m_keySource;               // "keycard" or "mnemonic", set at unlock
+    QString m_storageStatus;           // transient in-memory status
+    int     m_sessionGeneration = 0;   // incremented on lock/wipe; fences async callbacks
+
+    // Returns empty on successful upload start, or error string if no upload started.
+    QString doAutoBackup();
 };
