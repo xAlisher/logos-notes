@@ -123,6 +123,8 @@ private:
     QTimer  m_debounceTimer;           // 30s single-shot; restarts on each saveNote
     QString m_keySource;               // "keycard" or "mnemonic", set at unlock
     QString m_storageStatus;           // transient in-memory status
+    int     m_sessionGeneration = 0;   // incremented on lock/wipe; fences async callbacks
 
-    void doAutoBackup();
+    // Returns empty on successful upload start, or error string if no upload started.
+    QString doAutoBackup();
 };

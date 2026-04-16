@@ -365,6 +365,7 @@ void NotesBackend::lock()
 {
     m_debounceTimer.stop();
     m_keySource.clear();
+    ++m_sessionGeneration;   // fence any in-flight upload callbacks
     m_keys.lock();
     setError({});
     setScreen("unlock");
@@ -585,6 +586,10 @@ QString NotesBackend::importBackup(const QString &filePath,
 
 void NotesBackend::resetAndWipe()
 {
+    m_debounceTimer.stop();
+    m_keySource.clear();
+    m_storageStatus.clear();
+    ++m_sessionGeneration;   // fence any in-flight upload callbacks
     m_keys.lock();
     m_db.wipe();
     m_db.init();
@@ -775,15 +780,21 @@ QString NotesBackend::triggerBackup()
     if (m_storageStatus == QLatin1String("uploading"))
         return QStringLiteral("{\"error\":\"Upload already in progress\"}");
     m_debounceTimer.stop();
-    doAutoBackup();
+    const QString startError = doAutoBackup();
+    if (!startError.isEmpty()) {
+        // No upload started — surface the reason as an error.
+        QString safe = startError;
+        safe.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+        return QStringLiteral("{\"error\":\"") + safe + QStringLiteral("\"}");
+    }
     return QStringLiteral("{\"success\":true}");
 }
 
-void NotesBackend::doAutoBackup()
+QString NotesBackend::doAutoBackup()
 {
     if (!m_storage || !m_storage->isAvailable()) {
         m_storageStatus = QStringLiteral("unavailable");
-        return;
+        return QStringLiteral("storage_module not available");
     }
 
     // Write backup file locally first.
@@ -793,22 +804,37 @@ void NotesBackend::doAutoBackup()
         qWarning() << "NotesBackend::doAutoBackup: exportBackupAuto failed:" << exportResult;
         m_storageStatus = QStringLiteral("failed");
         m_db.saveMeta("storage_status", m_storageStatus);
-        return;
+        return QStringLiteral("Export failed");
     }
 
     const QString filePath = exportObj.value("path").toString();
     m_storageStatus = QStringLiteral("uploading");
 
-    m_storage->uploadFile(filePath, [this](const QString& cid, const QString& error) {
+    // Capture generation so the callback can detect session change or wipe.
+    const int myGeneration = m_sessionGeneration;
+
+    m_storage->uploadFile(filePath, [this, myGeneration](const QString& cid, const QString& error) {
+        // Discard callback if session changed (lock, wipe, or account switch).
+        if (m_sessionGeneration != myGeneration || m_keySource != QLatin1String("keycard"))
+            return;
+
         if (error.isEmpty() && !cid.isEmpty()) {
-            m_db.saveMeta("backup_cid", cid);
-            m_db.saveMeta("backup_timestamp",
-                          QString::number(QDateTime::currentSecsSinceEpoch()));
-            m_storageStatus = QStringLiteral("synced");
+            const bool cidOk = m_db.saveMeta("backup_cid", cid);
+            const bool tsOk  = m_db.saveMeta(
+                                   "backup_timestamp",
+                                   QString::number(QDateTime::currentSecsSinceEpoch()));
+            if (cidOk && tsOk) {
+                m_storageStatus = QStringLiteral("synced");
+            } else {
+                qWarning() << "NotesBackend::doAutoBackup: metadata write failed after upload";
+                m_storageStatus = QStringLiteral("failed");
+            }
         } else {
             qWarning() << "NotesBackend::doAutoBackup: upload failed:" << error;
             m_storageStatus = QStringLiteral("failed");
         }
         m_db.saveMeta("storage_status", m_storageStatus);
     });
+
+    return {};  // upload started
 }

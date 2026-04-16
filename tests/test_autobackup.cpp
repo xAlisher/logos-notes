@@ -79,6 +79,11 @@ private slots:
     void testStorageUnavailableStatus();
     void testStorageUnavailableNocrash();
 
+    // Session fencing — HIGH finding regression tests (issue #72 round 2)
+    void testWipeDuringUploadDiscardsCallback();
+    void testLockDuringUploadDiscardsCallback();
+    void testTriggerBackupUnavailableReturnsError();
+
 private:
     void wipeTestData();
 
@@ -357,6 +362,80 @@ void TestAutoBackup::testStorageUnavailableNocrash()
     QCOMPARE(backend.getStorageStatus(), QStringLiteral("unavailable"));
     // App must still be on the note screen (no crash, no state corruption).
     QCOMPARE(backend.currentScreen(), QStringLiteral("note"));
+}
+
+// ── testWipeDuringUploadDiscardsCallback ──────────────────────────────────────
+// Start an upload, call resetAndWipe() before the callback fires.
+// The callback must be discarded — backup_cid must remain empty in the fresh DB.
+
+void TestAutoBackup::testWipeDuringUploadDiscardsCallback()
+{
+    wipeTestData();
+    MockStorageTransport* mock = nullptr;
+    NotesBackend* backend = makeKeycardBackend(&mock);
+
+    QJsonObject n = parseJson(backend->createNote());
+    backend->saveNote(n["id"].toInt(), "wipe during upload test");
+    backend->triggerBackup();  // upload in flight
+    QCOMPARE(mock->uploadCalls, 1);
+
+    // Wipe while upload is in flight.
+    backend->resetAndWipe();
+    QCOMPARE(backend->currentScreen(), QStringLiteral("import"));
+
+    // Now the old callback fires — must be discarded.
+    mock->fireUploadDone(QStringLiteral("zDvZShouldBeDiscarded"));
+
+    // Fresh DB must have no backup_cid.
+    QCOMPARE(backend->getBackupCid(), QStringLiteral("{}"));
+}
+
+// ── testLockDuringUploadDiscardsCallback ──────────────────────────────────────
+// Start an upload, lock() before callback fires. Callback must be discarded.
+
+void TestAutoBackup::testLockDuringUploadDiscardsCallback()
+{
+    wipeTestData();
+    MockStorageTransport* mock = nullptr;
+    NotesBackend* backend = makeKeycardBackend(&mock);
+
+    QJsonObject n = parseJson(backend->createNote());
+    backend->saveNote(n["id"].toInt(), "lock during upload test");
+    backend->triggerBackup();
+    QCOMPARE(mock->uploadCalls, 1);
+
+    // Lock while upload is in flight.
+    backend->lock();
+
+    // Old callback fires — must be discarded.
+    mock->fireUploadDone(QStringLiteral("zDvZAlsoDiscarded"));
+
+    // getStorageStatus must not reflect a stale "synced" from the discarded callback.
+    // After lock, m_keySource is cleared → status is "disabled".
+    QCOMPARE(backend->getStorageStatus(), QStringLiteral("disabled"));
+}
+
+// ── testTriggerBackupUnavailableReturnsError ──────────────────────────────────
+// triggerBackup() when storage is unavailable must return an error, not success.
+
+void TestAutoBackup::testTriggerBackupUnavailableReturnsError()
+{
+    wipeTestData();
+    auto mock = std::make_unique<MockStorageTransport>();
+    mock->connected = false;
+
+    NotesBackend backend;
+    backend.setDebounceIntervalMs(50);
+    backend.importWithKeycardKey(TEST_HEX_KEY);
+    backend.setStorageClient(
+        std::make_unique<StorageClient>(std::move(mock)));
+
+    QJsonObject n = parseJson(backend.createNote());
+    backend.saveNote(n["id"].toInt(), "unavailable trigger test");
+
+    QJsonObject result = parseJson(backend.triggerBackup());
+    QVERIFY(!result["error"].toString().isEmpty());
+    QVERIFY(!result.contains("success"));
 }
 
 QTEST_MAIN(TestAutoBackup)
