@@ -372,6 +372,7 @@ install(FILES
     plugins/notes_ui/manifest.json
     plugins/notes_ui/metadata.json
     plugins/notes_ui/Main.qml
+    plugins/notes_ui/Stash.png
     assets/icons/Add.svg
     assets/icons/Lock.svg
     assets/icons/close.svg
