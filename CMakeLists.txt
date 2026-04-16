@@ -28,6 +28,8 @@ set(SOURCES
     src/core/DatabaseManager.cpp
     src/core/KeyManager.h
     src/core/KeyManager.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
 )
 
 qt_add_executable(logos-notes ${SOURCES})
@@ -181,6 +183,8 @@ set(TEST_CORE_SOURCES
     src/core/KeyManager.cpp
     src/core/NotesBackend.h
     src/core/NotesBackend.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
 )
 
 set(TEST_CORE_LIBS
@@ -221,6 +225,7 @@ add_executable(test_plugin
     "${LOGOS_CPP_SDK}/include/cpp/logos_api.h"
     src/plugin/NotesPlugin.h
     src/plugin/NotesPlugin.cpp
+    src/core/LogosStorageTransport.cpp
     ${TEST_CORE_SOURCES}
 )
 target_include_directories(test_plugin PRIVATE
@@ -270,6 +275,24 @@ target_include_directories(test_backup_storage PRIVATE
 )
 target_link_libraries(test_backup_storage PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_backup_storage COMMAND test_backup_storage)
+
+# Auto-backup debounce + CID tracking tests (issue #72).
+# Uses mock StorageTransport — no SDK linkage needed.
+add_executable(test_autobackup
+    tests/test_autobackup.cpp
+    src/core/StorageClient.h
+    src/core/StorageClient.cpp
+    ${TEST_CORE_SOURCES}
+)
+target_include_directories(test_autobackup PRIVATE
+    src
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+)
+target_link_libraries(test_autobackup PRIVATE ${TEST_CORE_LIBS})
+add_test(NAME test_autobackup COMMAND test_autobackup)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,8 @@
 #include "NotesPlugin.h"
 
+#include "core/StorageClient.h"
+#include "cpp/logos_api.h"
+
 NotesPlugin::NotesPlugin(QObject* parent)
     : QObject(parent)
 {
@@ -10,6 +13,13 @@ NotesPlugin::NotesPlugin(QObject* parent)
 void NotesPlugin::initLogos(LogosAPI* api)
 {
     logosAPI = api;
+
+    // Wire up StorageClient if the storage_module is available.
+    if (auto* storageApiClient = logosAPI->getClient("storage_module")) {
+        auto transport = std::make_unique<LogosStorageTransport>(storageApiClient);
+        auto storage   = std::make_unique<StorageClient>(std::move(transport));
+        m_backend.setStorageClient(std::move(storage));
+    }
 }
 
 QString NotesPlugin::initialize()
@@ -161,6 +171,23 @@ QString NotesPlugin::unlockWithKeycardKey(const QString& hexKey)
         return successJson();
 
     return errorJson(m_backend.errorMessage());
+}
+
+// ── Storage auto-backup (issue #72) ─────────────────────────────────────────
+
+QString NotesPlugin::getBackupCid()
+{
+    return m_backend.getBackupCid();
+}
+
+QString NotesPlugin::getStorageStatus()
+{
+    return m_backend.getStorageStatus();
+}
+
+QString NotesPlugin::triggerBackup()
+{
+    return m_backend.triggerBackup();
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
