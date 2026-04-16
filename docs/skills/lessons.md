@@ -4,6 +4,20 @@
 
 ---
 
+### 46. libstorage.a in a child-process plugin = undefined cmdLine/cmdCount → 20s load timeout
+When `notes_plugin.so` statically linked `libstorage.a`, dlopen in the logos_host child process failed with `undefined symbol: cmdLine`. These are Nim runtime globals only present in the main Nim binary (the AppImage's storage_module). The plugin appeared to load (no crash) but the QRO replica never published, causing every `callModule("notes", ...)` to time out after 20s. **Fix**: remove `libstorage.a` (and its deps: `libbacktrace.a`, `libminiupnpc.a`, `libnatpmp.a`) from `notes_plugin` link targets entirely. Result: plugin drops from 58MB to 4.4MB, loads instantly.
+
+### 47. QML bridge is the only reliable cross-module IPC path for user-installed plugins
+`logos.callModule(module, method, args)` runs in the main process (LogosBasecamp.elf) which holds capability tokens for all loaded modules. C++ IPC from a child logos_host process requires `capability_module.requestModule()` which crashes/times out because user-installed plugin hosts have no bootstrap token. **Implication**: any cross-module orchestration (e.g. stash calling notes) must go through QML, not C++. Keep C++ plugins self-contained; put multi-module logic in the UI layer.
+
+### 48. pendingEntries pattern for QML log rows that survive periodic refresh
+A 2s `Timer` calling `refresh()` overwrites `root.logItems` from the backend log each cycle. Any QML-appended entries (local feedback rows added on button press) disappear. Solution: a separate `property var pendingEntries: []` on root. ListView uses `model: root.pendingEntries.concat(root.logItems)`. pendingEntries are never cleared by refresh — only by explicit user action or app reload.
+
+### 49. storage_module node status (offline) is a network bootstrap state, not a load failure
+Even when `storage_module_plugin.so` is loaded and `getStatus` responds, the stash/storage node shows "offline" if it hasn't connected to storage network peers yet. This is a p2p bootstrap delay, not a code bug. The module load and the network-ready state are independent. UI label "offline" is ambiguous — "Storage node offline" is clearer.
+
+---
+
 ### 1. NotesPlugin is the only surface QML can see
 Every method added to NotesBackend that QML needs must also be explicitly added to NotesPlugin as Q_INVOKABLE. QML callModule calls silently fail (no error, empty response) when the method doesn't exist on the plugin.
 
