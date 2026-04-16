@@ -803,7 +803,8 @@ QString NotesBackend::doAutoBackup()
     if (!exportObj.value("ok").toBool()) {
         qWarning() << "NotesBackend::doAutoBackup: exportBackupAuto failed:" << exportResult;
         m_storageStatus = QStringLiteral("failed");
-        m_db.saveMeta("storage_status", m_storageStatus);
+        if (!m_db.saveMeta("storage_status", m_storageStatus))
+            qWarning() << "NotesBackend::doAutoBackup: failed to persist storage_status after export failure";
         return QStringLiteral("Export failed");
     }
 
@@ -833,7 +834,8 @@ QString NotesBackend::doAutoBackup()
             qWarning() << "NotesBackend::doAutoBackup: upload failed:" << error;
             m_storageStatus = QStringLiteral("failed");
         }
-        m_db.saveMeta("storage_status", m_storageStatus);
+        if (!m_db.saveMeta("storage_status", m_storageStatus))
+            qWarning() << "NotesBackend::doAutoBackup: failed to persist storage_status" << m_storageStatus;
     });
 
     return {};  // upload started
