@@ -93,6 +93,9 @@ else()
         "/nix/store/047dmhc4gi7yib02i1fbwidxpksqvcc2-logos-cpp-sdk")
 endif()
 
+# ── logos-storage-nim static library ─────────────────────────────────────────
+set(LOGOS_STORAGE_DIR "${CMAKE_SOURCE_DIR}/third_party/logos-storage-nim")
+
 set(PLUGIN_SOURCES
     src/plugin/NotesPlugin.h
     src/plugin/NotesPlugin.cpp
@@ -106,6 +109,8 @@ set(PLUGIN_SOURCES
     src/core/KeyManager.cpp
     src/core/StorageClient.h
     src/core/StorageClient.cpp
+    src/core/LibStorageTransport.h
+    src/core/LibStorageTransport.cpp
     src/core/LogosStorageTransport.cpp
 )
 
@@ -122,6 +127,7 @@ set_target_properties(notes_plugin PROPERTIES
 
 target_include_directories(notes_plugin PRIVATE
     src
+    "${LOGOS_STORAGE_DIR}/include"
     "${LOGOS_LIBLOGOS_HEADERS}"
     "${LOGOS_CPP_SDK}/include"
     "${LOGOS_CPP_SDK}/include/cpp"
@@ -133,6 +139,11 @@ target_link_libraries(notes_plugin PRIVATE
     Qt6::Sql
     PkgConfig::sodium
     "${LOGOS_CPP_SDK}/lib/liblogos_sdk.a"
+    "${LOGOS_STORAGE_DIR}/lib/libstorage.a"
+    "${LOGOS_STORAGE_DIR}/lib/libbacktrace.a"
+    "${LOGOS_STORAGE_DIR}/lib/libminiupnpc.a"
+    "${LOGOS_STORAGE_DIR}/lib/libnatpmp.a"
+    dl pthread
 )
 
 # Q_PLUGIN_METADATA(FILE "plugin_metadata.json") resolves relative to the
@@ -222,20 +233,31 @@ add_test(NAME test_note_api COMMAND test_note_api)
 add_executable(test_plugin
     tests/test_plugin.cpp
     tests/logos_api_stub.cpp
+    tests/nim_runtime_stub.cpp
     "${LOGOS_CPP_SDK}/include/cpp/logos_api.h"
     src/plugin/NotesPlugin.h
     src/plugin/NotesPlugin.cpp
     src/core/LogosStorageTransport.cpp
+    src/core/LibStorageTransport.h
+    src/core/LibStorageTransport.cpp
     ${TEST_CORE_SOURCES}
 )
 target_include_directories(test_plugin PRIVATE
     src
+    "${LOGOS_STORAGE_DIR}/include"
     "${LOGOS_LIBLOGOS_HEADERS}"
     "${LOGOS_CPP_SDK}/include"
     "${LOGOS_CPP_SDK}/include/cpp"
     "${LOGOS_CPP_SDK}/include/core"
 )
-target_link_libraries(test_plugin PRIVATE ${TEST_CORE_LIBS})
+target_link_libraries(test_plugin PRIVATE
+    ${TEST_CORE_LIBS}
+    "${LOGOS_STORAGE_DIR}/lib/libstorage.a"
+    "${LOGOS_STORAGE_DIR}/lib/libbacktrace.a"
+    "${LOGOS_STORAGE_DIR}/lib/libminiupnpc.a"
+    "${LOGOS_STORAGE_DIR}/lib/libnatpmp.a"
+    dl pthread
+)
 add_test(NAME test_plugin COMMAND test_plugin)
 
 # StorageClient tests — do NOT link the logos SDK; the transport
@@ -293,6 +315,35 @@ target_include_directories(test_autobackup PRIVATE
 )
 target_link_libraries(test_autobackup PRIVATE ${TEST_CORE_LIBS})
 add_test(NAME test_autobackup COMMAND test_autobackup)
+
+# LibStorageTransport unit tests — guard paths (not-connected) only.
+# No libstorage.a node is started so these tests are fast.
+# Links libstorage.a only for symbol resolution; libstorageNimMain is NOT
+# called because the tests never invoke start() → storage_new().
+add_executable(test_lib_storage_transport
+    tests/test_lib_storage_transport.cpp
+    src/core/LibStorageTransport.h
+    src/core/LibStorageTransport.cpp
+    tests/nim_runtime_stub.cpp
+)
+target_include_directories(test_lib_storage_transport PRIVATE
+    src
+    "${LOGOS_STORAGE_DIR}/include"
+    "${LOGOS_LIBLOGOS_HEADERS}"
+    "${LOGOS_CPP_SDK}/include"
+    "${LOGOS_CPP_SDK}/include/cpp"
+    "${LOGOS_CPP_SDK}/include/core"
+)
+target_link_libraries(test_lib_storage_transport PRIVATE
+    Qt6::Core
+    Qt6::Test
+    "${LOGOS_STORAGE_DIR}/lib/libstorage.a"
+    "${LOGOS_STORAGE_DIR}/lib/libbacktrace.a"
+    "${LOGOS_STORAGE_DIR}/lib/libminiupnpc.a"
+    "${LOGOS_STORAGE_DIR}/lib/libnatpmp.a"
+    dl pthread
+)
+add_test(NAME test_lib_storage_transport COMMAND test_lib_storage_transport)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 

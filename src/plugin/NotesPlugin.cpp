@@ -1,8 +1,8 @@
 #include "NotesPlugin.h"
 
+#include "core/LibStorageTransport.h"
 #include "core/StorageClient.h"
 #include "cpp/logos_api.h"
-#include "cpp/logos_api_client.h"
 
 NotesPlugin::NotesPlugin(QObject* parent)
     : QObject(parent)
@@ -14,24 +14,20 @@ NotesPlugin::NotesPlugin(QObject* parent)
 void NotesPlugin::initLogos(LogosAPI* api)
 {
     logosAPI = api;
-    ensureStorageClient();
+
+    // Embed a logos-storage-nim node in-process via libstorage.a.
+    // No Logos IPC, no capability tokens. The node starts async —
+    // isConnected() returns true once cbStart fires RET_OK.
+    auto* t = new LibStorageTransport();
+    t->start();
+    auto storage = std::make_unique<StorageClient>(
+        std::unique_ptr<StorageTransport>(t));
+    m_backend.setStorageClient(std::move(storage));
 }
 
 void NotesPlugin::ensureStorageClient()
 {
-    if (!logosAPI) return;
-    // Skip if storage is already connected and available — avoid replacing a
-    // working client (which would drop any in-flight upload callbacks).
-    const QString status = m_backend.getStorageStatus();
-    if (status == QStringLiteral("available")
-            || status == QStringLiteral("uploading")
-            || status == QStringLiteral("synced")) return;
-
-    if (auto* storageApiClient = logosAPI->getClient("storage_module")) {
-        auto transport = std::make_unique<LogosStorageTransport>(storageApiClient);
-        auto storage   = std::make_unique<StorageClient>(std::move(transport));
-        m_backend.setStorageClient(std::move(storage));
-    }
+    // LibStorageTransport is started once in initLogos(). Nothing to do here.
 }
 
 QString NotesPlugin::initialize()

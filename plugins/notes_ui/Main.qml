@@ -1394,6 +1394,7 @@ Item {
                             width: parent.width
                             wrapMode: Text.WordWrap
                         }
+
                     }
                 }
 

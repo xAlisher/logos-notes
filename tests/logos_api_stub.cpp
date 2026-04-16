@@ -38,3 +38,7 @@ void LogosAPIClient::onEvent(
     QObject*, QObject*, const QString&,
     std::function<void(const QString&, const QVariantList&)>)
 {}
+
+// Nim runtime globals — see tests/nim_runtime_stub.cpp.
+// test_plugin links nim_runtime_stub.cpp alongside this file so that
+// libstorage.a has the cmdCount/cmdLine symbols it needs at link time.
