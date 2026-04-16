@@ -4,6 +4,42 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## #75 Online IPFS pinning + notes Stash integration (2026-04-16)
+
+### Fails
+
+- [project] **`background: null` on `QtQuick.TextEdit` silent QML load failure.** Added `background: null` to a `TextEdit` delegate (not `TextField`). Invalid property — `QtQuick.TextEdit` has no `background`. QML parser didn't error; runtime silently failed to instantiate the component. Notes module showed icon in sidebar, clicking it did nothing. Root cause: confused `QtQuick.TextEdit` with `QtQuick.Controls.TextField`/`TextArea` which DO have `background`. Fix: remove the property. Rule: never use `background` on plain `TextEdit`.
+
+- [project] **`variant` file absent from source tree broke LogosApp module loading.** Module showed sidebar icon (discovery OK) but clicking opened nothing. Found `variant` was in LogosBasecamp (stale copy from old install) but missing from LogosApp and from source. Root cause: `variant` was never committed to source, so cmake never installed it to LogosApp. Plugin-discovery.md said "unconfirmed" — now confirmed: `variant` is required for both LogosApp and LogosBasecamp. Fix: committed `variant` to source.
+
+- [project] **Clipboard `TextEdit` inside nested Rectangle scope failed.** Placed `clipboardHelper` inside `activityLog` Rectangle (child scope). `copy()` silently did nothing. Root cause: unknown (scope, focus, or render-tree issue with nested item). The working pattern — `fpHelper` at `noteScreen` Item root, called directly — was already proven. Should have used it from the start instead of creating a new helper inside the Rectangle.
+
+- [project] **Token masking re-save wipes stored token.** `getPinningConfig` returns `token: "***"`. UI set field to `""`. User opened panel without retyping token, clicked Save → `setPinningConfig` received empty token → overwrote stored JWT with `""`. Root cause: masking logic didn't account for re-save without re-entry. Fix: C++ side skips empty token; UI shows `"Token saved — leave blank to keep"` placeholder.
+
+- [project] **`uploadViaIpfs` never wrote to activity log.** Stash UI showed empty log after successful backup. `getLog()` only returns entries appended by `StashBackend.appendLog()`, which is called only from backend-internal ops. Plugin-side `uploadViaIpfs` bypasses the backend entirely. Root cause: assumed direct method calls auto-log. They don't. Fix: made `appendLog` public, called explicitly after pin success/failure.
+
+- [project] **Pinata v3 scoped JWT rejected by v2 `/pinning/pinFileToIPFS` endpoint.** 401 "No Authentication method provided". Switched to v2 endpoint trying to get public IPFS pins. Root cause: v3 scoped JWT is a different auth system from v2 API keys. v3 JWT only works with v3 endpoints. Fix: revert to `/v3/files`; add `network: "public"` form field for public IPFS pinning.
+
+- [project] **CIDv0 vs CIDv1 mismatch caused false "CID mismatch" error.** Local `ipfs --offline add` returns CIDv0 (`Qm...`), Pinata `/v3/files` returns CIDv1 (`bafk...`). Same content, different multihash encoding. Equality check `localCid == remoteCid` always failed. Root cause: assumed CID is a fixed canonical string. Fix: trust remote CID as canonical; drop equality check.
+
+- [process] **Two-app-instance problem recurred.** Kill command failed silently (no processes found, exit 1), pipeline continued, launched new instance on top of old one. Happened three times. Root cause: `kill -9 $(...)` exits non-zero when subcommand returns nothing; didn't verify kill before launch. Fix: split kill and launch into separate steps with explicit `wc -l` check.
+
+### Wins
+
+- [project] **ListModel over JS array for activity log.** JS array as `ListView.model` doesn't support `.get(i)` (ListModel API). Copy-all iteration `model.get(i)` worked correctly with ListModel; JS array indexing failed silently. Pattern: always use `ListModel` for log panels, never JS `var` arrays.
+
+- [project] **Keycard ActivityLog pattern direct reuse.** Importing the exact pattern from keycard (ListModel inside ListView, `clipboardHelper` inside the Rectangle, `copyAllToClipboard()` function on the Rectangle, `TextEdit readOnly + selectByMouse`) worked on first try in stash UI. Should port proven patterns directly instead of reinventing.
+
+- [project] **`doStashBackup()` in notes drives the full flow.** Notes saves → exports `.imnotes` → calls stash `uploadViaIpfs` → records CID. Stash is a pure transport — it doesn't need to know what to pin. This separation is clean and avoids any cross-module scheduling complexity.
+
+### Extracted to
+
+- `basecamp-skills/skills/qml-patterns.md` — `background: null` on TextEdit trap; clipboard helper scope rule
+- `basecamp-skills/skills/plugin-discovery.md` — `variant` file confirmed required for LogosApp
+- `stash-basecamp/docs/stash-pinning-lessons.md` — Pinata v3 JWT/endpoint, CIDv0/v1, token masking, appendLog
+
+---
+
 ## #74 Settings UI + capability token investigation (2026-04-16)
 
 ### What happened
