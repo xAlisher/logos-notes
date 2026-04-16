@@ -488,7 +488,6 @@ Item {
         property bool showSettings: false
         property bool loading: false
         property string lastLoadedContent: ""
-        property var stashLog: []      // ephemeral activity log — cleared on lock
         property bool stashBusy: false
 
         onVisibleChanged: {
@@ -499,17 +498,14 @@ Item {
                     root.restoreWarning = ""
                 }
             } else {
-                noteScreen.stashLog = []   // clear log on lock/navigate away
+                logModel.clear()   // clear log on lock/navigate away
             }
         }
 
         function stashLogAppend(msg, level) {
             var ts = "[" + Qt.formatDateTime(new Date(), "HH:mm:ss") + "]"
-            var entry = { ts: ts, msg: msg, level: level || "info" }
-            var updated = noteScreen.stashLog.slice()
-            updated.push(entry)
-            if (updated.length > 100) updated.shift()
-            noteScreen.stashLog = updated
+            if (logModel.count >= 100) logModel.remove(0)
+            logModel.append({ ts: ts, msg: msg, level: level || "info" })
         }
 
         function doStashBackup() {
@@ -1008,6 +1004,18 @@ Item {
             height: 120
             color: "#0D0D0D"
 
+            function copyAllToClipboard() {
+                var text = ""
+                for (var i = 0; i < logModel.count; i++) {
+                    var e = logModel.get(i)
+                    text += e.ts + " " + e.msg + "\n"
+                }
+                fpHelper.text = text
+                fpHelper.selectAll()
+                fpHelper.copy()
+                copyLogFeedback.restart()
+            }
+
             // Top border
             Rectangle {
                 anchors { top: parent.top; left: parent.left; right: parent.right }
@@ -1041,17 +1049,7 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        var text = ""
-                        for (var i = 0; i < noteScreen.stashLog.length; i++) {
-                            var e = noteScreen.stashLog[i]
-                            text += e.ts + " " + e.msg + "\n"
-                        }
-                        logClipHelper.text = text
-                        logClipHelper.selectAll()
-                        logClipHelper.copy()
-                        copyLogFeedback.restart()
-                    }
+                    onClicked: activityLog.copyAllToClipboard()
                 }
 
                 Timer {
@@ -1064,7 +1062,7 @@ Item {
             // Empty-log placeholder
             Text {
                 anchors.centerIn: parent
-                visible: noteScreen.stashLog.length === 0
+                visible: logModel.count === 0
                 text: "Activity log — click Stash to back up"
                 color: root.textDisabled
                 font.pixelSize: 11
@@ -1076,21 +1074,28 @@ Item {
                 id: logListView
                 anchors { fill: parent; margins: 10; topMargin: 14 }
                 clip: true
-                model: noteScreen.stashLog
                 spacing: 2
                 onCountChanged: Qt.callLater(() => logListView.positionViewAtEnd())
 
-                delegate: Text {
-                    required property var modelData
+                model: ListModel { id: logModel }
+
+                delegate: TextEdit {
+                    required property string ts
+                    required property string msg
+                    required property string level
                     width: logListView.width
-                    text: modelData.ts + " " + modelData.msg
-                    color: modelData.level === "success" ? root.successGreen
-                         : modelData.level === "error"   ? root.errorColor
-                         : modelData.level === "muted"   ? root.textDisabled
+                    text: ts + " " + msg
+                    color: level === "success" ? root.successGreen
+                         : level === "error"   ? root.errorColor
+                         : level === "muted"   ? root.textDisabled
                          : root.textSecondary
                     font.pixelSize: 11
                     font.family: "Courier New, monospace"
                     wrapMode: Text.WrapAnywhere
+                    readOnly: true
+                    selectByMouse: true
+                    selectedTextColor: root.bgColor
+                    selectionColor: root.textSecondary
                 }
             }
 
@@ -1709,7 +1714,6 @@ Item {
         }
 
         TextEdit { id: fpHelper; visible: false }
-        TextEdit { id: logClipHelper; visible: false }
         Timer { id: pluginCopyTimer; interval: 2000 }
     }
 }

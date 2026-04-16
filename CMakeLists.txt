@@ -378,7 +378,7 @@ install(FILES
     assets/icons/close.svg
     DESTINATION "${NOTES_UI_DIR}"
 )
-install(FILES assets/icons/app_icon.png
+install(FILES assets/icons/notes.png
     DESTINATION "${NOTES_UI_DIR}/icons"
 )
 
