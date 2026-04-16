@@ -54,6 +54,54 @@ observes real events. TODO marker is in the source.
 
 ---
 
+## v2.0 Phase 2 Lessons — Capability Token / IPC Architecture (#77 research)
+
+### Lesson: C++ core plugins cannot call other modules without a capability_module token
+
+`LogosAPIClient::invokeRemoteMethod` auto-provisions module access by calling
+`capability_module.requestModule(origin, target)`. But this call needs a pre-existing
+`capability_module` token in the process-wide `TokenManager` singleton. Third-party core
+plugins (like `notes`) do not receive this bootstrap token at load time — only `main_ui`
+gets it. The call silently fails (empty authToken → returns QVariant()) after ~20s timeout.
+
+**Do not call `invokeRemoteMethod` from any synchronous path in a core plugin.** Even with
+a valid token, the QRemoteObject `waitForFinished` blocks the Qt event loop for the full
+timeout. The only safe path is through QML (#78).
+
+### Lesson: TokenManager is a process-wide singleton
+
+`TokenManager::instance()` is a Meyer's singleton. All `LogosAPI` objects in the same
+process (i.e., all modules loaded by the same `logos_host`) share the same token store.
+`logos_core_get_token("capability_module")` (logos_core.h C API) can read it from a
+loaded plugin — but the synchronous blocking issue remains regardless.
+
+### Lesson: logos_core_get_token C API exists for token inspection
+
+`logos_core.h` exports `logos_core_get_token(key)` which reads from the host's
+TokenManager. Could be used to bootstrap if: (a) logos_core symbols are exported to
+dynamically-loaded plugins, and (b) async IPC is implemented. Neither is trivial.
+Documented for future reference; not used in current implementation.
+
+### Lesson: callRemoteMethod token validation is backwards (implementation bug)
+
+`module_proxy.cpp:235`: `if (!tokenManager->getToken(authToken).isEmpty())` — uses the
+UUID token value as a module-name key, which always returns empty. Any non-empty string
+passes. This is clearly a bug and will likely be fixed upstream. Do NOT rely on it.
+
+### Lesson: informModuleToken is not token-gated (Q_UNUSED on authToken)
+
+`module_proxy.cpp:357`: `Q_UNUSED(authToken)` — the capability_module can push tokens to
+any plugin without auth. This is the intended host-side bootstrap path. Until the
+framework exposes it to third-party core plugins, we can't use it from our side.
+
+### Lesson: QML route (#78) is the only safe storage IPC path today
+
+`logos.callModule("storage_module", ...)` from QML runs in `main_ui`'s context which has
+bootstrap tokens. The QML bridge is the right place to orchestrate storage uploads until
+upstream provides a proper token bootstrap mechanism for core plugins.
+
+---
+
 ## Epic #62 Lessons — Keycard Module Integration
 
 ### Lesson: card secure channel state persists across sessions
