@@ -6,7 +6,7 @@
   "type": "ui_qml",
   "pluginType": "qml",
   "view": "Main.qml",
-  "dependencies": ["notes"],
+  "dependencies": ["notes", "logos_beacon"],
   "category": "notes",
   "capabilities": [],
   "icon": "icons/notes.png"

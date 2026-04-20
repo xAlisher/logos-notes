@@ -17,6 +17,7 @@ Item {
     readonly property color primary:          "#FF5000"
     readonly property color primaryHover:     "#CC4000"
     readonly property color successGreen:     "#22C55E"
+    readonly property color warningColor:     "#FFC107"
     readonly property color errorColor:       "#FB3748"
     readonly property color dangerBtnBg:      "#6C262D"
     readonly property color inputBorder:      "#383838"
@@ -490,6 +491,65 @@ Item {
         property string lastLoadedContent: ""
         property bool stashBusy: false
 
+        // Beacon inscription tracking — set when a backup is queued, polled after 15s
+        property string beaconPendingCid:      ""
+        property string beaconPendingLabel:    ""
+        property int    beaconPendingLogIdx:   -1
+        property string beaconChannelId:       ""
+
+        Timer {
+            id: beaconConfirmTimer
+            interval: 15000
+            repeat: false
+            onTriggered: {
+                if (noteScreen.beaconPendingCid === "") return
+                if (typeof logos === "undefined" || !logos.callModule) return
+
+                var raw     = logos.callModule("logos_beacon", "getInscriptionLog", [])
+                var entries = null
+                try {
+                    var tmp = JSON.parse(raw)
+                    entries = (typeof tmp === "string") ? JSON.parse(tmp) : tmp
+                } catch(e) {}
+                if (!Array.isArray(entries)) return
+
+                var cid = noteScreen.beaconPendingCid
+                var ch  = noteScreen.beaconChannelId.length > 12
+                           ? noteScreen.beaconChannelId.substring(0, 12) + "..."
+                           : noteScreen.beaconChannelId
+
+                for (var i = 0; i < entries.length; i++) {
+                    if (entries[i].cid !== cid) continue
+
+                    var e    = entries[i]
+                    var name = noteScreen.beaconPendingLabel
+                    var cidShort = cid.substring(0, 12) + "..."
+
+                    if (e.status === "ok") {
+                        if (noteScreen.beaconPendingLogIdx >= 0)
+                            logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "success")
+                        logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
+                            "beacon backup " + name + " with CID " + cidShort +
+                            " successfully inscribed to " + ch + " on LEZ, status: Confirmed")
+                    } else if (e.status === "error") {
+                        if (noteScreen.beaconPendingLogIdx >= 0)
+                            logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "error")
+                        logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
+                            "beacon backup " + name + " with CID " + cidShort +
+                            " was not inscribed to " + ch + " on LEZ, status: Error")
+                    } else {
+                        // Still pending — retry once more after another 15s
+                        beaconConfirmTimer.restart()
+                        return
+                    }
+
+                    noteScreen.beaconPendingCid    = ""
+                    noteScreen.beaconPendingLogIdx = -1
+                    break
+                }
+            }
+        }
+
         onVisibleChanged: {
             if (visible) {
                 refreshList()
@@ -544,7 +604,44 @@ Item {
 
             logos.callModule("notes", "setBackupCid", [upRes.cid, String(Math.floor(Date.now() / 1000))])
             noteScreen.stashLogAppend("stash: " + upRes.cid, "success")
-            noteScreen.stashLogAppend("beacon: pending (module not yet available)", "muted")
+
+            // ── Beacon inscription ────────────────────────────────────────────
+            var beaconAvailable = false
+            var channelId = ""
+            try {
+                var cfgRaw = logos.callModule("logos_beacon", "getBeaconConfig", [])
+                var cfgTmp = JSON.parse(cfgRaw)
+                var cfg    = (typeof cfgTmp === "string") ? JSON.parse(cfgTmp) : cfgTmp
+                if (cfg && cfg.signingKeyHex) {
+                    beaconAvailable = true
+                    channelId = cfg.channelId || ""
+                }
+            } catch(e) {}
+
+            if (beaconAvailable) {
+                var cidShort = upRes.cid.substring(0, 12) + "..."
+                var ch       = channelId.length > 12 ? channelId.substring(0, 12) + "..." : channelId
+                if (ch === "") ch = "LEZ"
+
+                // Queue in beacon (beacon's stash-watch will pick it up anyway,
+                // but explicit pinCid ensures it's registered immediately)
+                logos.callModule("logos_beacon", "pinCid", [upRes.cid, fname])
+
+                // Append pending row and store its index for in-place update
+                noteScreen.beaconPendingCid    = upRes.cid
+                noteScreen.beaconPendingLabel  = fname
+                noteScreen.beaconChannelId     = channelId
+                noteScreen.beaconPendingLogIdx = logModel.count
+                noteScreen.stashLogAppend(
+                    "beacon backup " + fname + " with CID " + cidShort +
+                    " successfully inscribed to " + ch + " on LEZ, status: Pending",
+                    "warning")
+
+                // Poll beacon.getInscriptionLog after 15s for confirmation
+                beaconConfirmTimer.restart()
+            } else {
+                noteScreen.stashLogAppend("beacon: module not available", "muted")
+            }
 
             noteScreen.stashBusy = false
         }
@@ -1087,6 +1184,7 @@ Item {
                     text: ts + " " + msg
                     color: level === "success" ? root.successGreen
                          : level === "error"   ? root.errorColor
+                         : level === "warning" ? root.warningColor
                          : level === "muted"   ? root.textDisabled
                          : root.textSecondary
                     font.pixelSize: 11
