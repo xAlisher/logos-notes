@@ -55,7 +55,6 @@ void LogosStorageTransport::subscribeEventResponse(EventCallback cb)
         return;
     m_client->onEvent(
         nullptr,                    // origin: any
-        nullptr,                    // destination (unused by lambda path)
         QStringLiteral("eventResponse"),
         [cb = std::move(cb)](const QString& name, const QVariantList& args) {
             if (cb) cb(name, args);

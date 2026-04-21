@@ -1,3 +1,25 @@
+if(DEFINED ENV{LOGOS_MODULE_BUILDER_ROOT})
+    cmake_minimum_required(VERSION 3.14)
+    project(NotesPlugin LANGUAGES CXX)
+    include($ENV{LOGOS_MODULE_BUILDER_ROOT}/cmake/LogosModule.cmake)
+    find_package(Qt6 REQUIRED COMPONENTS Sql)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(sodium REQUIRED IMPORTED_TARGET libsodium)
+    logos_module(
+        NAME notes
+        LINK_LIBRARIES Qt6::Sql PkgConfig::sodium dl pthread
+        SOURCES
+            src/plugin/NotesPlugin.h  src/plugin/NotesPlugin.cpp
+            src/core/NotesBackend.h   src/core/NotesBackend.cpp
+            src/core/CryptoManager.h  src/core/CryptoManager.cpp
+            src/core/DatabaseManager.h src/core/DatabaseManager.cpp
+            src/core/KeyManager.h     src/core/KeyManager.cpp
+            src/core/StorageClient.h  src/core/StorageClient.cpp
+            src/core/LogosStorageTransport.cpp
+    )
+    return()
+endif()
+
 cmake_minimum_required(VERSION 3.28)
 project(logos-notes VERSION 0.1.0 LANGUAGES CXX)
 

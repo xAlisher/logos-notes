@@ -2,12 +2,19 @@
   "name": "notes_ui",
   "version": "1.0.0",
   "description": "Encrypted local-first notes — UI",
-  "author": "Logos Notes",
   "type": "ui_qml",
-  "pluginType": "qml",
   "view": "Main.qml",
   "dependencies": ["notes", "logos_beacon"],
   "category": "notes",
-  "capabilities": [],
-  "icon": "icons/notes.png"
+  "icon": "icons/notes.png",
+  "nix": {
+    "packages": { "build": [], "runtime": [] },
+    "external_libraries": [],
+    "cmake": {
+      "find_packages": [],
+      "extra_sources": [],
+      "extra_include_dirs": [],
+      "extra_link_libraries": []
+    }
+  }
 }
