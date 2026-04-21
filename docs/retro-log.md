@@ -4,6 +4,28 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## #99 — Migrate to logos-module-builder (2026-04-21)
+
+### Wins
+
+- [project] **Both nix builds passed on first `nix build` after fixing two compile issues.** `mkLogosModule` + `mkLogosQmlModule` structure correct. Lock files generated cleanly.
+- [project] **Manual test passed with nix-built `.so`.** Installed directly from nix store output (`/nix/store/.../lib/notes_plugin.so`) — RPATH was `$ORIGIN` + nix store paths, resolved libsodium from module dir without patchelf.
+- [technical] **Discovered that `nix.cmake.*` metadata fields are parsed but not consumed.** Traced through `parseMetadata.nix` → `buildCppPlugin.nix` → backend. `find_packages`, `extra_link_libraries`, etc. have zero effect on the build. Future migrations must use the guard block, not metadata.
+
+### Fails
+
+- [technical] **`onEvent` 4-arg → 3-arg signature change was a silent compile error.** The new SDK via `logos-module-builder` pulled a newer `logos-cpp-sdk` where `LogosAPIClient::onEvent` dropped the `destination` argument. Not caught until `nix build` failed. Should have checked `sdk-upgrade-guide.md` before starting the migration.
+- [technical] **`CMakeLists.txt` guard block reconfigured `build-new/` on `cmake --build`.** Setting `LOGOS_MODULE_BUILDER_ROOT` in `nix develop` caused `cmake --build build-new` to reconfigure under the builder path, dropping all test targets. Tests ran fine from pre-existing binaries, but `cmake --install build-new` was broken. Local dev and nix build paths must be clearly separated.
+- [technical] **`metadata.json` `nix.cmake.find_packages` had no effect.** Declared `Qt6 COMPONENTS Sql` there expecting it to work — it didn't. Required explicit `find_package(Qt6 REQUIRED COMPONENTS Sql)` in the CMakeLists guard block before `logos_module()`. Wasted one `nix build` cycle.
+
+### Extracted to
+
+- `basecamp-skills/skills/builder-cmake-extra-deps-guard-block.md` — guard block pattern for extra Qt/lib deps
+- `basecamp-skills/skills/builder-metadata-cmake-fields-noop.md` — nix.cmake.* fields are noop
+- `basecamp-skills/skills/sdk-upgrade-guide.md` — updated `last_used`
+
+---
+
 ## #75 Online IPFS pinning + notes Stash integration (2026-04-16)
 
 ### Fails
