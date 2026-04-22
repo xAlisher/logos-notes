@@ -491,6 +491,10 @@ Item {
         property string lastLoadedContent: ""
         property bool stashBusy: false
 
+        // Logos Storage CID tracking — set when upload is queued, polled until CID lands
+        property string logosPendingFname:  ""
+        property string logosPendingOldCid: ""
+
         // Beacon inscription tracking — set when a backup is queued, polled after 15s
         property string beaconPendingCid:      ""
         property string beaconPendingLabel:    ""
@@ -529,14 +533,12 @@ Item {
                         if (noteScreen.beaconPendingLogIdx >= 0)
                             logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "success")
                         logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
-                            "beacon backup " + name + " with CID " + cidShort +
-                            " successfully inscribed to " + ch + " on LEZ, status: Confirmed")
+                            "beacon " + name + " — CID " + cidShort + " inscribed to your L1 channel. Status: Confirmed")
                     } else if (e.status === "error") {
                         if (noteScreen.beaconPendingLogIdx >= 0)
                             logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "error")
                         logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
-                            "beacon backup " + name + " with CID " + cidShort +
-                            " was not inscribed to " + ch + " on LEZ, status: Error")
+                            "beacon " + name + " — CID " + cidShort + " inscription failed. Status: Error")
                     } else {
                         // Still pending — retry once more after another 15s
                         beaconConfirmTimer.restart()
@@ -547,6 +549,25 @@ Item {
                     noteScreen.beaconPendingLogIdx = -1
                     break
                 }
+            }
+        }
+
+        Timer {
+            id: logosCidPollTimer
+            interval: 2000
+            repeat: true
+            onTriggered: {
+                if (typeof logos === "undefined" || !logos.callModule) return
+                var res = callModuleParse(logos.callModule("stash", "getLatestLogosResult", []))
+                if (!res || !res.cid || res.file !== noteScreen.logosPendingFname) return
+                // CID is ready — persist it in Notes and notify the user
+                logos.callModule("notes", "setBackupCid", [res.cid, res.ts])
+                noteScreen.stashLogAppend(
+                    "stash: Logos Storage: " + res.file + " \u2192 " + res.cid,
+                    "success")
+                noteScreen.logosPendingFname  = ""
+                noteScreen.logosPendingOldCid = ""
+                logosCidPollTimer.stop()
             }
         }
 
@@ -591,8 +612,33 @@ Item {
 
             var fname = fileRes.path.split("/").pop()
             noteScreen.stashLogAppend(fname + " created", "info")
-            noteScreen.stashLogAppend("waiting for CID...", "info")
 
+            // Route upload through the active transport so Logos Storage is
+            // used when the user has selected it in the Stash panel.
+            var atRes = callModuleParse(logos.callModule("stash", "getActiveTransport", []))
+            var activeTransport = atRes && atRes.transport ? atRes.transport : "kubo"
+
+            if (activeTransport === "logos") {
+                var qRes = callModuleParse(logos.callModule("stash", "upload", [fileRes.path, "notes"]))
+                if (!qRes || qRes.error) {
+                    noteScreen.stashLogAppend(
+                        "error: " + (qRes && qRes.error ? qRes.error : "upload failed"),
+                        "error")
+                    noteScreen.stashBusy = false
+                    return
+                }
+                noteScreen.stashLogAppend("stash: Logos Storage: queuing, waiting for CID...", "info")
+                // Poll stash.getLatestLogosResult() until our file's CID appears,
+                // then call notes.setBackupCid() and display success.
+                noteScreen.logosPendingFname  = fname
+                noteScreen.logosPendingOldCid = ""
+                logosCidPollTimer.restart()
+                noteScreen.stashBusy = false
+                return
+            }
+
+            // kubo / pinata path — synchronous, CID returned immediately
+            noteScreen.stashLogAppend("waiting for CID...", "info")
             var upRes = callModuleParse(logos.callModule("stash", "uploadViaIpfs", [fileRes.path]))
             if (!upRes || !upRes.cid) {
                 noteScreen.stashLogAppend(
@@ -633,8 +679,7 @@ Item {
                 noteScreen.beaconChannelId     = channelId
                 noteScreen.beaconPendingLogIdx = logModel.count
                 noteScreen.stashLogAppend(
-                    "beacon backup " + fname + " with CID " + cidShort +
-                    " successfully inscribed to " + ch + " on LEZ, status: Pending",
+                    "beacon " + fname + " — CID " + cidShort + " inscribed to your L1 channel. Status: Pending",
                     "warning")
 
                 // Poll beacon.getInscriptionLog after 15s for confirmation
