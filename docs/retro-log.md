@@ -4,6 +4,9 @@ Post-merge retrospectives per `~/fieldcraft/protocols/wins-and-fails.md`.
 
 ---
 
+## win 2026-04-22
+Logos Storage CID delivery working end-to-end. Notes now owns notification: logosCidPollTimer polls stash.getLatestLogosResult() every 2s, matches by filename, calls notes.setBackupCid(cid, ts) from QML, displays success. Eliminated the broken Stash→Notes QRO back-call (A→B→A pattern always times out regardless of fresh client). Key insight: responsibility belongs to the module whose user is waiting for the result.
+
 ## #99 — Migrate to logos-module-builder (2026-04-21)
 
 ### Wins
@@ -321,3 +324,8 @@ Merge: `a7f327a`. Single-issue merge (not epic), so skills extraction + wins/fai
 
 ### Feedback for Alisher
 -->
+
+## fail 2026-04-22
+Used `.#packages.x86_64-linux.lgx` to install the Notes **core C++ module** — this only emits `linux-amd64-dev` in the manifest. Basecamp looks for `linux-amd64` to load the `.so` and silently rejects the module ("Module not found in known plugins"). Notes didn't appear in the sidebar.
+
+**Rule:** C++ core modules must be packaged with `nix bundle --bundler github:logos-co/nix-bundle-lgx#dual .#packages.x86_64-linux.default` — gives both `linux-amd64` and `linux-amd64-dev`. QML UI plugins use `.#packages.x86_64-linux.lgx` directly (no dual bundler needed, no `.so` to load).
