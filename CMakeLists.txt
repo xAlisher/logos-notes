@@ -363,18 +363,14 @@ add_test(NAME test_lib_storage_transport COMMAND test_lib_storage_transport)
 
 # ── Install ───────────────────────────────────────────────────────────────────
 
-# Dev install convention (mirrors keycard-basecamp pattern):
-#   Primary:  LogosApp   — cmake --install target
-#   Mirror:   LogosBasecamp — AppImage runtime dir
-set(LOGOS_APP_DATA "$ENV{HOME}/.local/share/Logos/LogosApp")
-set(NOTES_MODULE_DIR "${LOGOS_APP_DATA}/modules/notes")
-set(NOTES_UI_DIR     "${LOGOS_APP_DATA}/plugins/notes_ui")
+set(LOGOS_BASECAMP_DATA "$ENV{HOME}/.local/share/Logos/LogosBasecamp")
+set(NOTES_MODULE_DIR "${LOGOS_BASECAMP_DATA}/modules/notes")
+set(NOTES_UI_DIR     "${LOGOS_BASECAMP_DATA}/plugins/notes_ui")
 
 # Clean up old module versions before installing to prevent version conflicts.
-# Logos App may load old backup directories (notes.bak, notes.old) instead of current build.
 # Honor DESTDIR for staged installs (e.g. DESTDIR=/tmp/staged cmake --install).
 install(CODE "
-    set(_modules_dir \"\$ENV{DESTDIR}${LOGOS_APP_DATA}/modules\")
+    set(_modules_dir \"\$ENV{DESTDIR}${LOGOS_BASECAMP_DATA}/modules\")
     file(GLOB _old_notes \"\${_modules_dir}/notes.*\")
     foreach(_dir \${_old_notes})
         message(STATUS \"Removing old notes module: \${_dir}\")
@@ -427,25 +423,3 @@ if(PATCHELF_EXECUTABLE)
     ")
 endif()
 
-# Mirror notes module + UI plugin to LogosBasecamp (AppImage runtime dir).
-install(CODE "
-    set(_mod_src \"${NOTES_MODULE_DIR}\")
-    set(_mod_dst \"\$ENV{HOME}/.local/share/Logos/LogosBasecamp/modules/notes\")
-    message(STATUS \"Mirroring notes module to LogosBasecamp: \${_mod_dst}\")
-    file(COPY \"\${_mod_src}/\" DESTINATION \"\${_mod_dst}\")
-
-    set(_ui_src \"${NOTES_UI_DIR}\")
-    set(_ui_dst \"\$ENV{HOME}/.local/share/Logos/LogosBasecamp/plugins/notes_ui\")
-    message(STATUS \"Mirroring notes UI to LogosBasecamp: \${_ui_dst}\")
-    file(GLOB _ui_files \"\${_ui_src}/*\")
-    foreach(_f \${_ui_files})
-        if(NOT IS_DIRECTORY \"\${_f}\")
-            file(COPY \"\${_f}\" DESTINATION \"\${_ui_dst}\")
-        endif()
-    endforeach()
-    file(GLOB _ui_icons \"\${_ui_src}/icons/*\")
-    foreach(_f \${_ui_icons})
-        file(COPY \"\${_f}\" DESTINATION \"\${_ui_dst}/icons\")
-    endforeach()
-    message(STATUS \"Mirror complete\")
-")
