@@ -329,3 +329,22 @@ Merge: `a7f327a`. Single-issue merge (not epic), so skills extraction + wins/fai
 Used `.#packages.x86_64-linux.lgx` to install the Notes **core C++ module** — this only emits `linux-amd64-dev` in the manifest. Basecamp looks for `linux-amd64` to load the `.so` and silently rejects the module ("Module not found in known plugins"). Notes didn't appear in the sidebar.
 
 **Rule:** C++ core modules must be packaged with `nix bundle --bundler github:logos-co/nix-bundle-lgx#dual .#packages.x86_64-linux.default` — gives both `linux-amd64` and `linux-amd64-dev`. QML UI plugins use `.#packages.x86_64-linux.lgx` directly (no dual bundler needed, no `.so` to load).
+
+---
+
+## Session 2026-05-21 — builder migration + smoke test
+
+### Process wins
+- **[process] Skills index found relevant recipes immediately.** `_index/70-ops.md` had `notes-ui-lgx-manifest-fix` — confirmed the lgpm/platform variant issue was known. Saved re-investigation.
+- **[process] Comparison against working module (keycard) was decisive.** Checking keycard's flake.nix directly showed `nixpkgs.follows` and builder rev — two missing things in logos-notes identified in one read.
+
+### Process fails
+- **[process] `notes-ui-lgx-manifest-fix` skill gave inverted advice.** It said move files to `qml/` and set `"view": "qml/Main.qml"`. Correct answer (confirmed today) is flat root with `"view": "Main.qml"`. Following the old recipe would have produced a broken install. Updated the skill.
+
+### Technical wins
+- **[technical] `notes` + `notes_ui` both live.** After fresh nix build + flat manual UI install: `Module loaded: notes` confirmed in Basecamp log. Unlock works, note creation works.
+- **[technical] Stale builder root cause identified.** logos-notes was at builder `1247e5c` (old) vs keycard's `b3f1d658` (new). Old build pulled in `libQt6RemoteObjects` dep that isn't present on system Qt, causing confusion. Fresh build with current builder is clean.
+
+### Skills updated
+- `follow-logos-cpp-sdk-nixpkgs` — added logos-module-builder variant of the nixpkgs.follows pattern
+- `notes-ui-lgx-manifest-fix` — rewrote: lgpm still rejects linux-amd64-dev; flat root install is the correct fix (not qml/ subdir)
