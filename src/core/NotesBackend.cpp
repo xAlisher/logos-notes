@@ -337,6 +337,10 @@ QString NotesBackend::saveNote(int id, const QString &plaintext)
     QByteArray titleNonce;
     const QByteArray titleCt =
         m_crypto.encrypt(title.toUtf8(), m_keys.masterKey(), titleNonce);
+    if (titleCt.isEmpty()) {
+        setError("Title encryption failed.");
+        return {};
+    }
     if (!m_db.saveNote(id, ciphertext, nonce, titleCt, titleNonce)) {
         setError("Failed to save note.");
         return {};
@@ -457,12 +461,16 @@ QString NotesBackend::exportBackup(const QString &filePath)
     backup["ciphertext"] = QString::fromLatin1(ciphertext.toBase64());
     backup["noteCount"] = notesArr.size();
 
-    QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly)) {
+    QSaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly))
         return QStringLiteral("{\"error\":\"Cannot write file\"}");
+    const QByteArray backupPayload = QJsonDocument(backup).toJson(QJsonDocument::Compact);
+    if (file.write(backupPayload) != backupPayload.size()) {
+        file.cancelWriting();
+        return QStringLiteral("{\"error\":\"Write failed\"}");
     }
-    file.write(QJsonDocument(backup).toJson(QJsonDocument::Compact));
-    file.close();
+    if (!file.commit())
+        return QStringLiteral("{\"error\":\"Commit failed\"}");
 
     QJsonObject result;
     result["ok"] = true;
@@ -690,9 +698,16 @@ void NotesBackend::importWithKeycardKey(const QString &hexKey,
     SecureBuffer masterKey(keyBytes.left(32));
     sodium_memzero(keyBytes.data(), keyBytes.size());
 
-    // Store key source metadata
-    m_db.saveMeta("key_source", "keycard");
-    m_db.saveMeta("account_fingerprint", deriveFingerprintFromKey(masterKey.ref()));
+    // Store key source metadata — rollback if either write fails.
+    if (!m_db.saveMeta("key_source", "keycard") ||
+        !m_db.saveMeta("account_fingerprint", deriveFingerprintFromKey(masterKey.ref()))) {
+        m_keys.lock();
+        m_db.wipe();
+        m_db.init();
+        setError("Failed to save account metadata.");
+        setScreen("import");
+        return;
+    }
 
     // Hold master key in memory
     m_keys.setMasterKey(masterKey.toByteArray());
