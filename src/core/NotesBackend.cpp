@@ -447,8 +447,11 @@ QString NotesBackend::exportBackup(const QString &filePath)
             continue;
         }
         QString content;
-        if (!ct.isEmpty())
-            content = QString::fromUtf8(m_crypto.decrypt(ct, m_keys.masterKey(), nonce));
+        if (!ct.isEmpty()) {
+            QByteArray pt = m_crypto.decrypt(ct, m_keys.masterKey(), nonce);
+            if (pt.isEmpty()) { ++skipped; continue; }
+            content = QString::fromUtf8(pt);
+        }
 
         // Decrypt title.
         QString title;
@@ -584,6 +587,7 @@ QString NotesBackend::importBackup(const QString &filePath,
     int imported = 0;
     int failed = 0;
     for (const auto &val : notesArr) {
+        if (!val.isObject()) { ++failed; continue; }
         QJsonObject noteObj = val.toObject();
         QString content = noteObj["content"].toString();
         QString title = noteObj["title"].toString();
@@ -613,7 +617,7 @@ QString NotesBackend::importBackup(const QString &filePath,
     }
 
     QJsonObject result;
-    result["ok"] = (imported > 0 || failed == 0);
+    result["ok"] = (failed == 0);
     result["imported"] = imported;
     if (failed > 0)
         result["failed"] = failed;
@@ -666,8 +670,8 @@ void NotesBackend::migratePlaintextTitles()
         if (!m_db.loadNote(h.id, bodyCt, bodyNonce))
             continue;
 
-        m_db.saveNote(h.id, bodyCt, bodyNonce, titleCt, titleNonce);
-        ++migrated;
+        if (m_db.saveNote(h.id, bodyCt, bodyNonce, titleCt, titleNonce))
+            ++migrated;
     }
     if (migrated > 0)
         qDebug() << "NotesBackend: migrated" << migrated << "plaintext title(s) to encrypted";
