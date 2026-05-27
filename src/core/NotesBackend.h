@@ -105,6 +105,12 @@ public:
     // Wipe the database and return to the import screen.
     Q_INVOKABLE void resetAndWipe();
 
+    // ── Beacon inscription queue (issue #104) ─────────────────────────
+    // Returns JSON array of {cid, label} items pending inscription.
+    QString getInscriptionQueue() const;
+    // Removes the entry with the given cid. Returns {"ok":true} always.
+    QString markInscribed(const QString& cid);
+
 signals:
     void currentScreenChanged();
     void errorMessageChanged();
@@ -133,4 +139,10 @@ private:
 
     // Returns empty on successful upload start, or error string if no upload started.
     QString doAutoBackup();
+
+    // Inscription queue helpers (issue #104).
+    static QString inscriptionQueuePath();
+    QJsonArray loadInscriptionQueue() const;
+    bool saveInscriptionQueue(const QJsonArray& queue);
+    void enqueueCid(const QString& cid, const QString& label);
 };

@@ -57,6 +57,10 @@ public:
                                               const QString& backupPath = {});
     Q_INVOKABLE QString unlockWithKeycardKey(const QString& hexKey);
 
+    // Beacon inscription queue (issue #104)
+    Q_INVOKABLE QString getInscriptionQueue();
+    Q_INVOKABLE QString markInscribed(const QString& cid);
+
     // Storage auto-backup (issue #72)
     Q_INVOKABLE QString getBackupCid();
     Q_INVOKABLE QString setBackupCid(const QString& cid, const QString& timestamp);

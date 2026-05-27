@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -773,6 +774,12 @@ QString NotesBackend::setBackupCid(const QString& cid, const QString& timestamp)
                                       : timestamp);
     if (!cidOk || !tsOk)
         return QStringLiteral("{\"error\":\"db write failed\"}");
+    // Enqueue for beacon inscription (issue #104).
+    const QString fp = getAccountFingerprint().left(8);
+    const QString ts = timestamp.isEmpty()
+                       ? QString::number(QDateTime::currentSecsSinceEpoch())
+                       : timestamp;
+    enqueueCid(cid, QStringLiteral("notes/") + fp + QStringLiteral("/") + ts);
     return QStringLiteral("{\"ok\":true}");
 }
 
@@ -842,7 +849,7 @@ QString NotesBackend::doAutoBackup()
     // Capture generation so the callback can detect session change or wipe.
     const int myGeneration = m_sessionGeneration;
 
-    m_storage->uploadFile(filePath, [this, myGeneration](const QString& cid, const QString& error) {
+    m_storage->uploadFile(filePath, [this, myGeneration, filePath](const QString& cid, const QString& error) {
         // Discard callback if session changed (lock, wipe, or account switch).
         if (m_sessionGeneration != myGeneration || m_keySource != QLatin1String("keycard"))
             return;
@@ -854,6 +861,8 @@ QString NotesBackend::doAutoBackup()
                                    QString::number(QDateTime::currentSecsSinceEpoch()));
             if (cidOk && tsOk) {
                 m_storageStatus = QStringLiteral("synced");
+                // Enqueue for beacon inscription (issue #104).
+                enqueueCid(cid, QFileInfo(filePath).fileName());
             } else {
                 qWarning() << "NotesBackend::doAutoBackup: metadata write failed after upload";
                 m_storageStatus = QStringLiteral("failed");
@@ -867,4 +876,67 @@ QString NotesBackend::doAutoBackup()
     });
 
     return {};  // upload started
+}
+
+// ── Beacon inscription queue (issue #104) ────────────────────────────────────
+
+QString NotesBackend::inscriptionQueuePath()
+{
+    const QString dataDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dataDir);
+    return dataDir + "/notes-inscription-queue.json";
+}
+
+QJsonArray NotesBackend::loadInscriptionQueue() const
+{
+    QFile f(inscriptionQueuePath());
+    if (!f.exists() || !f.open(QIODevice::ReadOnly))
+        return {};
+    return QJsonDocument::fromJson(f.readAll()).array();
+}
+
+bool NotesBackend::saveInscriptionQueue(const QJsonArray& queue)
+{
+    QFile f(inscriptionQueuePath());
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    f.write(QJsonDocument(queue).toJson(QJsonDocument::Compact));
+    return true;
+}
+
+void NotesBackend::enqueueCid(const QString& cid, const QString& label)
+{
+    if (cid.isEmpty())
+        return;
+    QJsonArray queue = loadInscriptionQueue();
+    // Idempotent — skip if already present.
+    for (const auto& val : queue) {
+        if (val.toObject().value("cid").toString() == cid)
+            return;
+    }
+    QJsonObject entry;
+    entry["cid"]   = cid;
+    entry["label"] = label;
+    queue.append(entry);
+    if (!saveInscriptionQueue(queue))
+        qWarning() << "NotesBackend::enqueueCid: failed to save inscription queue";
+}
+
+QString NotesBackend::getInscriptionQueue() const
+{
+    return QString::fromUtf8(
+        QJsonDocument(loadInscriptionQueue()).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::markInscribed(const QString& cid)
+{
+    QJsonArray queue = loadInscriptionQueue();
+    QJsonArray filtered;
+    for (const auto& val : queue) {
+        if (val.toObject().value("cid").toString() != cid)
+            filtered.append(val);
+    }
+    saveInscriptionQueue(filtered);
+    return QStringLiteral("{\"ok\":true}");
 }
