@@ -152,6 +152,7 @@ QString NotesBackend::importMnemonic(const QString &mnemonic,
         m_keys.lock();
         m_db.wipe();
         m_db.init();
+        QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
         setError("Failed to save account metadata. Please try again.");
         setScreen("import");
         return backendError(m_errorMessage);
@@ -169,6 +170,7 @@ QString NotesBackend::importMnemonic(const QString &mnemonic,
             m_keys.lock();
             m_db.wipe();
             m_db.init();
+            QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
             setError(parsed.value("error").toString("Backup restore failed."));
             setScreen("import");
             return backendError(m_errorMessage);
@@ -455,9 +457,12 @@ QString NotesBackend::exportBackup(const QString &filePath)
 
         // Decrypt title.
         QString title;
-        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty())
-            title = QString::fromUtf8(m_crypto.decrypt(h.titleCiphertext,
-                                                        m_keys.masterKey(), h.titleNonce));
+        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty()) {
+            QByteArray titlePt = m_crypto.decrypt(h.titleCiphertext,
+                                                   m_keys.masterKey(), h.titleNonce);
+            if (titlePt.isEmpty()) { ++skipped; continue; }
+            title = QString::fromUtf8(titlePt);
+        }
 
         QJsonObject noteObj;
         noteObj["title"] = title;
@@ -736,6 +741,7 @@ QString NotesBackend::importWithKeycardKey(const QString &hexKey,
         m_keys.lock();
         m_db.wipe();
         m_db.init();
+        QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
         setError("Failed to save account metadata.");
         setScreen("import");
         return backendError(m_errorMessage);
@@ -752,6 +758,7 @@ QString NotesBackend::importWithKeycardKey(const QString &hexKey,
             m_keys.lock();
             m_db.wipe();
             m_db.init();
+            QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
             setError(parsed.value("error").toString("Backup restore failed."));
             setScreen("import");
             return backendError(m_errorMessage);
