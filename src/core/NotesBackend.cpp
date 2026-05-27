@@ -8,6 +8,9 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonParseError>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -21,6 +24,19 @@ static QString normalizeMnemonic(const QString &mnemonic)
     return mnemonic.simplified()
                    .normalized(QString::NormalizationForm_KD)
                    .toLower();
+}
+
+static QString backendOk()
+{
+    return QStringLiteral("{\"ok\":true}");
+}
+
+static QString backendError(const QString &msg)
+{
+    QString safe = msg;
+    safe.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    safe.replace(QLatin1Char('"'),  QStringLiteral("\\\""));
+    return QStringLiteral("{\"error\":\"") + safe + QStringLiteral("\"}");
 }
 
 static QString titleFromPlaintext(const QString &text)
@@ -76,22 +92,22 @@ QString NotesBackend::errorMessage() const
     return m_errorMessage;
 }
 
-void NotesBackend::importMnemonic(const QString &mnemonic,
-                                   const QString &pin,
-                                   const QString &pinConfirm,
-                                   const QString &backupPath)
+QString NotesBackend::importMnemonic(const QString &mnemonic,
+                                      const QString &pin,
+                                      const QString &pinConfirm,
+                                      const QString &backupPath)
 {
     if (pin != pinConfirm) {
         setError("PINs do not match.");
-        return;
+        return backendError(m_errorMessage);
     }
     if (pin.length() < KeyManager::PIN_MIN_LENGTH) {
         setError(QString("PIN must be at least %1 digits.").arg(KeyManager::PIN_MIN_LENGTH));
-        return;
+        return backendError(m_errorMessage);
     }
     if (!KeyManager::isValidMnemonic(mnemonic)) {
         setError("Invalid recovery phrase. Enter 12 or 24 words.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // Normalize mnemonic before any crypto use (NFKD, whitespace, lowercase).
@@ -102,7 +118,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     SecureBuffer masterKey(m_crypto.deriveKey(normalized, mnemonicSalt));
     if (masterKey.isEmpty()) {
         setError("Key derivation failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 2. Derive a wrapping key from the PIN with a fresh random salt.
@@ -110,7 +126,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     SecureBuffer pinKey(m_crypto.deriveKeyFromPin(pin, pinSalt));
     if (pinKey.isEmpty()) {
         setError("PIN key derivation failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 3. Encrypt the master key with the PIN-derived key.
@@ -118,14 +134,14 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     const QByteArray wrappedKey = m_crypto.encrypt(masterKey.ref(), pinKey.ref(), wrapNonce);
     if (wrappedKey.isEmpty()) {
         setError("Key wrapping failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 4. Persist the wrapped key so unlock() can restore the master key
     //    without the mnemonic.
     if (!m_db.saveWrappedKey(wrappedKey, wrapNonce, pinSalt)) {
         setError("Failed to save key.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 5. Persist the mnemonic KDF salt and account fingerprint.
@@ -136,9 +152,10 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         m_keys.lock();
         m_db.wipe();
         m_db.init();
+        QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
         setError("Failed to save account metadata. Please try again.");
         setScreen("import");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 6. Hold the master key in memory for this session.
@@ -153,9 +170,10 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
             m_keys.lock();
             m_db.wipe();
             m_db.init();
+            QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
             setError(parsed.value("error").toString("Backup restore failed."));
             setScreen("import");
-            return;
+            return backendError(m_errorMessage);
         }
         int restoredCount = parsed.value("imported").toInt();
         int failedCount = parsed.value("failed").toInt(0);
@@ -171,9 +189,10 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     m_keySource = QStringLiteral("mnemonic");
     setError({});
     setScreen("note");
+    return backendOk();
 }
 
-void NotesBackend::unlockWithPin(const QString &pin)
+QString NotesBackend::unlockWithPin(const QString &pin)
 {
     // ── Brute-force protection (Issue #2) ──────────────────────────────
     // NOTE: lockout state is stored in the same DB as the wrapped key.
@@ -191,28 +210,28 @@ void NotesBackend::unlockWithPin(const QString &pin)
             int remaining = static_cast<int>(m_lockoutUntil - now);
             setError(QString("Too many failed attempts. Try again in %1 seconds.")
                          .arg(remaining));
-            return;
+            return backendError(m_errorMessage);
         }
         m_lockoutUntil = 0; // lockout expired
     }
 
     if (pin.length() < KeyManager::PIN_MIN_LENGTH) {
         setError(QString("PIN must be at least %1 characters.").arg(KeyManager::PIN_MIN_LENGTH));
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 1. Load the wrapped master key stored during import.
     QByteArray wrappedKey, wrapNonce, pinSalt;
     if (!m_db.loadWrappedKey(wrappedKey, wrapNonce, pinSalt)) {
         setError("No account found. Please re-import your recovery phrase.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 2. Re-derive the PIN wrapping key using the stored salt.
     SecureBuffer pinKey(m_crypto.deriveKeyFromPin(pin, pinSalt));
     if (pinKey.isEmpty()) {
         setError("Key derivation failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 3. Decrypt the master key. AES-GCM authentication tag verification
@@ -232,7 +251,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
             int remaining = MAX_ATTEMPTS - m_failedAttempts;
             setError(QString("Wrong PIN. %1 attempt(s) remaining.").arg(remaining));
         }
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 4. Success — reset brute-force counter.
@@ -252,6 +271,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
     m_keySource = QStringLiteral("mnemonic");
     setError({});
     setScreen("note");
+    return backendOk();
 }
 
 // ── Note CRUD ────────────────────────────────────────────────────────────
@@ -334,6 +354,10 @@ QString NotesBackend::saveNote(int id, const QString &plaintext)
     QByteArray titleNonce;
     const QByteArray titleCt =
         m_crypto.encrypt(title.toUtf8(), m_keys.masterKey(), titleNonce);
+    if (titleCt.isEmpty()) {
+        setError("Title encryption failed.");
+        return {};
+    }
     if (!m_db.saveNote(id, ciphertext, nonce, titleCt, titleNonce)) {
         setError("Failed to save note.");
         return {};
@@ -361,7 +385,7 @@ QString NotesBackend::deleteNote(int id)
     return QStringLiteral("ok");
 }
 
-void NotesBackend::lock()
+QString NotesBackend::lock()
 {
     m_debounceTimer.stop();
     m_keySource.clear();
@@ -369,6 +393,7 @@ void NotesBackend::lock()
     m_keys.lock();
     setError({});
     setScreen("unlock");
+    return backendOk();
 }
 
 QString NotesBackend::getAccountFingerprint() const
@@ -416,19 +441,28 @@ QString NotesBackend::exportBackup(const QString &filePath)
     // Collect all notes as plaintext JSON array.
     const auto headers = m_db.loadNoteHeaders();
     QJsonArray notesArr;
+    int skipped = 0;
     for (const auto &h : headers) {
         QByteArray ct, nonce;
-        if (!m_db.loadNote(h.id, ct, nonce))
+        if (!m_db.loadNote(h.id, ct, nonce)) {
+            ++skipped;
             continue;
+        }
         QString content;
-        if (!ct.isEmpty())
-            content = QString::fromUtf8(m_crypto.decrypt(ct, m_keys.masterKey(), nonce));
+        if (!ct.isEmpty()) {
+            QByteArray pt = m_crypto.decrypt(ct, m_keys.masterKey(), nonce);
+            if (pt.isEmpty()) { ++skipped; continue; }
+            content = QString::fromUtf8(pt);
+        }
 
         // Decrypt title.
         QString title;
-        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty())
-            title = QString::fromUtf8(m_crypto.decrypt(h.titleCiphertext,
-                                                        m_keys.masterKey(), h.titleNonce));
+        if (!h.titleCiphertext.isEmpty() && !h.titleNonce.isEmpty()) {
+            QByteArray titlePt = m_crypto.decrypt(h.titleCiphertext,
+                                                   m_keys.masterKey(), h.titleNonce);
+            if (titlePt.isEmpty()) { ++skipped; continue; }
+            title = QString::fromUtf8(titlePt);
+        }
 
         QJsonObject noteObj;
         noteObj["title"] = title;
@@ -436,6 +470,8 @@ QString NotesBackend::exportBackup(const QString &filePath)
         noteObj["updatedAt"] = h.updatedAt;
         notesArr.append(noteObj);
     }
+    if (skipped > 0)
+        qWarning() << "NotesBackend::exportBackup: skipped" << skipped << "note(s) due to load failure";
 
     // Encrypt the JSON blob.
     QByteArray plaintext = QJsonDocument(notesArr).toJson(QJsonDocument::Compact);
@@ -454,17 +490,23 @@ QString NotesBackend::exportBackup(const QString &filePath)
     backup["ciphertext"] = QString::fromLatin1(ciphertext.toBase64());
     backup["noteCount"] = notesArr.size();
 
-    QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly)) {
+    QSaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly))
         return QStringLiteral("{\"error\":\"Cannot write file\"}");
+    const QByteArray backupPayload = QJsonDocument(backup).toJson(QJsonDocument::Compact);
+    if (file.write(backupPayload) != backupPayload.size()) {
+        file.cancelWriting();
+        return QStringLiteral("{\"error\":\"Write failed\"}");
     }
-    file.write(QJsonDocument(backup).toJson(QJsonDocument::Compact));
-    file.close();
+    if (!file.commit())
+        return QStringLiteral("{\"error\":\"Commit failed\"}");
 
     QJsonObject result;
-    result["ok"] = true;
+    result["ok"] = (skipped == 0);
     result["noteCount"] = notesArr.size();
     result["path"] = filePath;
+    if (skipped > 0)
+        result["skipped"] = skipped;
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
@@ -542,10 +584,15 @@ QString NotesBackend::importBackup(const QString &filePath,
         return QStringLiteral("{\"error\":\"Cannot decrypt backup. "
                               "Wrong recovery phrase or corrupted file.\"}");
 
-    QJsonArray notesArr = QJsonDocument::fromJson(plaintext).array();
+    QJsonParseError parseErr;
+    const QJsonDocument notesDoc = QJsonDocument::fromJson(plaintext, &parseErr);
+    if (parseErr.error != QJsonParseError::NoError || !notesDoc.isArray())
+        return QStringLiteral("{\"error\":\"Decrypted backup contains invalid JSON\"}");
+    QJsonArray notesArr = notesDoc.array();
     int imported = 0;
     int failed = 0;
     for (const auto &val : notesArr) {
+        if (!val.isObject()) { ++failed; continue; }
         QJsonObject noteObj = val.toObject();
         QString content = noteObj["content"].toString();
         QString title = noteObj["title"].toString();
@@ -575,7 +622,7 @@ QString NotesBackend::importBackup(const QString &filePath,
     }
 
     QJsonObject result;
-    result["ok"] = (imported > 0 || failed == 0);
+    result["ok"] = (failed == 0);
     result["imported"] = imported;
     if (failed > 0)
         result["failed"] = failed;
@@ -584,7 +631,7 @@ QString NotesBackend::importBackup(const QString &filePath,
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
-void NotesBackend::resetAndWipe()
+QString NotesBackend::resetAndWipe()
 {
     m_debounceTimer.stop();
     m_keySource.clear();
@@ -593,8 +640,12 @@ void NotesBackend::resetAndWipe()
     m_keys.lock();
     m_db.wipe();
     m_db.init();
+    // Clear inscription queue so stale CIDs don't leak to the next identity.
+    if (!QFile::remove(inscriptionQueuePath()) && QFile::exists(inscriptionQueuePath()))
+        qWarning() << "NotesBackend: failed to remove inscription queue on wipe";
     setError({});
     setScreen("import");
+    return backendOk();
 }
 
 void NotesBackend::migratePlaintextTitles()
@@ -624,8 +675,8 @@ void NotesBackend::migratePlaintextTitles()
         if (!m_db.loadNote(h.id, bodyCt, bodyNonce))
             continue;
 
-        m_db.saveNote(h.id, bodyCt, bodyNonce, titleCt, titleNonce);
-        ++migrated;
+        if (m_db.saveNote(h.id, bodyCt, bodyNonce, titleCt, titleNonce))
+            ++migrated;
     }
     if (migrated > 0)
         qDebug() << "NotesBackend: migrated" << migrated << "plaintext title(s) to encrypted";
@@ -670,23 +721,31 @@ static QString deriveFingerprintFromKey(const QByteArray &masterKey)
 // ── Keycard Module Integration ───────────────────────────────────────────────
 // Receive pre-derived key from keycard-basecamp module (replaces internal KeycardBridge)
 
-void NotesBackend::importWithKeycardKey(const QString &hexKey,
-                                         const QString &backupPath)
+QString NotesBackend::importWithKeycardKey(const QString &hexKey,
+                                             const QString &backupPath)
 {
     // Convert hex key to bytes
     QByteArray keyBytes = QByteArray::fromHex(hexKey.toUtf8());
     if (keyBytes.isEmpty() || keyBytes.size() < 32) {
         setError("Invalid key from keycard module");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // Use first 32 bytes as AES-256 master key
     SecureBuffer masterKey(keyBytes.left(32));
     sodium_memzero(keyBytes.data(), keyBytes.size());
 
-    // Store key source metadata
-    m_db.saveMeta("key_source", "keycard");
-    m_db.saveMeta("account_fingerprint", deriveFingerprintFromKey(masterKey.ref()));
+    // Store key source metadata — rollback if either write fails.
+    if (!m_db.saveMeta("key_source", "keycard") ||
+        !m_db.saveMeta("account_fingerprint", deriveFingerprintFromKey(masterKey.ref()))) {
+        m_keys.lock();
+        m_db.wipe();
+        m_db.init();
+        QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
+        setError("Failed to save account metadata.");
+        setScreen("import");
+        return backendError(m_errorMessage);
+    }
 
     // Hold master key in memory
     m_keys.setMasterKey(masterKey.toByteArray());
@@ -699,9 +758,10 @@ void NotesBackend::importWithKeycardKey(const QString &hexKey,
             m_keys.lock();
             m_db.wipe();
             m_db.init();
+            QFile::remove(inscriptionQueuePath()); // prevent stale CIDs leaking to next identity
             setError(parsed.value("error").toString("Backup restore failed."));
             setScreen("import");
-            return;
+            return backendError(m_errorMessage);
         }
         int failedCount = parsed.value("failed").toInt(0);
         if (failedCount > 0) {
@@ -713,15 +773,16 @@ void NotesBackend::importWithKeycardKey(const QString &hexKey,
     m_db.setInitialized();
     m_keySource = QStringLiteral("keycard");
     setScreen("note");
+    return backendOk();
 }
 
-void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
+QString NotesBackend::unlockWithKeycardKey(const QString &hexKey)
 {
     // Convert hex key to bytes
     QByteArray keyBytes = QByteArray::fromHex(hexKey.toUtf8());
     if (keyBytes.isEmpty() || keyBytes.size() < 32) {
         setError("Invalid key from keycard module");
-        return;
+        return backendError(m_errorMessage);
     }
 
     SecureBuffer masterKey(keyBytes.left(32));
@@ -733,7 +794,7 @@ void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
         QString currentFp = deriveFingerprintFromKey(masterKey.ref());
         if (currentFp != storedFp) {
             setError("Key mismatch — wrong card or domain");
-            return;
+            return backendError(m_errorMessage);
         }
     }
 
@@ -742,6 +803,7 @@ void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
     migratePlaintextTitles();
     m_keySource = QStringLiteral("keycard");
     setScreen("note");
+    return backendOk();
 }
 
 // ── Storage auto-backup (issue #72) ─────────────────────────────────────────
@@ -773,6 +835,12 @@ QString NotesBackend::setBackupCid(const QString& cid, const QString& timestamp)
                                       : timestamp);
     if (!cidOk || !tsOk)
         return QStringLiteral("{\"error\":\"db write failed\"}");
+    // Enqueue for beacon inscription (issue #104).
+    const QString fp = getAccountFingerprint().left(8);
+    const QString ts = timestamp.isEmpty()
+                       ? QString::number(QDateTime::currentSecsSinceEpoch())
+                       : timestamp;
+    enqueueCid(cid, QStringLiteral("notes/") + fp + QStringLiteral("/") + ts);
     return QStringLiteral("{\"ok\":true}");
 }
 
@@ -842,7 +910,7 @@ QString NotesBackend::doAutoBackup()
     // Capture generation so the callback can detect session change or wipe.
     const int myGeneration = m_sessionGeneration;
 
-    m_storage->uploadFile(filePath, [this, myGeneration](const QString& cid, const QString& error) {
+    m_storage->uploadFile(filePath, [this, myGeneration, filePath](const QString& cid, const QString& error) {
         // Discard callback if session changed (lock, wipe, or account switch).
         if (m_sessionGeneration != myGeneration || m_keySource != QLatin1String("keycard"))
             return;
@@ -854,6 +922,8 @@ QString NotesBackend::doAutoBackup()
                                    QString::number(QDateTime::currentSecsSinceEpoch()));
             if (cidOk && tsOk) {
                 m_storageStatus = QStringLiteral("synced");
+                // Enqueue for beacon inscription (issue #104).
+                enqueueCid(cid, QFileInfo(filePath).fileName());
             } else {
                 qWarning() << "NotesBackend::doAutoBackup: metadata write failed after upload";
                 m_storageStatus = QStringLiteral("failed");
@@ -867,4 +937,104 @@ QString NotesBackend::doAutoBackup()
     });
 
     return {};  // upload started
+}
+
+// ── Beacon inscription queue (issue #104) ────────────────────────────────────
+
+QString NotesBackend::inscriptionQueuePath()
+{
+    const QString dataDir =
+        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dataDir);
+    return dataDir + "/notes-inscription-queue.json";
+}
+
+std::optional<QJsonArray> NotesBackend::loadInscriptionQueue() const
+{
+    QFile f(inscriptionQueuePath());
+    if (!f.exists())
+        return QJsonArray{}; // valid empty queue — file not created yet
+
+    if (!f.open(QIODevice::ReadOnly)) {
+        qWarning() << "NotesBackend: cannot open inscription queue for reading";
+        return std::nullopt;
+    }
+
+    const QByteArray raw = f.readAll();
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "NotesBackend: inscription queue JSON parse error:" << err.errorString();
+        return std::nullopt;
+    }
+    if (!doc.isArray()) {
+        qWarning() << "NotesBackend: inscription queue root is not a JSON array";
+        return std::nullopt;
+    }
+    return doc.array();
+}
+
+bool NotesBackend::saveInscriptionQueue(const QJsonArray& queue)
+{
+    const QString path = inscriptionQueuePath();
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly))
+        return false;
+    const QByteArray payload = QJsonDocument(queue).toJson(QJsonDocument::Compact);
+    if (f.write(payload) != payload.size()) {
+        f.cancelWriting();
+        return false;
+    }
+    if (!f.commit())
+        return false;
+    if (!QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner))
+        qWarning() << "NotesBackend: failed to set 0600 on" << path;
+    return true;
+}
+
+void NotesBackend::enqueueCid(const QString& cid, const QString& label)
+{
+    if (cid.isEmpty())
+        return;
+    auto maybeQueue = loadInscriptionQueue();
+    if (!maybeQueue) {
+        qWarning() << "NotesBackend::enqueueCid: aborting — queue unreadable, not overwriting";
+        return;
+    }
+    QJsonArray queue = *maybeQueue;
+    // Idempotent — skip if already present.
+    for (const auto& val : queue) {
+        if (val.toObject().value("cid").toString() == cid)
+            return;
+    }
+    QJsonObject entry;
+    entry["cid"]   = cid;
+    entry["label"] = label;
+    queue.append(entry);
+    if (!saveInscriptionQueue(queue))
+        qWarning() << "NotesBackend::enqueueCid: failed to save inscription queue";
+}
+
+QString NotesBackend::getInscriptionQueue() const
+{
+    auto maybeQueue = loadInscriptionQueue();
+    if (!maybeQueue)
+        return QStringLiteral("{\"error\":\"queue read failed\"}");
+    return QString::fromUtf8(
+        QJsonDocument(*maybeQueue).toJson(QJsonDocument::Compact));
+}
+
+QString NotesBackend::markInscribed(const QString& cid)
+{
+    auto maybeQueue = loadInscriptionQueue();
+    if (!maybeQueue)
+        return QStringLiteral("{\"error\":\"queue read failed\"}");
+    QJsonArray filtered;
+    for (const auto& val : *maybeQueue) {
+        if (val.toObject().value("cid").toString() != cid)
+            filtered.append(val);
+    }
+    if (!saveInscriptionQueue(filtered))
+        return QStringLiteral("{\"error\":\"queue write failed\"}");
+    return QStringLiteral("{\"ok\":true}");
 }

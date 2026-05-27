@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QObject>
 #include <QString>
 #include <QTimer>
 #include <memory>
+#include <optional>
 
 #include "CryptoManager.h"
 #include "DatabaseManager.h"
@@ -26,18 +28,18 @@ public:
     QString currentScreen() const;
     QString errorMessage()  const;
     // Keycard module integration: receive pre-derived key from keycard-basecamp
-    Q_INVOKABLE void importWithKeycardKey(const QString &hexKey,
-                                           const QString &backupPath = {});
-    Q_INVOKABLE void unlockWithKeycardKey(const QString &hexKey);
+    Q_INVOKABLE QString importWithKeycardKey(const QString &hexKey,
+                                              const QString &backupPath = {});
+    Q_INVOKABLE QString unlockWithKeycardKey(const QString &hexKey);
 
     // Called from ImportScreen: validate mnemonic + PIN, derive key, save state.
-    Q_INVOKABLE void importMnemonic(const QString &mnemonic,
-                                    const QString &pin,
-                                    const QString &pinConfirm,
-                                    const QString &backupPath = {});
+    Q_INVOKABLE QString importMnemonic(const QString &mnemonic,
+                                       const QString &pin,
+                                       const QString &pinConfirm,
+                                       const QString &backupPath = {});
 
     // Called from UnlockScreen: re-derive key with PIN.
-    Q_INVOKABLE void unlockWithPin(const QString &pin);
+    Q_INVOKABLE QString unlockWithPin(const QString &pin);
 
     // ── Note CRUD ──────────────────────────────────────────────────────
     Q_INVOKABLE QString createNote();
@@ -47,7 +49,7 @@ public:
     Q_INVOKABLE QString deleteNote(int id);
 
     // Lock session: wipe in-memory key, go back to unlock screen.
-    Q_INVOKABLE void lock();
+    Q_INVOKABLE QString lock();
 
     // Short hex fingerprint derived from master key (for display in Settings).
     Q_INVOKABLE QString getAccountFingerprint() const;
@@ -103,7 +105,13 @@ public:
     static QString deriveFingerprint(const QString &mnemonic);
 
     // Wipe the database and return to the import screen.
-    Q_INVOKABLE void resetAndWipe();
+    Q_INVOKABLE QString resetAndWipe();
+
+    // ── Beacon inscription queue (issue #104) ─────────────────────────
+    // Returns JSON array of {cid, label} items pending inscription.
+    QString getInscriptionQueue() const;
+    // Removes the entry with the given cid. Returns {"ok":true} always.
+    QString markInscribed(const QString& cid);
 
 signals:
     void currentScreenChanged();
@@ -133,4 +141,14 @@ private:
 
     // Returns empty on successful upload start, or error string if no upload started.
     QString doAutoBackup();
+
+    // Inscription queue helpers (issue #104).
+    // Thread-safety: NotesBackend lives on the Qt main thread; all callers
+    // (plugin methods, timer callbacks) are dispatched on the same thread —
+    // no mutex needed. Do NOT call these from background threads.
+    static QString inscriptionQueuePath();
+    // Returns nullopt on parse/validation failure — callers must not write back on nullopt.
+    std::optional<QJsonArray> loadInscriptionQueue() const;
+    bool saveInscriptionQueue(const QJsonArray& queue);
+    void enqueueCid(const QString& cid, const QString& label);
 };

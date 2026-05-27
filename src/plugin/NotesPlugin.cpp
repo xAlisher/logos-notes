@@ -174,6 +174,18 @@ QString NotesPlugin::unlockWithKeycardKey(const QString& hexKey)
     return errorJson(m_backend.errorMessage());
 }
 
+// ── Beacon inscription queue (issue #104) ────────────────────────────────────
+
+QString NotesPlugin::getInscriptionQueue()
+{
+    return m_backend.getInscriptionQueue();
+}
+
+QString NotesPlugin::markInscribed(const QString& cid)
+{
+    return m_backend.markInscribed(cid);
+}
+
 // ── Storage auto-backup (issue #72) ─────────────────────────────────────────
 
 QString NotesPlugin::getBackupCid()
