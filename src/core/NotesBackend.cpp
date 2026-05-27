@@ -9,6 +9,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonParseError>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -891,22 +893,44 @@ QString NotesBackend::inscriptionQueuePath()
     return dataDir + "/notes-inscription-queue.json";
 }
 
-QJsonArray NotesBackend::loadInscriptionQueue() const
+std::optional<QJsonArray> NotesBackend::loadInscriptionQueue() const
 {
     QFile f(inscriptionQueuePath());
-    if (!f.exists() || !f.open(QIODevice::ReadOnly))
-        return {};
-    return QJsonDocument::fromJson(f.readAll()).array();
+    if (!f.exists())
+        return QJsonArray{}; // valid empty queue — file not created yet
+
+    if (!f.open(QIODevice::ReadOnly)) {
+        qWarning() << "NotesBackend: cannot open inscription queue for reading";
+        return std::nullopt;
+    }
+
+    const QByteArray raw = f.readAll();
+    QJsonParseError err;
+    const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "NotesBackend: inscription queue JSON parse error:" << err.errorString();
+        return std::nullopt;
+    }
+    if (!doc.isArray()) {
+        qWarning() << "NotesBackend: inscription queue root is not a JSON array";
+        return std::nullopt;
+    }
+    return doc.array();
 }
 
 bool NotesBackend::saveInscriptionQueue(const QJsonArray& queue)
 {
     const QString path = inscriptionQueuePath();
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly))
         return false;
-    f.write(QJsonDocument(queue).toJson(QJsonDocument::Compact));
-    f.close();
+    const QByteArray payload = QJsonDocument(queue).toJson(QJsonDocument::Compact);
+    if (f.write(payload) != payload.size()) {
+        f.cancelWriting();
+        return false;
+    }
+    if (!f.commit())
+        return false;
     if (!QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner))
         qWarning() << "NotesBackend: failed to set 0600 on" << path;
     return true;
@@ -916,7 +940,12 @@ void NotesBackend::enqueueCid(const QString& cid, const QString& label)
 {
     if (cid.isEmpty())
         return;
-    QJsonArray queue = loadInscriptionQueue();
+    auto maybeQueue = loadInscriptionQueue();
+    if (!maybeQueue) {
+        qWarning() << "NotesBackend::enqueueCid: aborting — queue unreadable, not overwriting";
+        return;
+    }
+    QJsonArray queue = *maybeQueue;
     // Idempotent — skip if already present.
     for (const auto& val : queue) {
         if (val.toObject().value("cid").toString() == cid)
@@ -932,15 +961,20 @@ void NotesBackend::enqueueCid(const QString& cid, const QString& label)
 
 QString NotesBackend::getInscriptionQueue() const
 {
+    auto maybeQueue = loadInscriptionQueue();
+    if (!maybeQueue)
+        return QStringLiteral("{\"error\":\"queue read failed\"}");
     return QString::fromUtf8(
-        QJsonDocument(loadInscriptionQueue()).toJson(QJsonDocument::Compact));
+        QJsonDocument(*maybeQueue).toJson(QJsonDocument::Compact));
 }
 
 QString NotesBackend::markInscribed(const QString& cid)
 {
-    QJsonArray queue = loadInscriptionQueue();
+    auto maybeQueue = loadInscriptionQueue();
+    if (!maybeQueue)
+        return QStringLiteral("{\"error\":\"queue read failed\"}");
     QJsonArray filtered;
-    for (const auto& val : queue) {
+    for (const auto& val : *maybeQueue) {
         if (val.toObject().value("cid").toString() != cid)
             filtered.append(val);
     }

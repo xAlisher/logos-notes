@@ -5,6 +5,7 @@
 #include <QString>
 #include <QTimer>
 #include <memory>
+#include <optional>
 
 #include "CryptoManager.h"
 #include "DatabaseManager.h"
@@ -146,7 +147,8 @@ private:
     // (plugin methods, timer callbacks) are dispatched on the same thread —
     // no mutex needed. Do NOT call these from background threads.
     static QString inscriptionQueuePath();
-    QJsonArray loadInscriptionQueue() const;
+    // Returns nullopt on parse/validation failure — callers must not write back on nullopt.
+    std::optional<QJsonArray> loadInscriptionQueue() const;
     bool saveInscriptionQueue(const QJsonArray& queue);
     void enqueueCid(const QString& cid, const QString& label);
 };
