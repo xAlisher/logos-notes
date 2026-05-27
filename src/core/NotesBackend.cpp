@@ -595,7 +595,8 @@ void NotesBackend::resetAndWipe()
     m_db.wipe();
     m_db.init();
     // Clear inscription queue so stale CIDs don't leak to the next identity.
-    QFile::remove(inscriptionQueuePath());
+    if (!QFile::remove(inscriptionQueuePath()) && QFile::exists(inscriptionQueuePath()))
+        qWarning() << "NotesBackend: failed to remove inscription queue on wipe";
     setError({});
     setScreen("import");
 }
@@ -906,7 +907,8 @@ bool NotesBackend::saveInscriptionQueue(const QJsonArray& queue)
         return false;
     f.write(QJsonDocument(queue).toJson(QJsonDocument::Compact));
     f.close();
-    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    if (!QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner))
+        qWarning() << "NotesBackend: failed to set 0600 on" << path;
     return true;
 }
 
