@@ -26,6 +26,19 @@ static QString normalizeMnemonic(const QString &mnemonic)
                    .toLower();
 }
 
+static QString backendOk()
+{
+    return QStringLiteral("{\"ok\":true}");
+}
+
+static QString backendError(const QString &msg)
+{
+    QString safe = msg;
+    safe.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+    safe.replace(QLatin1Char('"'),  QStringLiteral("\\\""));
+    return QStringLiteral("{\"error\":\"") + safe + QStringLiteral("\"}");
+}
+
 static QString titleFromPlaintext(const QString &text)
 {
     // First non-empty line, trimmed to 100 chars.
@@ -79,22 +92,22 @@ QString NotesBackend::errorMessage() const
     return m_errorMessage;
 }
 
-void NotesBackend::importMnemonic(const QString &mnemonic,
-                                   const QString &pin,
-                                   const QString &pinConfirm,
-                                   const QString &backupPath)
+QString NotesBackend::importMnemonic(const QString &mnemonic,
+                                      const QString &pin,
+                                      const QString &pinConfirm,
+                                      const QString &backupPath)
 {
     if (pin != pinConfirm) {
         setError("PINs do not match.");
-        return;
+        return backendError(m_errorMessage);
     }
     if (pin.length() < KeyManager::PIN_MIN_LENGTH) {
         setError(QString("PIN must be at least %1 digits.").arg(KeyManager::PIN_MIN_LENGTH));
-        return;
+        return backendError(m_errorMessage);
     }
     if (!KeyManager::isValidMnemonic(mnemonic)) {
         setError("Invalid recovery phrase. Enter 12 or 24 words.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // Normalize mnemonic before any crypto use (NFKD, whitespace, lowercase).
@@ -105,7 +118,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     SecureBuffer masterKey(m_crypto.deriveKey(normalized, mnemonicSalt));
     if (masterKey.isEmpty()) {
         setError("Key derivation failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 2. Derive a wrapping key from the PIN with a fresh random salt.
@@ -113,7 +126,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     SecureBuffer pinKey(m_crypto.deriveKeyFromPin(pin, pinSalt));
     if (pinKey.isEmpty()) {
         setError("PIN key derivation failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 3. Encrypt the master key with the PIN-derived key.
@@ -121,14 +134,14 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     const QByteArray wrappedKey = m_crypto.encrypt(masterKey.ref(), pinKey.ref(), wrapNonce);
     if (wrappedKey.isEmpty()) {
         setError("Key wrapping failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 4. Persist the wrapped key so unlock() can restore the master key
     //    without the mnemonic.
     if (!m_db.saveWrappedKey(wrappedKey, wrapNonce, pinSalt)) {
         setError("Failed to save key.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 5. Persist the mnemonic KDF salt and account fingerprint.
@@ -141,7 +154,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
         m_db.init();
         setError("Failed to save account metadata. Please try again.");
         setScreen("import");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 6. Hold the master key in memory for this session.
@@ -158,7 +171,7 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
             m_db.init();
             setError(parsed.value("error").toString("Backup restore failed."));
             setScreen("import");
-            return;
+            return backendError(m_errorMessage);
         }
         int restoredCount = parsed.value("imported").toInt();
         int failedCount = parsed.value("failed").toInt(0);
@@ -174,9 +187,10 @@ void NotesBackend::importMnemonic(const QString &mnemonic,
     m_keySource = QStringLiteral("mnemonic");
     setError({});
     setScreen("note");
+    return backendOk();
 }
 
-void NotesBackend::unlockWithPin(const QString &pin)
+QString NotesBackend::unlockWithPin(const QString &pin)
 {
     // ── Brute-force protection (Issue #2) ──────────────────────────────
     // NOTE: lockout state is stored in the same DB as the wrapped key.
@@ -194,28 +208,28 @@ void NotesBackend::unlockWithPin(const QString &pin)
             int remaining = static_cast<int>(m_lockoutUntil - now);
             setError(QString("Too many failed attempts. Try again in %1 seconds.")
                          .arg(remaining));
-            return;
+            return backendError(m_errorMessage);
         }
         m_lockoutUntil = 0; // lockout expired
     }
 
     if (pin.length() < KeyManager::PIN_MIN_LENGTH) {
         setError(QString("PIN must be at least %1 characters.").arg(KeyManager::PIN_MIN_LENGTH));
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 1. Load the wrapped master key stored during import.
     QByteArray wrappedKey, wrapNonce, pinSalt;
     if (!m_db.loadWrappedKey(wrappedKey, wrapNonce, pinSalt)) {
         setError("No account found. Please re-import your recovery phrase.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 2. Re-derive the PIN wrapping key using the stored salt.
     SecureBuffer pinKey(m_crypto.deriveKeyFromPin(pin, pinSalt));
     if (pinKey.isEmpty()) {
         setError("Key derivation failed.");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 3. Decrypt the master key. AES-GCM authentication tag verification
@@ -235,7 +249,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
             int remaining = MAX_ATTEMPTS - m_failedAttempts;
             setError(QString("Wrong PIN. %1 attempt(s) remaining.").arg(remaining));
         }
-        return;
+        return backendError(m_errorMessage);
     }
 
     // 4. Success — reset brute-force counter.
@@ -255,6 +269,7 @@ void NotesBackend::unlockWithPin(const QString &pin)
     m_keySource = QStringLiteral("mnemonic");
     setError({});
     setScreen("note");
+    return backendOk();
 }
 
 // ── Note CRUD ────────────────────────────────────────────────────────────
@@ -368,7 +383,7 @@ QString NotesBackend::deleteNote(int id)
     return QStringLiteral("ok");
 }
 
-void NotesBackend::lock()
+QString NotesBackend::lock()
 {
     m_debounceTimer.stop();
     m_keySource.clear();
@@ -376,6 +391,7 @@ void NotesBackend::lock()
     m_keys.lock();
     setError({});
     setScreen("unlock");
+    return backendOk();
 }
 
 QString NotesBackend::getAccountFingerprint() const
@@ -423,10 +439,13 @@ QString NotesBackend::exportBackup(const QString &filePath)
     // Collect all notes as plaintext JSON array.
     const auto headers = m_db.loadNoteHeaders();
     QJsonArray notesArr;
+    int skipped = 0;
     for (const auto &h : headers) {
         QByteArray ct, nonce;
-        if (!m_db.loadNote(h.id, ct, nonce))
+        if (!m_db.loadNote(h.id, ct, nonce)) {
+            ++skipped;
             continue;
+        }
         QString content;
         if (!ct.isEmpty())
             content = QString::fromUtf8(m_crypto.decrypt(ct, m_keys.masterKey(), nonce));
@@ -443,6 +462,8 @@ QString NotesBackend::exportBackup(const QString &filePath)
         noteObj["updatedAt"] = h.updatedAt;
         notesArr.append(noteObj);
     }
+    if (skipped > 0)
+        qWarning() << "NotesBackend::exportBackup: skipped" << skipped << "note(s) due to load failure";
 
     // Encrypt the JSON blob.
     QByteArray plaintext = QJsonDocument(notesArr).toJson(QJsonDocument::Compact);
@@ -473,9 +494,11 @@ QString NotesBackend::exportBackup(const QString &filePath)
         return QStringLiteral("{\"error\":\"Commit failed\"}");
 
     QJsonObject result;
-    result["ok"] = true;
+    result["ok"] = (skipped == 0);
     result["noteCount"] = notesArr.size();
     result["path"] = filePath;
+    if (skipped > 0)
+        result["skipped"] = skipped;
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
@@ -553,7 +576,11 @@ QString NotesBackend::importBackup(const QString &filePath,
         return QStringLiteral("{\"error\":\"Cannot decrypt backup. "
                               "Wrong recovery phrase or corrupted file.\"}");
 
-    QJsonArray notesArr = QJsonDocument::fromJson(plaintext).array();
+    QJsonParseError parseErr;
+    const QJsonDocument notesDoc = QJsonDocument::fromJson(plaintext, &parseErr);
+    if (parseErr.error != QJsonParseError::NoError || !notesDoc.isArray())
+        return QStringLiteral("{\"error\":\"Decrypted backup contains invalid JSON\"}");
+    QJsonArray notesArr = notesDoc.array();
     int imported = 0;
     int failed = 0;
     for (const auto &val : notesArr) {
@@ -595,7 +622,7 @@ QString NotesBackend::importBackup(const QString &filePath,
     return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
 }
 
-void NotesBackend::resetAndWipe()
+QString NotesBackend::resetAndWipe()
 {
     m_debounceTimer.stop();
     m_keySource.clear();
@@ -609,6 +636,7 @@ void NotesBackend::resetAndWipe()
         qWarning() << "NotesBackend: failed to remove inscription queue on wipe";
     setError({});
     setScreen("import");
+    return backendOk();
 }
 
 void NotesBackend::migratePlaintextTitles()
@@ -684,14 +712,14 @@ static QString deriveFingerprintFromKey(const QByteArray &masterKey)
 // ── Keycard Module Integration ───────────────────────────────────────────────
 // Receive pre-derived key from keycard-basecamp module (replaces internal KeycardBridge)
 
-void NotesBackend::importWithKeycardKey(const QString &hexKey,
-                                         const QString &backupPath)
+QString NotesBackend::importWithKeycardKey(const QString &hexKey,
+                                             const QString &backupPath)
 {
     // Convert hex key to bytes
     QByteArray keyBytes = QByteArray::fromHex(hexKey.toUtf8());
     if (keyBytes.isEmpty() || keyBytes.size() < 32) {
         setError("Invalid key from keycard module");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // Use first 32 bytes as AES-256 master key
@@ -706,7 +734,7 @@ void NotesBackend::importWithKeycardKey(const QString &hexKey,
         m_db.init();
         setError("Failed to save account metadata.");
         setScreen("import");
-        return;
+        return backendError(m_errorMessage);
     }
 
     // Hold master key in memory
@@ -722,7 +750,7 @@ void NotesBackend::importWithKeycardKey(const QString &hexKey,
             m_db.init();
             setError(parsed.value("error").toString("Backup restore failed."));
             setScreen("import");
-            return;
+            return backendError(m_errorMessage);
         }
         int failedCount = parsed.value("failed").toInt(0);
         if (failedCount > 0) {
@@ -734,15 +762,16 @@ void NotesBackend::importWithKeycardKey(const QString &hexKey,
     m_db.setInitialized();
     m_keySource = QStringLiteral("keycard");
     setScreen("note");
+    return backendOk();
 }
 
-void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
+QString NotesBackend::unlockWithKeycardKey(const QString &hexKey)
 {
     // Convert hex key to bytes
     QByteArray keyBytes = QByteArray::fromHex(hexKey.toUtf8());
     if (keyBytes.isEmpty() || keyBytes.size() < 32) {
         setError("Invalid key from keycard module");
-        return;
+        return backendError(m_errorMessage);
     }
 
     SecureBuffer masterKey(keyBytes.left(32));
@@ -754,7 +783,7 @@ void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
         QString currentFp = deriveFingerprintFromKey(masterKey.ref());
         if (currentFp != storedFp) {
             setError("Key mismatch — wrong card or domain");
-            return;
+            return backendError(m_errorMessage);
         }
     }
 
@@ -763,6 +792,7 @@ void NotesBackend::unlockWithKeycardKey(const QString &hexKey)
     migratePlaintextTitles();
     m_keySource = QStringLiteral("keycard");
     setScreen("note");
+    return backendOk();
 }
 
 // ── Storage auto-backup (issue #72) ─────────────────────────────────────────
