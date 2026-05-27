@@ -594,6 +594,8 @@ void NotesBackend::resetAndWipe()
     m_keys.lock();
     m_db.wipe();
     m_db.init();
+    // Clear inscription queue so stale CIDs don't leak to the next identity.
+    QFile::remove(inscriptionQueuePath());
     setError({});
     setScreen("import");
 }
@@ -898,10 +900,13 @@ QJsonArray NotesBackend::loadInscriptionQueue() const
 
 bool NotesBackend::saveInscriptionQueue(const QJsonArray& queue)
 {
-    QFile f(inscriptionQueuePath());
+    const QString path = inscriptionQueuePath();
+    QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
         return false;
     f.write(QJsonDocument(queue).toJson(QJsonDocument::Compact));
+    f.close();
+    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
     return true;
 }
 
@@ -937,6 +942,7 @@ QString NotesBackend::markInscribed(const QString& cid)
         if (val.toObject().value("cid").toString() != cid)
             filtered.append(val);
     }
-    saveInscriptionQueue(filtered);
+    if (!saveInscriptionQueue(filtered))
+        return QStringLiteral("{\"error\":\"queue write failed\"}");
     return QStringLiteral("{\"ok\":true}");
 }

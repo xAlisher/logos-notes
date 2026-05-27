@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -141,6 +142,9 @@ private:
     QString doAutoBackup();
 
     // Inscription queue helpers (issue #104).
+    // Thread-safety: NotesBackend lives on the Qt main thread; all callers
+    // (plugin methods, timer callbacks) are dispatched on the same thread —
+    // no mutex needed. Do NOT call these from background threads.
     static QString inscriptionQueuePath();
     QJsonArray loadInscriptionQueue() const;
     bool saveInscriptionQueue(const QJsonArray& queue);
