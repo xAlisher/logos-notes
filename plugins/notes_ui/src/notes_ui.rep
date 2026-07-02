@@ -1,0 +1,21 @@
+// QtRO contract for notes_ui's backend. QML binds via logos.module("notes_ui")
+// and calls these SLOTs with logos.watch(...). Every SLOT forwards to the
+// universal logos_beacon via modules().logos_beacon.* and returns a JSON string
+// the QML parses (callModuleParse). This is the v0.2 replacement for the legacy
+// logos.callModule("logos_beacon", ...) path, which returns "null" for the Qt-free
+// universal logos_beacon (2.0.0) — notes' inscription path (logos-notes#105).
+// The "notes" module stays on legacy callModule (it is a legacy Qt module).
+class NotesUi
+{
+    PROP(bool beaconReady=false READONLY)
+
+    // Read the beacon config (signingKeyHex / channelId) to decide availability.
+    SLOT(QString getBeaconConfig())
+
+    // Poll the inscription log for confirmation of a pending CID.
+    SLOT(QString getInscriptionLog())
+
+    // Explicitly register a freshly-uploaded CID for inscription. notes only
+    // passes (cid, label); the backend fills logos_beacon's source/slot args.
+    SLOT(QString pinCid(QString cid, QString label))
+}

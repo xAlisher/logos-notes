@@ -38,6 +38,15 @@ Item {
     property string keycardDerivedKey: ""
     property bool   keycardPollBusy: false
 
+    // ── Universal logos_beacon bridge (logos-notes#105) ────────────────
+    // logos_beacon is a Qt-free universal module (2.0.0); legacy logos.callModule
+    // returns "null" for it. notes_ui reaches it through its own C++ QtRO backend,
+    // which forwards to modules().logos_beacon.*, via logos.module("notes_ui") +
+    // logos.watch(). The "notes"/"stash"/"keycard" modules stay on callModule (legacy).
+    readonly property var notesBackend: (typeof logos !== "undefined" && logos.module)
+                                        ? logos.module("notes_ui") : null
+    property bool beaconReady: false
+
     // logos.callModule wraps the C++ QString return in an extra JSON layer — parse twice.
     function callModuleParse(raw) {
         try {
@@ -153,6 +162,10 @@ Item {
 
     Component.onCompleted: {
         if (typeof logos === "undefined" || !logos.callModule) return
+        // Universal beacon backend readiness — gates the on-demand inscription path.
+        if (logos.module && root.notesBackend !== null
+                && logos.isViewModuleReady && logos.isViewModuleReady("notes_ui"))
+            root.beaconReady = true
         var result = logos.callModule("notes", "isInitialized", [])
         if (result === "true") {
             var ks = logos.callModule("notes", "getKeySource", [])
@@ -160,6 +173,16 @@ Item {
             root.currentScreen = "unlock"
         } else {
             root.currentScreen = "import"
+        }
+    }
+
+    // The QtRO backend context becomes ready asynchronously — flip beaconReady when
+    // notes_ui signals ready (canonical universal gate, mirrors cord/beacon_ui).
+    Connections {
+        target: logos
+        function onViewModuleReadyChanged(moduleName, isReady) {
+            if (moduleName === "notes_ui" && isReady && root.notesBackend !== null)
+                root.beaconReady = true
         }
     }
 
@@ -507,48 +530,46 @@ Item {
             repeat: false
             onTriggered: {
                 if (noteScreen.beaconPendingCid === "") return
-                if (typeof logos === "undefined" || !logos.callModule) return
+                if (root.notesBackend === null) return
 
-                var raw     = logos.callModule("logos_beacon", "getInscriptionLog", [])
-                var entries = null
-                try {
-                    var tmp = JSON.parse(raw)
-                    entries = (typeof tmp === "string") ? JSON.parse(tmp) : tmp
-                } catch(e) {}
-                if (!Array.isArray(entries)) return
+                // getInscriptionLog is now async through the QtRO backend (universal
+                // logos_beacon). The confirmation scan moves into the watch callback.
+                logos.watch(root.notesBackend.getInscriptionLog(),
+                    function (raw) {
+                        var entries = callModuleParse(raw)
+                        if (!Array.isArray(entries)) return
 
-                var cid = noteScreen.beaconPendingCid
-                var ch  = noteScreen.beaconChannelId.length > 12
-                           ? noteScreen.beaconChannelId.substring(0, 12) + "..."
-                           : noteScreen.beaconChannelId
+                        var cid = noteScreen.beaconPendingCid
 
-                for (var i = 0; i < entries.length; i++) {
-                    if (entries[i].cid !== cid) continue
+                        for (var i = 0; i < entries.length; i++) {
+                            if (entries[i].cid !== cid) continue
 
-                    var e    = entries[i]
-                    var name = noteScreen.beaconPendingLabel
-                    var cidShort = cid.substring(0, 12) + "..."
+                            var e    = entries[i]
+                            var name = noteScreen.beaconPendingLabel
+                            var cidShort = cid.substring(0, 12) + "..."
 
-                    if (e.status === "ok") {
-                        if (noteScreen.beaconPendingLogIdx >= 0)
-                            logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "success")
-                        logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
-                            "beacon " + name + " — CID " + cidShort + " inscribed to your L1 channel. Status: Confirmed")
-                    } else if (e.status === "error") {
-                        if (noteScreen.beaconPendingLogIdx >= 0)
-                            logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "error")
-                        logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
-                            "beacon " + name + " — CID " + cidShort + " inscription failed. Status: Error")
-                    } else {
-                        // Still pending — retry once more after another 15s
-                        beaconConfirmTimer.restart()
-                        return
-                    }
+                            if (e.status === "ok") {
+                                if (noteScreen.beaconPendingLogIdx >= 0)
+                                    logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "success")
+                                logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
+                                    "beacon " + name + " — CID " + cidShort + " inscribed to your L1 channel. Status: Confirmed")
+                            } else if (e.status === "error") {
+                                if (noteScreen.beaconPendingLogIdx >= 0)
+                                    logModel.setProperty(noteScreen.beaconPendingLogIdx, "level", "error")
+                                logModel.setProperty(noteScreen.beaconPendingLogIdx, "msg",
+                                    "beacon " + name + " — CID " + cidShort + " inscription failed. Status: Error")
+                            } else {
+                                // Still pending — retry once more after another 15s
+                                beaconConfirmTimer.restart()
+                                return
+                            }
 
-                    noteScreen.beaconPendingCid    = ""
-                    noteScreen.beaconPendingLogIdx = -1
-                    break
-                }
+                            noteScreen.beaconPendingCid    = ""
+                            noteScreen.beaconPendingLogIdx = -1
+                            break
+                        }
+                    },
+                    function (err) {})
             }
         }
 
@@ -651,44 +672,53 @@ Item {
             logos.callModule("notes", "setBackupCid", [upRes.cid, String(Math.floor(Date.now() / 1000))])
             noteScreen.stashLogAppend("stash: " + upRes.cid, "success")
 
-            // ── Beacon inscription ────────────────────────────────────────────
-            var beaconAvailable = false
-            var channelId = ""
-            try {
-                var cfgRaw = logos.callModule("logos_beacon", "getBeaconConfig", [])
-                var cfgTmp = JSON.parse(cfgRaw)
-                var cfg    = (typeof cfgTmp === "string") ? JSON.parse(cfgTmp) : cfgTmp
-                if (cfg && cfg.signingKeyHex) {
-                    beaconAvailable = true
-                    channelId = cfg.channelId || ""
-                }
-            } catch(e) {}
+            // ── Beacon inscription (async via notes_ui QtRO backend → universal
+            //    logos_beacon; legacy callModule returns "null" — logos-notes#105) ──
+            noteScreen.beaconInscribe(upRes.cid, fname)
+        }
 
-            if (beaconAvailable) {
-                var cidShort = upRes.cid.substring(0, 12) + "..."
-                var ch       = channelId.length > 12 ? channelId.substring(0, 12) + "..." : channelId
-                if (ch === "") ch = "LEZ"
-
-                // Queue in beacon (beacon's stash-watch will pick it up anyway,
-                // but explicit pinCid ensures it's registered immediately)
-                logos.callModule("logos_beacon", "pinCid", [upRes.cid, fname])
-
-                // Append pending row and store its index for in-place update
-                noteScreen.beaconPendingCid    = upRes.cid
-                noteScreen.beaconPendingLabel  = fname
-                noteScreen.beaconChannelId     = channelId
-                noteScreen.beaconPendingLogIdx = logModel.count
-                noteScreen.stashLogAppend(
-                    "beacon " + fname + " — CID " + cidShort + " inscribed to your L1 channel. Status: Pending",
-                    "warning")
-
-                // Poll beacon.getInscriptionLog after 15s for confirmation
-                beaconConfirmTimer.restart()
-            } else {
+        // getBeaconConfig → pinCid through the QtRO backend. Runs after the (still
+        // synchronous) IPFS upload; the code that consumed the sync config result now
+        // lives in the watch success callback. Owns clearing stashBusy on every path.
+        function beaconInscribe(cid, fname) {
+            if (root.notesBackend === null) {
                 noteScreen.stashLogAppend("beacon: module not available", "muted")
+                noteScreen.stashBusy = false
+                return
             }
+            logos.watch(root.notesBackend.getBeaconConfig(),
+                function (cfgRaw) {
+                    var cfg = callModuleParse(cfgRaw)
+                    if (!cfg || !cfg.signingKeyHex) {
+                        noteScreen.stashLogAppend("beacon: module not available", "muted")
+                        noteScreen.stashBusy = false
+                        return
+                    }
+                    var channelId = cfg.channelId || ""
+                    var cidShort  = cid.substring(0, 12) + "..."
 
-            noteScreen.stashBusy = false
+                    // Queue in beacon (beacon's stash-watch will pick it up anyway,
+                    // but explicit pinCid ensures it's registered immediately)
+                    logos.watch(root.notesBackend.pinCid(cid, fname),
+                                function () {}, function () {})
+
+                    // Append pending row and store its index for in-place update
+                    noteScreen.beaconPendingCid    = cid
+                    noteScreen.beaconPendingLabel  = fname
+                    noteScreen.beaconChannelId     = channelId
+                    noteScreen.beaconPendingLogIdx = logModel.count
+                    noteScreen.stashLogAppend(
+                        "beacon " + fname + " — CID " + cidShort + " inscribed to your L1 channel. Status: Pending",
+                        "warning")
+
+                    // Poll beacon.getInscriptionLog after 15s for confirmation
+                    beaconConfirmTimer.restart()
+                    noteScreen.stashBusy = false
+                },
+                function (err) {
+                    noteScreen.stashLogAppend("beacon: module not available", "muted")
+                    noteScreen.stashBusy = false
+                })
         }
 
         function refreshList() {
