@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "Encrypted local-first notes — UI",
   "type": "ui_qml",
+  "interface": "universal",
   "view": "qml/Main.qml",
   "dependencies": ["notes", "logos_beacon"],
+  "codegen": { "rep": "src/notes_ui.rep" },
   "category": "notes",
   "icon": "qml/icons/notes.png",
   "nix": {
