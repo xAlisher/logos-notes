@@ -1,5 +1,8 @@
 # logos-notes
 
+> This is a personal, experimental hobby project. It is not an official Logos product. Not audited.
+
+
 Encrypted, local-first notes app for the [Logos](https://logos.co) ecosystem.
 
 Hardware-secured encryption via [Status Keycard](https://keycard.tech). No accounts. No servers. Your card is the key.
